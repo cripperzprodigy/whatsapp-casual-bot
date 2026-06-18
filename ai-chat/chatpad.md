@@ -41,3 +41,8 @@ Completed implementation of the core WhatsApp bot architecture.
 - Added `WHITELISTED_CHATS` to `.env` and implemented a security filter to drop webhooks from unauthorized chats.
 - Updated `docker-compose.yml` and the OS shell scripts to effortlessly start both the Python API and the Node.js service together.
 - Fully updated the README and Architectural files to reflect this major structural pivot.
+
+### [Jules] - [2026-06-18 14:30 UTC]
+- Enhanced `start.sh` and `start.bat` to perform pre-flight checks (detecting if `venv` or `node_modules` exist).
+- If dependencies are missing, the scripts will now interactively ask the user for permission to install them.
+- Improved terminal UX by adding clear status logging markers.

@@ -10,3 +10,4 @@
 | Jules | 2026-06-18 13:44 | Feature Dev - Passive contact syncing and bot self-awareness | Active |
 | Jules | 2026-06-18 14:04 | Feature Dev - Global auto-translation .env settings | Active |
 | Jules | 2026-06-18 14:16 | Lead Architect - Migrating to native OpenClaw-style QR integration | Active |
+| Jules | 2026-06-18 14:30 | DevOps - Enhancing start scripts with interactive installation prompts | Active |
