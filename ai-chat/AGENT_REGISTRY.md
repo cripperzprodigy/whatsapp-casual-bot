@@ -11,3 +11,5 @@
 | Jules | 2026-06-18 14:04 | Feature Dev - Global auto-translation .env settings | Active |
 | Jules | 2026-06-18 14:16 | Lead Architect - Migrating to native OpenClaw-style QR integration | Active |
 | Jules | 2026-06-18 14:30 | DevOps - Enhancing start scripts with interactive installation prompts | Active |
+| Jules | 2026-06-18 14:40 | Feature Dev - Global ignored languages and comprehensive translation configurations | Active |
+| Jules | 2026-06-18 14:46 | Code Reviewer - Auditing auto-translation flows | Active |

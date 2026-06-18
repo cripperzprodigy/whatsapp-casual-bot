@@ -14,7 +14,9 @@ class ChatSettings(Base):
     auto_translate_enabled = Column(Boolean, nullable=True, default=None)
     # If None, the bot falls back to the GLOBAL_TARGET_LANGUAGE env config
     default_target_language = Column(String, nullable=True, default=None)
-    ignored_languages = Column(JSON, default=list)
+    # If None, the bot falls back to the GLOBAL_IGNORED_LANGUAGES env config
+    ignored_languages = Column(JSON, nullable=True, default=None)
+    
     assistant_mode_enabled = Column(Boolean, default=False)
     use_local_llm_for_simple_tasks = Column(Boolean, default=True)
     use_cloud_llm_for_complex_tasks = Column(Boolean, default=True)

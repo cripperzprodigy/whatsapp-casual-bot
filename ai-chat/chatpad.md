@@ -46,3 +46,14 @@ Completed implementation of the core WhatsApp bot architecture.
 - Enhanced `start.sh` and `start.bat` to perform pre-flight checks (detecting if `venv` or `node_modules` exist).
 - If dependencies are missing, the scripts will now interactively ask the user for permission to install them.
 - Improved terminal UX by adding clear status logging markers.
+
+### [Jules] - [2026-06-18 14:43 UTC]
+- Extended the global settings cascade by adding `GLOBAL_IGNORED_LANGUAGES` to the `.env` logic.
+- Updated the database schema so `ignored_languages` can be nullable (indicating fallback to global).
+- Updated the webhook router and `!ignore` commands to comprehensively handle this logic.
+- Documented the entire explicit vs global settings cascade natively in the `README.md`.
+
+### [Jules] - [2026-06-18 14:50 UTC]
+- Audited the auto-translation flows for reliability.
+- Tuned the LLM translation prompt in `app/translation.py` to be much stricter against returning conversational filler (e.g. "Here is the translation...").
+- Fixed `!t auto` in `app/commands.py` so it properly cascades to `GLOBAL_TARGET_LANGUAGE` if the chat setting is `None`.

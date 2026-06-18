@@ -71,8 +71,10 @@ WHITELISTED_CHATS=
 BOT_NUMBER=1234567890
 
 # Global Translation Settings
+# These act as the defaults if a specific chat has not overridden them.
 GLOBAL_AUTO_TRANSLATE=False
 GLOBAL_TARGET_LANGUAGE=en
+GLOBAL_IGNORED_LANGUAGES=id,es
 
 # AI Configuration
 USE_LOCAL_LLM=False
@@ -93,10 +95,13 @@ AUTO_SYNC_CONTACTS=True
 Type `!help` in the WhatsApp chat to see the list of available commands.
 
 ### Translation & Language
+**Understanding the cascade:** Any settings changed via these commands only apply to the specific group or chat they are sent in. If you want a chat to stop using its custom settings and fall back to the `.env` file's `GLOBAL_` variables, use the `global` arguments.
+
 - `!auto on|off|global` - Toggle auto-translation explicitly for the chat, or reset it to the global configuration.
 - `!target <lang>|global` - Set the default target language for the chat, or reset it to the global configuration.
-- `!ignore add|remove <lang>` - Add or remove languages from the auto-translate ignore list.
-- `!ignore list` - Show ignored languages.
+- `!ignore add|remove <lang>` - Add or remove explicit languages from the auto-translate ignore list for this chat.
+- `!ignore global` - Reset the ignore list to use the `GLOBAL_IGNORED_LANGUAGES` environment configuration.
+- `!ignore list` - Show explicitly ignored languages, or indicate if it's following the global config.
 - `!t <lang> <text>` - Manually translate text to a specific language.
 - `!t auto <text>` - Manually translate text to the default target language.
 

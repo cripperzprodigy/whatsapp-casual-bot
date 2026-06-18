@@ -77,9 +77,14 @@ async def process_message(payload: WhatsAppWebhookPayload, db: Session):
         is_auto_enabled = chat_settings.auto_translate_enabled if chat_settings.auto_translate_enabled is not None else settings.GLOBAL_AUTO_TRANSLATE
         target_lang = chat_settings.default_target_language if chat_settings.default_target_language is not None else settings.GLOBAL_TARGET_LANGUAGE
         
+        if chat_settings.ignored_languages is not None:
+            ignore_list = chat_settings.ignored_languages
+        else:
+            ignore_list = [l.strip() for l in settings.GLOBAL_IGNORED_LANGUAGES.split(",") if l.strip()]
+        
         if is_auto_enabled and target_lang:
             lang = await detect_language(text)
-            if lang != "unknown" and lang not in chat_settings.ignored_languages and lang != target_lang:
+            if lang != "unknown" and lang not in ignore_list and lang != target_lang:
                 translated = await translate_text(text, target_lang)
                 await send_text_message(chat_id, f"[{lang.upper()}] {translated}")
                 

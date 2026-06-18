@@ -4,6 +4,7 @@ from app.state import get_chat_settings, Task, Note, MessageBuffer
 from app.translation import translate_text, detect_language
 from app.whatsapp_gateway import send_text_message
 from app.ai_client import ask_llm
+from app.config import settings as app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ async def handle_command(text: str, chat_id: str, sender_id: str, db: Session):
 !target <lang>|global - Set target lang (or reset to global)
 !ignore add|remove <lang> - Manage ignore list
 !ignore list - Show ignored languages
+!ignore global - Reset ignore list to global config
 !t <lang> <text> - Translate text to lang
 !t auto <text> - Translate to default target
 !summary [short|full] - Summarize recent messages
@@ -60,28 +62,41 @@ async def handle_command(text: str, chat_id: str, sender_id: str, db: Session):
         elif command == "!ignore":
             if len(args) >= 1:
                 subcmd = args[0]
-                ignored = list(settings.ignored_languages)
+                
+                if subcmd == "global":
+                    settings.ignored_languages = None
+                    db.commit()
+                    await send_text_message(chat_id, "Ignored languages for this chat reset to GLOBAL configuration.")
+                    return
+                
+                # Fetch explicit ignored list, if it's currently falling back to global (None), treat it as an empty list to start appending.
+                ignored = list(settings.ignored_languages) if settings.ignored_languages is not None else []
+                
                 if subcmd == "add" and len(args) == 2:
                     if args[1] not in ignored:
                         ignored.append(args[1])
                         settings.ignored_languages = ignored
                         db.commit()
-                    await send_text_message(chat_id, f"Added '{args[1]}' to ignore list.")
+                    await send_text_message(chat_id, f"Added '{args[1]}' to explicit ignore list.")
                 elif subcmd == "remove" and len(args) == 2:
                     if args[1] in ignored:
                         ignored.remove(args[1])
                         settings.ignored_languages = ignored
                         db.commit()
-                    await send_text_message(chat_id, f"Removed '{args[1]}' from ignore list.")
+                    await send_text_message(chat_id, f"Removed '{args[1]}' from explicit ignore list.")
                 elif subcmd == "list":
-                    await send_text_message(chat_id, f"Ignored languages: {', '.join(ignored)}")
+                    if settings.ignored_languages is None:
+                        await send_text_message(chat_id, "Ignored languages currently following GLOBAL config.")
+                    else:
+                        await send_text_message(chat_id, f"Explicitly ignored languages: {', '.join(ignored)}")
 
         elif command == "!t":
             if len(args) >= 2:
                 target_lang = args[0]
                 text_to_translate = " ".join(args[1:])
                 if target_lang == "auto":
-                    target_lang = settings.default_target_language or "en"
+                    # Fallback cascade: Chat Setting -> Global Setting -> Default ('en')
+                    target_lang = settings.default_target_language if settings.default_target_language is not None else (app_settings.GLOBAL_TARGET_LANGUAGE or "en")
                 translated = await translate_text(text_to_translate, target_lang)
                 await send_text_message(chat_id, translated)
                 

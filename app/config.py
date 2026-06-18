@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # Global Translation Settings
     GLOBAL_AUTO_TRANSLATE: bool = False
     GLOBAL_TARGET_LANGUAGE: str = "en"
+    # Comma-separated list of language codes to ignore globally
+    GLOBAL_IGNORED_LANGUAGES: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
