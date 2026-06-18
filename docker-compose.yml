@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./.env:/app/.env
+      - ./bot.db:/app/bot.db
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - whatsapp-gateway
+
+  whatsapp-gateway:
+    build:
+      context: ./whatsapp-service
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./whatsapp-service:/app
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+    environment:
+      - PYTHON_WEBHOOK_URL=http://bot:8000/webhook/whatsapp
+      - WHATSAPP_SESSION_PATH=./.wwebjs_auth
+    restart: unless-stopped
