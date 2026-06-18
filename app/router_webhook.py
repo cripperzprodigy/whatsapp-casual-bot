@@ -86,7 +86,8 @@ async def process_message(payload: WhatsAppWebhookPayload, db: Session):
             lang = await detect_language(text)
             if lang != "unknown" and lang not in ignore_list and lang != target_lang:
                 translated = await translate_text(text, target_lang)
-                await send_text_message(chat_id, f"[{lang.upper()}] {translated}")
+                # Reply directly to the original message ID
+                await send_text_message(chat_id, f"[{lang.upper()}] {translated}", reply_to_msg_id=msg_key.id)
                 
     except Exception as e:
         logger.error(f"Error processing message: {e}")

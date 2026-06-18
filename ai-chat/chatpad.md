@@ -58,5 +58,11 @@ Completed implementation of the core WhatsApp bot architecture.
 - Tuned the LLM translation prompt in `app/translation.py` to be much stricter against returning conversational filler (e.g. "Here is the translation...").
 - Fixed `!t auto` in `app/commands.py` so it properly cascades to `GLOBAL_TARGET_LANGUAGE` if the chat setting is `None`.
 
+
 ### [Jules] - [2026-06-18 15:04 UTC]
 - Updated `README.md` to include a clear visualization example explaining the passive auto-translation logic to the end user.
+
+### [Jules] - [2026-06-18 16:11 UTC]
+- Updated the auto-translation logic to natively reply/quote the original WhatsApp message it is translating.
+- Enhanced the `whatsapp-service` internal Node.js API to accept a `quoted` option and proxy it to `whatsapp-web.js`.
+- Enhanced `send_text_message` in Python to format the message ID securely for the Node.js service.

@@ -42,9 +42,10 @@ async def fetch_group_metadata(chat_id: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Failed to fetch group metadata for {chat_id}: {e}")
         return None
 
-async def send_text_message(chat_id: str, text: str) -> bool:
+async def send_text_message(chat_id: str, text: str, reply_to_msg_id: Optional[str] = None) -> bool:
     """
     Sends a text message back to the WhatsApp group via the internal gateway HTTP API.
+    Optionally quotes/replies to an original message if `reply_to_msg_id` is provided.
     """
     url = f"{settings.WHATSAPP_GATEWAY_URL}/message/sendText"
     
@@ -54,6 +55,14 @@ async def send_text_message(chat_id: str, text: str) -> bool:
             "text": text
         }
     }
+    
+    if reply_to_msg_id:
+        # In our webhook schema, msg_key.id is just the string ID of the message.
+        # But whatsapp-web.js requires the fully serialized ID.
+        # For incoming messages, the serialized ID format is usually `false_<chat_id>_<msg_id>`.
+        # We construct it based on typical Baileys/whatsapp-web.js formats.
+        serialized_id = f"false_{chat_id}_{reply_to_msg_id}"
+        payload["options"] = {"quoted": serialized_id}
     
     try:
         async with httpx.AsyncClient() as client:

@@ -147,14 +147,23 @@ app.post('/message/sendText', async (req, res) => {
         return res.status(503).json({ error: 'WhatsApp client not connected' });
     }
     
-    const { number, textMessage } = req.body;
+    const { number, textMessage, options } = req.body;
     if (!number || !textMessage || !textMessage.text) {
         return res.status(400).json({ error: 'Missing number or text' });
     }
 
     try {
+        let sendOptions = {};
+        
+        // If a reply message ID was provided, pass it to whatsapp-web.js
+        // so it natively quotes the original message.
+        if (options && options.quoted) {
+            // whatsapp-web.js uses the 'quotedMessageId' option for this
+            sendOptions.quotedMessageId = options.quoted;
+        }
+
         // whatsapp-web.js requires the id format `number@c.us` or `number@g.us`
-        await client.sendMessage(number, textMessage.text);
+        await client.sendMessage(number, textMessage.text, sendOptions);
         res.json({ status: 'ok' });
     } catch (err) {
         res.status(500).json({ error: err.message });
