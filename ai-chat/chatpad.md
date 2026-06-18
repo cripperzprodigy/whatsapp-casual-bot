@@ -57,3 +57,6 @@ Completed implementation of the core WhatsApp bot architecture.
 - Audited the auto-translation flows for reliability.
 - Tuned the LLM translation prompt in `app/translation.py` to be much stricter against returning conversational filler (e.g. "Here is the translation...").
 - Fixed `!t auto` in `app/commands.py` so it properly cascades to `GLOBAL_TARGET_LANGUAGE` if the chat setting is `None`.
+
+### [Jules] - [2026-06-18 15:04 UTC]
+- Updated `README.md` to include a clear visualization example explaining the passive auto-translation logic to the end user.

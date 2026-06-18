@@ -72,9 +72,9 @@ BOT_NUMBER=1234567890
 
 # Global Translation Settings
 # These act as the defaults if a specific chat has not overridden them.
-GLOBAL_AUTO_TRANSLATE=False
+GLOBAL_AUTO_TRANSLATE=True
 GLOBAL_TARGET_LANGUAGE=en
-GLOBAL_IGNORED_LANGUAGES=id,es
+GLOBAL_IGNORED_LANGUAGES=en,id
 
 # AI Configuration
 USE_LOCAL_LLM=False
@@ -95,7 +95,16 @@ AUTO_SYNC_CONTACTS=True
 Type `!help` in the WhatsApp chat to see the list of available commands.
 
 ### Translation & Language
-**Understanding the cascade:** Any settings changed via these commands only apply to the specific group or chat they are sent in. If you want a chat to stop using its custom settings and fall back to the `.env` file's `GLOBAL_` variables, use the `global` arguments.
+
+**How Auto-Translation Works (Visualization):**
+Imagine your `.env` is configured as:
+`GLOBAL_AUTO_TRANSLATE=True`, `GLOBAL_TARGET_LANGUAGE=en`, and `GLOBAL_IGNORED_LANGUAGES=en,id`.
+Here is how the bot passively reacts to messages in your WhatsApp group:
+* **User A:** *"Hola, ¿cómo estás?"* (Spanish) -> The bot detects Spanish (`es`), sees it's not ignored, and replies: `[ES] Hello, how are you?`
+* **User B:** *"Saya baik-baik saja"* (Indonesian) -> The bot detects Indonesian (`id`), sees it on the ignore list, and **stays silent**.
+* **User C:** *"That's great to hear!"* (English) -> The bot detects English (`en`), sees it on the ignore list (and it's the target language anyway), and **stays silent**.
+
+**Understanding the cascade:** Any settings changed via the commands below only apply to the specific group or chat they are sent in. If you want a chat to stop using its custom settings and fall back to the `.env` file's `GLOBAL_` variables, use the `global` arguments.
 
 - `!auto on|off|global` - Toggle auto-translation explicitly for the chat, or reset it to the global configuration.
 - `!target <lang>|global` - Set the default target language for the chat, or reset it to the global configuration.
