@@ -44,8 +44,15 @@ install_puppeteer_deps() {
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 sudo apt-get update
+                
+                # Check for libasound2 vs libasound2t64 (Ubuntu 24.04+ compatibility)
+                LIBASOUND="libasound2"
+                if apt-cache show libasound2t64 &> /dev/null; then
+                    LIBASOUND="libasound2t64"
+                fi
+
                 sudo apt-get install -y \
-                    ca-certificates fonts-liberation libappindicator3-1 libasound2 \
+                    ca-certificates fonts-liberation libappindicator3-1 $LIBASOUND \
                     libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 \
                     libexpat1 libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 \
                     libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 \

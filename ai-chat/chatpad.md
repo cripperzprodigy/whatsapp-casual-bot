@@ -142,3 +142,11 @@ Worked under full AI-CHAT SOP protocol compliance (read all 5 docs before writin
 - The `/health` endpoint pings the Node.js gateway with a 3-second timeout — adjust if gateway is slow.
 - `tests/test_fixes.py` uses `pytest-asyncio` — run with `pytest tests/ -v`.
 
+
+### [Jules] - [2026-06-19 17:39 UTC]
+- Enhanced `start.sh` to explicitly verify and install OS-level libraries strictly required by Puppeteer (headless Chrome) under Debian/Ubuntu systems (`libgbm1`, `libatk1.0-0`, `libnss3`, etc.).
+- The script now interactively prompts the user before attempting to run the large `sudo apt-get install` array, preventing silent crashes when booting `whatsapp-web.js` on clean VMs.
+
+### [Jules] - [2026-06-19 18:14 UTC]
+- Fixed a bug in the `start.sh` Puppeteer dependency installer where `libasound2` was causing an installation error on modern OS's like Ubuntu 24.04 (where it was replaced by a virtual package).
+- `start.sh` now dynamically checks `apt-cache` and uses `libasound2t64` if available, gracefully supporting both old and new Linux distributions.
