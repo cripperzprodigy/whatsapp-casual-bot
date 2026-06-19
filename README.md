@@ -7,7 +7,7 @@ A highly capable, passive WhatsApp bot built with Python and FastAPI, designed s
 - **Native QR Login:** Replicates the seamless OpenClaw QR-login and linked-device experience without relying on heavy external gateways.
 - **Auto-Translation:** Automatically detect and translate incoming messages to a default language (e.g., all messages translated to English). Configurable globally or per group.
 - **Assistant Tools:** Generate summaries of recent group chats using AI, assign tasks, and write notes.
-- **Unified AI Client:** Seamlessly toggle between local LLMs (e.g., Ollama) and cloud-based LLMs (e.g., OpenAI) depending on task complexity.
+- **Unified AI Architecture:** Configure a single, OpenAI-compatible AI endpoint. Easily switch between Local AI (LM Studio, Ollama) and Cloud AI (OpenAI, Groq) directly via the `.env` file without changing code.
 - **Isolated Roster Ledgers:** Maintains a completely isolated contact ledger per group. If a user joins Group A, their name and details are tracked completely independently of Group B. The bot automatically sweeps the entire group upon joining to build the ledger, passively updates it as users speak (never deleting anyone), and silently exports beautifully formatted CSV and Markdown rosters to `exports/groups/<group_id>/` (throttled for performance).
 - **Security Whitelist:** Configure exactly which chats the bot is allowed to interact with.
 

@@ -9,14 +9,10 @@ class Settings(BaseSettings):
     # Leave empty to allow all chats, or specify e.g., "123@g.us,456@c.us"
     WHITELISTED_CHATS: str = ""
 
-    # AI Config
-    USE_LOCAL_LLM: bool = False
-    LOCAL_LLM_ENDPOINT: str = "http://localhost:11434/v1"
-    LOCAL_LLM_API_KEY: str = "local-placeholder"
-    CLOUD_LLM_ENDPOINT: str = "https://api.openai.com/v1"
-    CLOUD_LLM_API_KEY: str = ""
-    DEFAULT_MODEL_NAME_LOCAL: str = "llama2"
-    DEFAULT_MODEL_NAME_CLOUD: str = "gpt-3.5-turbo"
+    # Unified AI Config (OpenAI-compatible)
+    LLM_ENDPOINT: str = "https://api.openai.com/v1"
+    LLM_API_KEY: str = ""
+    DEFAULT_MODEL_NAME: str = "gpt-3.5-turbo"
 
     # Database
     DATABASE_URL: str = "sqlite:///./bot.db"

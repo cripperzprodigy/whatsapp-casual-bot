@@ -33,7 +33,7 @@ The system utilizes a dual-runtime architecture. A lightweight **Node.js Microse
 - **Node.js WhatsApp Microservice (`whatsapp-service/`):** Utilizes `whatsapp-web.js` to natively manage the WhatsApp connection, persist the `.wwebjs_auth/` session, serve the QR code locally, and trigger Python webhooks.
 - **Commands Engine:** Parses and executes user commands starting with `!` (`app/commands.py`).
 - **Translation Engine:** Handles language detection and auto-translation. It explicitly utilizes native WhatsApp reply/quoting (`reply_to_msg_id`) to maintain context in busy group chats (`app/translation.py`).
-- **AI Client Engine:** A unified interface routing requests to local (e.g., LM Studio) or cloud-based (e.g., OpenAI) Large Language Models depending on configuration (`app/ai_client.py`).
+- **AI Client Engine:** A unified, standard `AsyncOpenAI` interface. It inherently supports both Local AI (e.g., LM Studio) and Cloud AI (OpenAI) by allowing the developer to swap out the `LLM_ENDPOINT` in the environment configuration, creating a completely agnostic intelligence layer (`app/ai_client.py`).
 - **Contact Sync Engine:** Intercepts incoming webhooks and Gateway APIs to build strictly isolated group rosters (`app/contact_sync.py`).
 
 ---

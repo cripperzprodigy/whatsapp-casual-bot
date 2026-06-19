@@ -85,3 +85,9 @@ Completed implementation of the core WhatsApp bot architecture.
 - Added ASCII diagrams visualizing the dual-runtime architecture and the Two-Pronged Contact Sync data flow.
 - Fully documented the Database Schemas (`ChatSettings`, `GroupContactLedger`).
 - Summarized the historical evolutionary pivots (Node.js migration, Isolated Ledgers, and Translation cascades) so future agents understand *why* the codebase is structured this way.
+
+### [Jules] - [2026-06-19 10:48 UTC]
+- Executed a major refactor of the AI logic to use a "Single-Client Architecture".
+- Stripped out all hardcoded Local/Cloud separation variables from `app/config.py` and `app/ai_client.py`.
+- The bot now elegantly uses one `AsyncOpenAI` client pointing to three unified `.env` variables (`LLM_ENDPOINT`, `LLM_API_KEY`, `DEFAULT_MODEL_NAME`), exploiting the fact that Local instances (LM Studio) and Cloud instances (OpenAI) conform to the same API standard.
+- Updated `ARCHITECTURE.md`, `PROJECT_HISTORY.md`, and `README.md` to document this vastly cleaner pattern.

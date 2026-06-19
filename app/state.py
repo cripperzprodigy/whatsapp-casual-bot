@@ -18,8 +18,6 @@ class ChatSettings(Base):
     ignored_languages = Column(JSON, nullable=True, default=None)
     
     assistant_mode_enabled = Column(Boolean, default=False)
-    use_local_llm_for_simple_tasks = Column(Boolean, default=True)
-    use_cloud_llm_for_complex_tasks = Column(Boolean, default=True)
     bot_is_admin = Column(Boolean, default=False)
     group_name = Column(String, nullable=True)
     last_roster_export_at = Column(DateTime, nullable=True)
