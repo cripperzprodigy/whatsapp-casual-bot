@@ -141,15 +141,7 @@ async def process_message(
                 and lang != target_lang
             ):
                 translated = await translate_text(text, target_lang)
-                original_snippet = (
-                    text
-                    if len(text) <= 120
-                    else text[:117] + "..."
-                )
-                reply_text = (
-                    f"[{lang.upper()}] {translated}\n\n"
-                    f"Translated from: {original_snippet}"
-                )
+                reply_text = f"[{lang.upper()}] {translated}"
                 await send_text_message(
                     chat_id,
                     reply_text,

@@ -152,4 +152,9 @@ Worked under full AI-CHAT SOP protocol compliance (read all 5 docs before writin
 - `start.sh` now dynamically checks `apt-cache` and uses `libasound2t64` if available, gracefully supporting both old and new Linux distributions.
 
 ### [GitHub Copilot] - [2026-06-20 00:00 UTC]
-Applied a timezone-aware fix for group roster export throttling. Updated `app/state.py` and `app/contact_sync.py` so `last_roster_export_at` is treated as UTC-aware and legacy naive timestamps are normalized before comparisons.
+Applied a set of stability and UX fixes for the WhatsApp bot.
+- Fixed timezone mismatch in contact roster export throttling by making `ChatSettings.last_roster_export_at` UTC-aware and normalizing legacy naive timestamps in `app/contact_sync.py`.
+- Updated auto-translation behavior so replies quote the original message and send only the translated text.
+- Added support for passing the group participant ID into the internal reply quoting path so quoted replies work more reliably in groups.
+- Hardened the `!search` command prompt in `app/commands.py` to avoid misleading live-search claims and to show a clear fallback message when live search is unavailable.
+- Documented the latest fixes across `ai-chat/README.md`, `ARCHITECTURE.md`, and `PROJECT_HISTORY.md`.

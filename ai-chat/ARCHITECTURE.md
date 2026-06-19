@@ -32,9 +32,10 @@ The system utilizes a dual-runtime architecture. A lightweight **Node.js Microse
 
 - **Node.js WhatsApp Microservice (`whatsapp-service/`):** Utilises `whatsapp-web.js` to natively manage the WhatsApp connection, persist the `.wwebjs_auth/` session, serve the QR code locally, and trigger Python webhooks. Sends `instance: 'whatsapp-web-js'` in every webhook payload.
 - **Commands Engine:** Parses and executes user commands starting with `!` (`app/commands.py`).
-- **Translation Engine:** Handles language detection and auto-translation. Includes a `FULL_NAME_TO_CODE` map for robust LLM output normalisation. Utilises native WhatsApp reply/quoting (`reply_to_msg_id`) to maintain context in busy group chats (`app/translation.py`).
+- **Translation Engine:** Handles language detection and auto-translation. Includes a `FULL_NAME_TO_CODE` map for robust LLM output normalisation. Utilises native WhatsApp reply/quoting (`reply_to_msg_id`) to maintain context in busy group chats (`app/translation.py`). Auto-translation replies send only the translated text while quoting the original message.
+- **Search Command Engine:** Parses `!search` requests, routes them through the LLM as a simulated search answer, and protects users from mistaken live-web claims by clearly signalling when live search is unavailable (`app/commands.py`).
 - **AI Client Engine:** A unified, standard `AsyncOpenAI` interface. Supports both Local AI (e.g., LM Studio) and Cloud AI (OpenAI) by swapping `LLM_ENDPOINT` in `.env`. Temperature constants `_TEMP_PRECISE` / `_TEMP_CREATIVE` control task-specific LLM behaviour (`app/ai_client.py`).
-- **Contact Sync Engine:** Intercepts incoming webhooks and Gateway APIs to build strictly isolated group rosters. Exports path is configurable via `CONTACTS_EXPORT_DIR` (`app/contact_sync.py`).
+- **Contact Sync Engine:** Intercepts incoming webhooks and Gateway APIs to build strictly isolated group rosters. Exports path is configurable via `CONTACTS_EXPORT_DIR` (`app/contact_sync.py`). The roster export throttle now uses timezone-aware UTC timestamps so old naive database values are normalized before comparison.
 - **Health Check (`GET /health`):** Endpoint in `router_system.py` that checks DB liveness (`SELECT 1`) and Node.js gateway reachability. Returns `{status, db, gateway}` JSON with HTTP 503 on degradation.
 - **Rate Limiting:** `/webhook/whatsapp` is protected by `slowapi` (configurable via `WEBHOOK_RATE_LIMIT`, default 60 req/min per IP). System and health endpoints are exempt.
 
