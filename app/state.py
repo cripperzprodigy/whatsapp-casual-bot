@@ -20,7 +20,7 @@ class ChatSettings(Base):
     assistant_mode_enabled = Column(Boolean, default=False)
     bot_is_admin = Column(Boolean, default=False)
     group_name = Column(String, nullable=True)
-    last_roster_export_at = Column(DateTime, nullable=True)
+    last_roster_export_at = Column(DateTime(timezone=True), nullable=True)
 
 class GroupContactLedger(Base):
     __tablename__ = 'group_contact_ledger'
@@ -33,10 +33,10 @@ class GroupContactLedger(Base):
     is_active = Column(Boolean, default=True)
     
     first_seen_at = Column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )  # Issue 4: replace deprecated utcnow
     last_seen_at = Column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )  # Issue 4: replace deprecated utcnow
 
 class Task(Base):
@@ -47,7 +47,7 @@ class Task(Base):
     description = Column(String)
     is_done = Column(Boolean, default=False)
     created_at = Column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )  # Issue 4: replace deprecated utcnow
 
 class Note(Base):
@@ -57,7 +57,7 @@ class Note(Base):
     chat_id = Column(String, index=True)
     content = Column(String)
     created_at = Column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )  # Issue 4: replace deprecated utcnow
 
 class MessageBuffer(Base):
@@ -69,7 +69,7 @@ class MessageBuffer(Base):
     sender_name = Column(String)
     content = Column(String)
     timestamp = Column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )  # Issue 4: replace deprecated utcnow
 
 engine = create_engine(

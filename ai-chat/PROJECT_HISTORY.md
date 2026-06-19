@@ -17,4 +17,8 @@
   - **Deprecated API (Issue 4):** Replaced all 8 occurrences of `datetime.utcnow()` with `datetime.now(timezone.utc)` ahead of Python 3.12+ removal.
   - **Architecture additions:** Added `GET /health` endpoint (DB + gateway check), `slowapi` rate limiting on the webhook endpoint (configurable), and made the contact export directory configurable via `CONTACTS_EXPORT_DIR`.
   - **SOP Compliance:** Per SOP testing requirement, created `tests/test_fixes.py` with 11 unit tests. All five AI-CHAT protocol documents were read before code changes began.
+- **2026-06-20:** Applied a timezone-aware fix to `last_roster_export_at` handling.
+  - Ensured `ChatSettings.last_roster_export_at` is stored and compared as UTC-aware `DateTime(timezone=True)`.
+  - Added normalization for existing naive timestamps before throttle comparisons in `app/contact_sync.py`.
+  - Updated `ai-chat` documentation and agent registry to log the active fix.
 

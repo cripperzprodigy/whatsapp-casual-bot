@@ -141,7 +141,10 @@ def export_group_contacts(  # Issue 13: added return type
     )
     now = datetime.now(timezone.utc)  # Issue 4: utcnow
     if not force and chat_settings.last_roster_export_at:
-        if now - chat_settings.last_roster_export_at < throttle:
+        last_export = chat_settings.last_roster_export_at
+        if last_export.tzinfo is None:
+            last_export = last_export.replace(tzinfo=timezone.utc)
+        if now - last_export < throttle:
             return
 
     # Fetch all members of this group ledger

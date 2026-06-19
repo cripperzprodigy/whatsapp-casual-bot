@@ -150,3 +150,6 @@ Worked under full AI-CHAT SOP protocol compliance (read all 5 docs before writin
 ### [Jules] - [2026-06-19 18:14 UTC]
 - Fixed a bug in the `start.sh` Puppeteer dependency installer where `libasound2` was causing an installation error on modern OS's like Ubuntu 24.04 (where it was replaced by a virtual package).
 - `start.sh` now dynamically checks `apt-cache` and uses `libasound2t64` if available, gracefully supporting both old and new Linux distributions.
+
+### [GitHub Copilot] - [2026-06-20 00:00 UTC]
+Applied a timezone-aware fix for group roster export throttling. Updated `app/state.py` and `app/contact_sync.py` so `last_roster_export_at` is treated as UTC-aware and legacy naive timestamps are normalized before comparisons.
