@@ -17,3 +17,5 @@
 | Jules | 2026-06-18 15:03 | Technical Writer - Adding translation visualization to README | Active |
 
 | Jules | 2026-06-18 16:07 | Feature Dev - Implementing native WhatsApp replies for translations | Active |
+| Jules | 2026-06-19 08:06 | Architect - Auditing and optimizing contact sync architecture and relationships | Active |
+| Jules | 2026-06-19 08:12 | Data Engineer - Implementing Isolated Ledger and Active Sweep for contact sync | Active |

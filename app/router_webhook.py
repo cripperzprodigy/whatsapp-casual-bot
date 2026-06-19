@@ -6,7 +6,7 @@ from app.state import get_db, add_message_to_buffer, get_chat_settings
 from app.commands import handle_command
 from app.translation import detect_language, translate_text
 from app.config import settings
-from app.contact_sync import update_contact, export_group_contacts
+from app.contact_sync import update_contact, export_group_contacts, process_active_sweep
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,6 +43,10 @@ async def process_message(payload: WhatsAppWebhookPayload, db: Session):
                     if p.get("id") == bot_number or p.get("id") == f"{bot_number}@s.whatsapp.net":
                         chat_settings.bot_is_admin = p.get("admin") in ["admin", "superadmin"]
                 db.commit()
+                
+                # Active Sweep: Because we just fetched the entire participants list from the gateway,
+                # immediately inject everyone into the isolated ledger so we don't have to wait for them to speak.
+                process_active_sweep(db, chat_id, participants)
 
         # Update contact list passively on every message received
         if settings.AUTO_SYNC_CONTACTS and sender_id:

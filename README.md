@@ -8,7 +8,7 @@ A highly capable, passive WhatsApp bot built with Python and FastAPI, designed s
 - **Auto-Translation:** Automatically detect and translate incoming messages to a default language (e.g., all messages translated to English). Configurable globally or per group.
 - **Assistant Tools:** Generate summaries of recent group chats using AI, assign tasks, and write notes.
 - **Unified AI Client:** Seamlessly toggle between local LLMs (e.g., Ollama) and cloud-based LLMs (e.g., OpenAI) depending on task complexity.
-- **Silent Contact Synchronization:** Passively learns the names and numbers of users as they message the group. The bot is self-aware of its admin status and exports beautiful CSV and Markdown rosters to `exports/groups/<group_id>/` automatically.
+- **Isolated Roster Ledgers:** Maintains a completely isolated contact ledger per group. If a user joins Group A, their name and details are tracked completely independently of Group B. The bot automatically sweeps the entire group upon joining to build the ledger, passively updates it as users speak (never deleting anyone), and silently exports beautifully formatted CSV and Markdown rosters to `exports/groups/<group_id>/` (throttled for performance).
 - **Security Whitelist:** Configure exactly which chats the bot is allowed to interact with.
 
 ---
@@ -122,3 +122,18 @@ Here is how the bot passively reacts to messages in your WhatsApp group:
 - `!task done <id>` - Mark a task as completed.
 - `!note add <text>` - Add a permanent note.
 - `!note list` - List all notes.
+
+---
+
+## 📁 Contact Exports
+
+If `AUTO_SYNC_CONTACTS` is enabled, the bot employs an advanced **Isolated Ledger System**.
+
+1. **Active Sweep:** The moment the bot receives a message in a new group, it hits the WhatsApp gateway, pulls the full participant list, and instantly builds a full database ledger for that specific group (even for lurkers who haven't spoken).
+2. **Passive Updates:** As people send messages over time, the bot securely updates their `last_seen` timestamp and their display name *only within the context of that specific group*.
+3. **No Deletions:** If someone leaves the group, they are simply marked as `Inactive` so you never lose the historical record of who was there.
+4. **Throttled Exports:** To maintain high performance during busy chats, the bot will automatically write changes to your filesystem (maximum once per minute).
+
+It exports two files per group in the `exports/groups/<group_id>/` directory:
+- `contacts.csv` - Includes Phone Number, Name, Admin Status, and Active Status. Ideal for importing into Excel or Google Contacts.
+- `summary.md` - A neat Markdown overview showing the group name, total members, active members, and a table of synced users.

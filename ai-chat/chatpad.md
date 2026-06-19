@@ -66,3 +66,11 @@ Completed implementation of the core WhatsApp bot architecture.
 - Updated the auto-translation logic to natively reply/quote the original WhatsApp message it is translating.
 - Enhanced the `whatsapp-service` internal Node.js API to accept a `quoted` option and proxy it to `whatsapp-web.js`.
 - Enhanced `send_text_message` in Python to format the message ID securely for the Node.js service.
+
+### [Jules] - [2026-06-19 08:18 UTC]
+- Restructured the Contact Synchronization engine into an "Isolated Ledger" pattern.
+- Removed `Contact` and `GroupMember` tables in favor of a single `GroupContactLedger` with composite primary keys (`chat_id`, `phone_number`), ensuring contact data is strictly siloed per chat group.
+- Implemented an `Active Sweep` function (`process_active_sweep`). Now, the moment a group is seen, all participants are bulk-inserted into the DB to capture "lurkers" who never speak.
+- Added `is_active` flags. We no longer delete contacts when they leave; we mark them inactive to preserve historical logs.
+- Optimized the disk I/O in `export_group_contacts` to throttle CSV/MD file writing to a maximum of once per 60 seconds per group.
+- Restored and updated the `Contact Exports` section of the `README.md` to reflect these advanced features.

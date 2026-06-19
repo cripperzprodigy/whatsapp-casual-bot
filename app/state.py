@@ -22,23 +22,20 @@ class ChatSettings(Base):
     use_cloud_llm_for_complex_tasks = Column(Boolean, default=True)
     bot_is_admin = Column(Boolean, default=False)
     group_name = Column(String, nullable=True)
+    last_roster_export_at = Column(DateTime, nullable=True)
 
-class Contact(Base):
-    __tablename__ = 'contacts'
+class GroupContactLedger(Base):
+    __tablename__ = 'group_contact_ledger'
     
-    phone_number = Column(String, primary_key=True, index=True)
+    chat_id = Column(String, primary_key=True)
+    phone_number = Column(String, primary_key=True)
+    
     push_name = Column(String, nullable=True)
-    first_seen = Column(DateTime, default=datetime.utcnow)
-    last_seen = Column(DateTime, default=datetime.utcnow)
-
-class GroupMember(Base):
-    __tablename__ = 'group_members'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    chat_id = Column(String, index=True)
-    phone_number = Column(String, index=True)
     is_admin = Column(Boolean, default=False)
-    joined_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+    
+    first_seen_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.utcnow)
 
 class Task(Base):
     __tablename__ = 'tasks'
