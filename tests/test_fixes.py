@@ -279,3 +279,65 @@ class TestTaskDoneInput:
             # Should call send with "marked as done"
             mock_send.assert_called_once()
             assert "done" in mock_send.call_args[0][1].lower()
+
+
+class TestGeneralAICommand:
+    """
+    Validates the new `!a` public command for general AI responses.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_command_asks_llm_and_sends_response(self):
+        with (
+            patch(
+                "app.commands.ask_llm", new_callable=AsyncMock
+            ) as mock_ask,
+            patch(
+                "app.commands.send_text_message", new_callable=AsyncMock
+            ) as mock_send,
+            patch(
+                "app.commands.get_chat_settings"
+            ) as mock_chat_settings,
+        ):
+            mock_chat_settings.return_value = MagicMock(
+                ignored_languages=None,
+                auto_translate_enabled=None,
+                default_target_language=None,
+            )
+            mock_ask.return_value = "AI response"
+
+            from app.commands import handle_command
+
+            db = MagicMock()
+            await handle_command("!a Tell me a joke.", "chat1", "sender1", db)
+
+            mock_ask.assert_called_once_with(
+                "Tell me a joke.", task_type="generic"
+            )
+            mock_send.assert_called_once_with("chat1", "AI response")
+
+    @pytest.mark.asyncio
+    async def test_a_command_without_text_sends_usage(self):
+        with (
+            patch(
+                "app.commands.send_text_message", new_callable=AsyncMock
+            ) as mock_send,
+            patch(
+                "app.commands.get_chat_settings"
+            ) as mock_chat_settings,
+        ):
+            mock_chat_settings.return_value = MagicMock(
+                ignored_languages=None,
+                auto_translate_enabled=None,
+                default_target_language=None,
+            )
+
+            from app.commands import handle_command
+
+            db = MagicMock()
+            await handle_command("!a", "chat1", "sender1", db)
+
+            mock_send.assert_called_once_with(
+                "chat1",
+                "Usage: !a <text> - Ask the AI any general question or request.",
+            )

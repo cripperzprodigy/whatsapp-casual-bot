@@ -17,3 +17,4 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 - Improved group reply quoting by passing participant metadata into the internal gateway when replying to quoted group messages.
 - Hardened `!search` behavior with a safer prompt that avoids claiming live web access, reduces truncated answer risks, and provides a clear fallback message when search access is unavailable.
 - Documented the latest fixes and operational behavior across `ARCHITECTURE.md`, `PROJECT_HISTORY.md`, and `chatpad.md`.
+- Added the new public `!a <text>` general AI prompt command and expanded `!help` command coverage.

@@ -101,6 +101,7 @@ Here is how the bot passively reacts to messages in your WhatsApp group:
 - `!ignore list` - Show explicitly ignored languages, or indicate if it's following the global config.
 - `!t <lang> <text>` - Manually translate text to a specific language.
 - `!t auto <text>` - Manually translate text to the default target language.
+- `!a <text>` - Ask the AI any general question or request.
 
 ### Group Assistant
 - `!summary [short|full]` - Uses the AI to summarize the last 30 messages in the group.

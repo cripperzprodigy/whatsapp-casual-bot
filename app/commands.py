@@ -31,6 +31,7 @@ async def handle_command(  # Issue 13: added return type
                 "!ignore global - Reset ignore list to global\n"
                 "!t <lang> <text> - Translate text to lang\n"
                 "!t auto <text> - Translate to default target\n"
+                "!a <text> - Ask the AI any general question or request\n"
                 "!summary [short|full] - Summarize recent messages\n"
                 "!task add <desc> - Add a task\n"
                 "!task list - List tasks\n"
@@ -288,8 +289,20 @@ async def handle_command(  # Issue 13: added return type
                     )
                 else:
                     await send_text_message(
-                        chat_id, f"*Search Results:*\n{answer}"
-                    )
+                        chat_id, f"*Search Results:*\n{answer}")
+
+        elif command == "!a":
+            if len(args) > 0:
+                ai_prompt = " ".join(args)
+                response = await ask_llm(
+                    ai_prompt, task_type="generic"
+                )
+                await send_text_message(chat_id, response)
+            else:
+                await send_text_message(
+                    chat_id,
+                    "Usage: !a <text> - Ask the AI any general question or request.",
+                )
 
     except Exception as exc:
         logger.error(
