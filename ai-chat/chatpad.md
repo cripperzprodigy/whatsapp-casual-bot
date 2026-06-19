@@ -79,3 +79,9 @@ Completed implementation of the core WhatsApp bot architecture.
 - Replaced the hardcoded README `.env` block with a dedicated `.env.example` file.
 - The `.env.example` file is strictly configured out-of-the-box to interface with LM Studio, using specific `google/gemma-4-12b-qat` mapping and OpenAI-compatible endpoints to ensure the translation logic seamlessly routes to the local model.
 - Added `LOCAL_LLM_API_KEY` to `app/config.py` to allow passing the local token natively to the `AsyncOpenAI` client.
+
+### [Jules] - [2026-06-19 09:15 UTC]
+- Comprehensively updated `ai-chat/ARCHITECTURE.md` and `ai-chat/PROJECT_HISTORY.md` for future agents.
+- Added ASCII diagrams visualizing the dual-runtime architecture and the Two-Pronged Contact Sync data flow.
+- Fully documented the Database Schemas (`ChatSettings`, `GroupContactLedger`).
+- Summarized the historical evolutionary pivots (Node.js migration, Isolated Ledgers, and Translation cascades) so future agents understand *why* the codebase is structured this way.
