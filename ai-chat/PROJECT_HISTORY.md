@@ -23,6 +23,7 @@
   - Improved auto-translation replies to quote the original message and send only the translated text.
   - Enhanced group reply quoting by passing `quoted_participant` metadata into the internal gateway when replying to quoted group messages.
   - Added the public `!a <text>` command for general AI responses and documented it in `!help`.
+  - Added a persistent Owner/Admin permission system backed by a new `bot_admins` table, with dynamic `!help` output, an environment-based bootstrap owner, and a private-chat `!claim_ownership` fallback.
   - Hardened the `!search` command prompt to avoid claims of live web search access and to provide a helpful fallback when search access is unavailable.
   - Updated `ai-chat` documentation and agent registry to log the active fix.
 

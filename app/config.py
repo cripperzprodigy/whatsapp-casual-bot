@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # Issue 5: BOT_NUMBER used to prevent self-loops — warn if empty
     BOT_NUMBER: str = ""
+    # Bootstrap Owner configured via .env
+    BOT_OWNER_ID: Optional[str] = None
     # Issue 2: buffer size, now referenced as a named config value
     MESSAGE_BUFFER_SIZE: int = 200
     AUTO_SYNC_CONTACTS: bool = True

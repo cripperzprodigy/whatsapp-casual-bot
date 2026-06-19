@@ -72,6 +72,21 @@ class MessageBuffer(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )  # Issue 4: replace deprecated utcnow
 
+
+class BotAdmin(Base):
+    __tablename__ = 'bot_admins'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, unique=True, index=True, nullable=False)
+    role = Column(String, nullable=False)
+    granted_by = Column(String, nullable=False)
+    granted_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    is_active = Column(Boolean, default=True, nullable=False)
+
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args={"check_same_thread": False},

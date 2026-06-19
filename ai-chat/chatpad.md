@@ -67,6 +67,11 @@ Completed implementation of the core WhatsApp bot architecture.
 - Enhanced the `whatsapp-service` internal Node.js API to accept a `quoted` option and proxy it to `whatsapp-web.js`.
 - Enhanced `send_text_message` in Python to format the message ID securely for the Node.js service.
 
+### [Jules] - [2026-06-20 12:00 UTC]
+- Added a persistent permission system with Owner/Admin/Public roles stored in `bot_admins`.
+- Implemented `!owner` and `!admin` management commands, `!broadcast`, `!stats`, `!export ledger`, and dynamic `!help` visibility.
+- Added a hybrid bootstrap strategy: `BOT_OWNER_ID` env owner auto-creation, and a one-time private-chat `!claim_ownership` as fallback.
+
 ### [Jules] - [2026-06-19 08:18 UTC]
 - Restructured the Contact Synchronization engine into an "Isolated Ledger" pattern.
 - Removed `Contact` and `GroupMember` tables in favor of a single `GroupContactLedger` with composite primary keys (`chat_id`, `phone_number`), ensuring contact data is strictly siloed per chat group.

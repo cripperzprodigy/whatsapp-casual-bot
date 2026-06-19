@@ -1,12 +1,91 @@
+import csv
 import logging
+import os
 from sqlalchemy.orm import Session
-from app.state import get_chat_settings, Task, Note, MessageBuffer
+from app.state import (
+    BotAdmin,
+    ChatSettings,
+    GroupContactLedger,
+    MessageBuffer,
+    Note,
+    Task,
+    get_chat_settings,
+)
 from app.translation import translate_text, detect_language
 from app.whatsapp_gateway import send_text_message
 from app.ai_client import ask_llm
 from app.config import settings as app_settings
+from app.permissions import (
+    ADMIN_ROLE,
+    OWNER_ROLE,
+    PUBLIC_ROLE,
+    get_user_role,
+    grant_role,
+    is_admin,
+    is_owner,
+    list_active_roles,
+    revoke_role,
+    try_claim_ownership,
+)
 
 logger = logging.getLogger(__name__)
+
+
+async def _build_help_text(role: str, is_group_chat: bool) -> str:
+    lines = ["*WhatsApp Casual Bot Commands*"]
+
+    lines.extend(
+        [
+            "!help - Show this help message",
+            "!a <text> - Ask the AI any general question or request",
+            "!t <lang> <text> - Translate text to lang",
+            "!t auto <text> - Translate to default target",
+            "!summary [short|full] - Summarize recent messages",
+            "!task add <desc> - Add a task",
+            "!task list - List tasks",
+            "!task done <id> - Complete a task",
+            "!note add <text> - Add a note",
+            "!note list - List notes",
+            "!search <query> - Search the web (if enabled)",
+            "!ping - Check if the bot is responsive",
+        ]
+    )
+
+    if role in {ADMIN_ROLE, OWNER_ROLE}:
+        lines.extend(
+            [
+                "!broadcast <message> - Send a message to all active chats",
+                "!stats - Show system statistics",
+                "!export ledger - Export the contact ledger to CSV",
+                "!auto global - Reset auto-translate to global config",
+                "!ignore global - Reset ignore list to global config",
+            ]
+        )
+
+    if role == OWNER_ROLE:
+        lines.extend(
+            [
+                "!owner grant <jid> - Grant owner privileges",
+                "!owner revoke <jid> - Revoke owner privileges",
+                "!owner list - Show active owners",
+                "!owner transfer <jid> - Transfer ownership",
+                "!admin grant <jid> - Grant admin privileges",
+                "!admin revoke <jid> - Revoke admin privileges",
+                "!admin list - Show active admins",
+                "!shutdown - Shut down the bot",
+                "!restart - Restart the bot",
+            ]
+        )
+
+    if role == PUBLIC_ROLE and not is_group_chat:
+        from app.permissions import CLAIM_OWNERSHIP_ENABLED
+
+        if CLAIM_OWNERSHIP_ENABLED:
+            lines.append(
+                "!claim_ownership - Claim initial bot ownership in a private chat"
+            )
+
+    return "\n".join(lines)
 
 
 async def handle_command(  # Issue 13: added return type
@@ -19,55 +98,57 @@ async def handle_command(  # Issue 13: added return type
     command = parts[0].lower()
     args = parts[1:]
     settings = get_chat_settings(db, chat_id)
+    user_role = await get_user_role(db, sender_id)
+    is_group_chat = chat_id.endswith("@g.us")
 
     try:
         if command == "!help":
-            help_text = (
-                "*WhatsApp Casual Bot Commands*\n"
-                "!auto on|off|global - Toggle auto-translation\n"
-                "!target <lang>|global - Set target language\n"
-                "!ignore add|remove <lang> - Manage ignore list\n"
-                "!ignore list - Show ignored languages\n"
-                "!ignore global - Reset ignore list to global\n"
-                "!t <lang> <text> - Translate text to lang\n"
-                "!t auto <text> - Translate to default target\n"
-                "!a <text> - Ask the AI any general question or request\n"
-                "!summary [short|full] - Summarize recent messages\n"
-                "!task add <desc> - Add a task\n"
-                "!task list - List tasks\n"
-                "!task done <id> - Complete a task\n"
-                "!note add <text> - Add a note\n"
-                "!note list - List notes\n"
-                "!search <query> - Search the web (if enabled)\n"
-            )
+            help_text = await _build_help_text(user_role, is_group_chat)
             await send_text_message(chat_id, help_text)
 
         elif command == "!auto":
             if len(args) == 1:
                 if args[0] in ["on", "off"]:
-                    settings.auto_translate_enabled = (args[0] == "on")
-                    db.commit()
-                    state = (
-                        "ON"
-                        if settings.auto_translate_enabled
-                        else "OFF"
-                    )
-                    await send_text_message(
-                        chat_id,
-                        f"Auto-translate for this chat is now "
-                        f"explicitly {state}.",
-                    )
+                    if not await is_admin(db, sender_id):
+                        await send_text_message(
+                            chat_id,
+                            "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                        )
+                    else:
+                        settings.auto_translate_enabled = (args[0] == "on")
+                        db.commit()
+                        state = (
+                            "ON"
+                            if settings.auto_translate_enabled
+                            else "OFF"
+                        )
+                        await send_text_message(
+                            chat_id,
+                            f"Auto-translate for this chat is now "
+                            f"explicitly {state}.",
+                        )
                 elif args[0] == "global":
-                    settings.auto_translate_enabled = None
-                    db.commit()
-                    await send_text_message(
-                        chat_id,
-                        "Auto-translate for this chat reset to "
-                        "GLOBAL configuration.",
-                    )
+                    if not await is_admin(db, sender_id):
+                        await send_text_message(
+                            chat_id,
+                            "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                        )
+                    else:
+                        settings.auto_translate_enabled = None
+                        db.commit()
+                        await send_text_message(
+                            chat_id,
+                            "Auto-translate for this chat reset to "
+                            "GLOBAL configuration.",
+                        )
 
         elif command == "!target":
-            if len(args) == 1:
+            if not await is_admin(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                )
+            elif len(args) == 1:
                 if args[0] == "global":
                     settings.default_target_language = None
                     db.commit()
@@ -89,13 +170,19 @@ async def handle_command(  # Issue 13: added return type
                 subcmd = args[0]
 
                 if subcmd == "global":
-                    settings.ignored_languages = None
-                    db.commit()
-                    await send_text_message(
-                        chat_id,
-                        "Ignored languages for this chat reset to "
-                        "GLOBAL configuration.",
-                    )
+                    if not await is_admin(db, sender_id):
+                        await send_text_message(
+                            chat_id,
+                            "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                        )
+                    else:
+                        settings.ignored_languages = None
+                        db.commit()
+                        await send_text_message(
+                            chat_id,
+                            "Ignored languages for this chat reset to "
+                            "GLOBAL configuration.",
+                        )
                     return
 
                 # Fetch explicit ignored list; treat None as empty list
@@ -106,23 +193,35 @@ async def handle_command(  # Issue 13: added return type
                 )
 
                 if subcmd == "add" and len(args) == 2:
-                    if args[1] not in ignored:
-                        ignored.append(args[1])
-                        settings.ignored_languages = ignored
-                        db.commit()
-                    await send_text_message(
-                        chat_id,
-                        f"Added '{args[1]}' to explicit ignore list.",
-                    )
+                    if not await is_admin(db, sender_id):
+                        await send_text_message(
+                            chat_id,
+                            "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                        )
+                    else:
+                        if args[1] not in ignored:
+                            ignored.append(args[1])
+                            settings.ignored_languages = ignored
+                            db.commit()
+                        await send_text_message(
+                            chat_id,
+                            f"Added '{args[1]}' to explicit ignore list.",
+                        )
                 elif subcmd == "remove" and len(args) == 2:
-                    if args[1] in ignored:
-                        ignored.remove(args[1])
-                        settings.ignored_languages = ignored
-                        db.commit()
-                    await send_text_message(
-                        chat_id,
-                        f"Removed '{args[1]}' from explicit ignore list.",
-                    )
+                    if not await is_admin(db, sender_id):
+                        await send_text_message(
+                            chat_id,
+                            "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                        )
+                    else:
+                        if args[1] in ignored:
+                            ignored.remove(args[1])
+                            settings.ignored_languages = ignored
+                            db.commit()
+                        await send_text_message(
+                            chat_id,
+                            f"Removed '{args[1]}' from explicit ignore list.",
+                        )
                 elif subcmd == "list":
                     if settings.ignored_languages is None:
                         await send_text_message(
@@ -263,6 +362,316 @@ async def handle_command(  # Issue 13: added return type
                     else:
                         msg = "No notes."
                     await send_text_message(chat_id, msg)
+
+        elif command == "!broadcast":
+            if not await is_admin(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                )
+            elif len(args) == 0:
+                await send_text_message(
+                    chat_id,
+                    "Usage: !broadcast <message> - send a message to all active chats.",
+                )
+            else:
+                message = " ".join(args)
+                chat_ids = [
+                    row[0]
+                    for row in db.query(ChatSettings.chat_id).all()
+                    if row[0]
+                ]
+                for target_chat in set(chat_ids):
+                    await send_text_message(target_chat, message)
+                await send_text_message(
+                    chat_id,
+                    f"Broadcast sent to {len(set(chat_ids))} chats.",
+                )
+
+        elif command == "!stats":
+            if not await is_admin(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                )
+            else:
+                chat_count = db.query(ChatSettings).count()
+                task_count = db.query(Task).count()
+                note_count = db.query(Note).count()
+                contact_count = (
+                    db.query(GroupContactLedger)
+                    .filter(GroupContactLedger.is_active.is_(True))
+                    .count()
+                )
+                owner_count = (
+                    db.query(BotAdmin)
+                    .filter(
+                        BotAdmin.role == OWNER_ROLE,
+                        BotAdmin.is_active.is_(True),
+                    )
+                    .count()
+                )
+                admin_count = (
+                    db.query(BotAdmin)
+                    .filter(
+                        BotAdmin.role == ADMIN_ROLE,
+                        BotAdmin.is_active.is_(True),
+                    )
+                    .count()
+                )
+                await send_text_message(
+                    chat_id,
+                    "*System Stats:*\n"
+                    f"Chats: {chat_count}\n"
+                    f"Open tasks: {task_count}\n"
+                    f"Notes: {note_count}\n"
+                    f"Active contacts: {contact_count}\n"
+                    f"Active owners: {owner_count}\n"
+                    f"Active admins: {admin_count}",
+                )
+
+        elif command == "!export":
+            if len(args) == 1 and args[0] == "ledger":
+                if not await is_admin(db, sender_id):
+                    await send_text_message(
+                        chat_id,
+                        "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                    )
+                else:
+                    ledger_rows = (
+                        db.query(GroupContactLedger)
+                        .filter(GroupContactLedger.is_active.is_(True))
+                        .all()
+                    )
+                    if not ledger_rows:
+                        await send_text_message(
+                            chat_id,
+                            "No active contact ledger entries to export.",
+                        )
+                    else:
+                        os.makedirs(
+                            app_settings.CONTACTS_EXPORT_DIR,
+                            exist_ok=True,
+                        )
+                        export_path = os.path.join(
+                            app_settings.CONTACTS_EXPORT_DIR,
+                            "ledger.csv",
+                        )
+                        with open(
+                            export_path,
+                            "w",
+                            newline="",
+                            encoding="utf-8",
+                        ) as csvfile:
+                            writer = csv.writer(csvfile)
+                            writer.writerow(
+                                [
+                                    "chat_id",
+                                    "phone_number",
+                                    "push_name",
+                                    "is_admin",
+                                    "is_active",
+                                    "first_seen_at",
+                                    "last_seen_at",
+                                ]
+                            )
+                            for row in ledger_rows:
+                                writer.writerow(
+                                    [
+                                        row.chat_id,
+                                        row.phone_number,
+                                        row.push_name or "",
+                                        row.is_admin,
+                                        row.is_active,
+                                        row.first_seen_at.isoformat()
+                                        if row.first_seen_at
+                                        else "",
+                                        row.last_seen_at.isoformat()
+                                        if row.last_seen_at
+                                        else "",
+                                    ]
+                                )
+                        await send_text_message(
+                            chat_id,
+                            f"Ledger exported to: {export_path}",
+                        )
+            else:
+                await send_text_message(
+                    chat_id,
+                    "Usage: !export ledger - export the active contact ledger.",
+                )
+
+        elif command == "!ping":
+            await send_text_message(chat_id, "pong")
+
+        elif command == "!owner":
+            if not await is_owner(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Owner privileges.",
+                )
+            elif len(args) == 0:
+                await send_text_message(
+                    chat_id,
+                    "Usage: !owner grant|revoke|list|transfer <jid>",
+                )
+            else:
+                subcmd = args[0]
+                if subcmd == "grant" and len(args) == 2:
+                    await grant_role(
+                        db,
+                        args[1],
+                        OWNER_ROLE,
+                        sender_id,
+                    )
+                    await send_text_message(
+                        chat_id,
+                        f"Granted owner role to {args[1]}",
+                    )
+                elif subcmd == "revoke" and len(args) == 2:
+                    if args[1] == sender_id:
+                        await send_text_message(
+                            chat_id,
+                            "🚫 You cannot revoke your own owner role. Transfer ownership first.",
+                        )
+                    else:
+                        revoked = await revoke_role(
+                            db, args[1], OWNER_ROLE
+                        )
+                        if revoked:
+                            await send_text_message(
+                                chat_id,
+                                f"Revoked owner role from {args[1]}",
+                            )
+                        else:
+                            await send_text_message(
+                                chat_id,
+                                "Could not revoke owner role. Ensure the target is an active owner and at least one owner remains.",
+                            )
+                elif subcmd == "transfer" and len(args) == 2:
+                    if args[1] == sender_id:
+                        await send_text_message(
+                            chat_id,
+                            "🚫 You are already the owner.",
+                        )
+                    else:
+                        await grant_role(
+                            db,
+                            args[1],
+                            OWNER_ROLE,
+                            sender_id,
+                        )
+                        revoked = await revoke_role(
+                            db, sender_id, OWNER_ROLE
+                        )
+                        if revoked:
+                            await send_text_message(
+                                chat_id,
+                                f"Ownership transferred to {args[1]}",
+                            )
+                        else:
+                            await send_text_message(
+                                chat_id,
+                                "Ownership transfer failed. Please try again.",
+                            )
+                elif subcmd == "list":
+                    owners = await list_active_roles(db, OWNER_ROLE)
+                    if owners:
+                        msg = "*Active Owners:*\n" + "\n".join(
+                            [f"- {o.user_id}" for o in owners]
+                        )
+                    else:
+                        msg = "No active owners found."
+                    await send_text_message(chat_id, msg)
+                else:
+                    await send_text_message(
+                        chat_id,
+                        "Usage: !owner grant|revoke|list|transfer <jid>",
+                    )
+
+        elif command == "!admin":
+            if not await is_owner(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Owner privileges.",
+                )
+            elif len(args) == 0:
+                await send_text_message(
+                    chat_id,
+                    "Usage: !admin grant|revoke|list <jid>",
+                )
+            else:
+                subcmd = args[0]
+                if subcmd == "grant" and len(args) == 2:
+                    await grant_role(
+                        db,
+                        args[1],
+                        ADMIN_ROLE,
+                        sender_id,
+                    )
+                    await send_text_message(
+                        chat_id,
+                        f"Granted admin role to {args[1]}",
+                    )
+                elif subcmd == "revoke" and len(args) == 2:
+                    revoked = await revoke_role(
+                        db, args[1], ADMIN_ROLE
+                    )
+                    if revoked:
+                        await send_text_message(
+                            chat_id,
+                            f"Revoked admin role from {args[1]}",
+                        )
+                    else:
+                        await send_text_message(
+                            chat_id,
+                            "Could not revoke admin role. Ensure the target is an active admin.",
+                        )
+                elif subcmd == "list":
+                    admins = await list_active_roles(db, ADMIN_ROLE)
+                    if admins:
+                        msg = "*Active Admins:*\n" + "\n".join(
+                            [f"- {a.user_id}" for a in admins]
+                        )
+                    else:
+                        msg = "No active admins found."
+                    await send_text_message(chat_id, msg)
+                else:
+                    await send_text_message(
+                        chat_id,
+                        "Usage: !admin grant|revoke|list <jid>",
+                    )
+
+        elif command == "!shutdown" or command == "!restart":
+            if not await is_owner(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Owner privileges.",
+                )
+            else:
+                if command == "!shutdown":
+                    await send_text_message(chat_id, "Shutting down bot...")
+                else:
+                    await send_text_message(
+                        chat_id,
+                        "Restart requested. The bot process will stop now.",
+                    )
+                os._exit(0)
+
+        elif command == "!claim_ownership":
+            claimed = await try_claim_ownership(
+                db, sender_id, is_group_chat
+            )
+            if claimed:
+                await send_text_message(
+                    chat_id,
+                    "Ownership successfully claimed. You are now the bot owner.",
+                )
+            else:
+                await send_text_message(
+                    chat_id,
+                    "Ownership claim is not available. It only works once in a private chat when no owner exists.",
+                )
 
         elif command == "!search":
             if len(args) > 0:

@@ -7,8 +7,9 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.router_webhook import router as webhook_router
 from app.router_system import router as system_router
-from app.state import init_db
+from app.state import init_db, SessionLocal
 from app.config import settings
+from app.permissions import bootstrap_owner
 
 # Issue 16: structured production logging with timestamp + module name
 logging.config.dictConfig({
@@ -62,6 +63,13 @@ async def startup_event() -> None:
             "Check DATABASE_URL and file permissions. Error: %s",
             exc,
         )
+        raise
+
+    try:
+        with SessionLocal() as db:
+            await bootstrap_owner(db)
+    except Exception as exc:
+        logger.error("Error bootstrapping owner: %s", exc)
         raise
 
 

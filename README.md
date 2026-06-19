@@ -65,6 +65,9 @@ Once the servers are running, you need to link the bot to your WhatsApp account:
 
 To configure the bot, simply rename `.env.example` to `.env` and fill in your details. 
 
+If you want to bootstrap an initial bot owner without using the claim flow, set `BOT_OWNER_ID` to a WhatsApp JID like `1234567890@s.whatsapp.net`.
+
+
 The repository includes a ready-to-go template designed perfectly for **LM Studio** and Local AI models (like Gemma, Llama, etc.).
 
 If you are using LM Studio:
@@ -111,6 +114,48 @@ Here is how the bot passively reacts to messages in your WhatsApp group:
 - `!task done <id>` - Mark a task as completed.
 - `!note add <text>` - Add a permanent note.
 - `!note list` - List all notes.
+
+### Permission System
+The bot supports three roles:
+- **Public:** available to anyone.
+- **Admin:** elevated privileges for maintenance commands.
+- **Owner:** full control, including role management and lifecycle commands.
+
+#### Public commands
+- `!help` - Shows commands available to your current role.
+- `!ping` - Check whether the bot is responsive.
+- `!a <text>` - Ask the AI any general question or request.
+- `!t <lang> <text>` - Translate text to a specific language.
+- `!t auto <text>` - Translate text to the chat's default target language.
+- `!summary [short|full]` - Summarize recent messages via AI.
+- `!search <query>` - Simulate a web search answer.
+- `!task add <desc>` / `!task list` / `!task done <id>` - Create, list, and complete tasks.
+- `!note add <text>` / `!note list` - Add and view notes.
+- `!ignore list` - View the chat's currently ignored languages.
+
+#### Admin + Owner commands
+- `!auto on|off` - Enable or disable auto-translation for the chat.
+- `!auto global` - Reset this chat's auto-translate setting to the global `.env` configuration.
+- `!target <lang>` - Set the chat's default target language for auto-translation.
+- `!target global` - Reset this chat's target language to the global `.env` configuration.
+- `!ignore add|remove <lang>` - Manage the chat-level ignored-language list.
+- `!ignore global` - Reset the chat's ignored-language list to the global `.env` configuration.
+- `!broadcast <message>` - Broadcast a message to all active chats.
+- `!stats` - Show system statistics.
+- `!export ledger` - Export the active contact ledger to CSV.
+
+#### Owner-only commands
+- `!owner grant <jid>` - Grant owner privileges.
+- `!owner revoke <jid>` - Revoke owner privileges.
+- `!owner list` - Show active owners.
+- `!owner transfer <jid>` - Transfer ownership to another user.
+- `!admin grant <jid>` - Grant admin privileges.
+- `!admin revoke <jid>` - Revoke admin privileges.
+- `!admin list` - Show active admins.
+- `!shutdown` / `!restart` - Control the bot process lifecycle.
+
+#### Bootstrap ownership
+- `!claim_ownership` - Available to anyone in a private chat only when no owner exists yet. Use this to claim the initial owner role if `BOT_OWNER_ID` is not set.
 
 ---
 
