@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Boolean, JSON, Integer, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine
-from datetime import datetime
+from datetime import datetime, timezone
 from app.config import settings
 
 Base = declarative_base()
@@ -32,8 +32,12 @@ class GroupContactLedger(Base):
     is_admin = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     
-    first_seen_at = Column(DateTime, default=datetime.utcnow)
-    last_seen_at = Column(DateTime, default=datetime.utcnow)
+    first_seen_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )  # Issue 4: replace deprecated utcnow
+    last_seen_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )  # Issue 4: replace deprecated utcnow
 
 class Task(Base):
     __tablename__ = 'tasks'
@@ -42,7 +46,9 @@ class Task(Base):
     chat_id = Column(String, index=True)
     description = Column(String)
     is_done = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )  # Issue 4: replace deprecated utcnow
 
 class Note(Base):
     __tablename__ = 'notes'
@@ -50,7 +56,9 @@ class Note(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     chat_id = Column(String, index=True)
     content = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )  # Issue 4: replace deprecated utcnow
 
 class MessageBuffer(Base):
     __tablename__ = 'message_buffer'
@@ -60,10 +68,17 @@ class MessageBuffer(Base):
     sender_id = Column(String)
     sender_name = Column(String)
     content = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )  # Issue 4: replace deprecated utcnow
 
-engine = create_engine(settings.DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_engine(
+    settings.DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
+SessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=engine
+)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -76,7 +91,11 @@ def get_db():
         db.close()
 
 def get_chat_settings(db, chat_id: str) -> ChatSettings:
-    settings_obj = db.query(ChatSettings).filter(ChatSettings.chat_id == chat_id).first()
+    settings_obj = (
+        db.query(ChatSettings)
+        .filter(ChatSettings.chat_id == chat_id)
+        .first()
+    )
     if not settings_obj:
         settings_obj = ChatSettings(chat_id=chat_id)
         db.add(settings_obj)
@@ -84,14 +103,38 @@ def get_chat_settings(db, chat_id: str) -> ChatSettings:
         db.refresh(settings_obj)
     return settings_obj
 
-def add_message_to_buffer(db, chat_id: str, sender_id: str, sender_name: str, content: str):
-    msg = MessageBuffer(chat_id=chat_id, sender_id=sender_id, sender_name=sender_name, content=content)
+def add_message_to_buffer(  # Issue 13: added return type
+    db,
+    chat_id: str,
+    sender_id: str,
+    sender_name: str,
+    content: str,
+) -> None:
+    msg = MessageBuffer(
+        chat_id=chat_id,
+        sender_id=sender_id,
+        sender_name=sender_name,
+        content=content,
+    )
     db.add(msg)
-    
-    # Prune old messages
-    count = db.query(MessageBuffer).filter(MessageBuffer.chat_id == chat_id).count()
-    if count > settings.MESSAGE_BUFFER_SIZE:
-        oldest = db.query(MessageBuffer).filter(MessageBuffer.chat_id == chat_id).order_by(MessageBuffer.timestamp.asc()).first()
+
+    # Issue 2: use while to drain any overflow caused by
+    # burst messages arriving simultaneously.
+    count = (
+        db.query(MessageBuffer)
+        .filter(MessageBuffer.chat_id == chat_id)
+        .count()
+    )
+    while count > settings.MESSAGE_BUFFER_SIZE:
+        oldest = (
+            db.query(MessageBuffer)
+            .filter(MessageBuffer.chat_id == chat_id)
+            .order_by(MessageBuffer.timestamp.asc())
+            .first()
+        )
+        if not oldest:
+            break
         db.delete(oldest)
-    
+        count -= 1
+
     db.commit()

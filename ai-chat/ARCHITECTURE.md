@@ -30,11 +30,13 @@ The system utilizes a dual-runtime architecture. A lightweight **Node.js Microse
 
 ## 2. Core Engines & Modules
 
-- **Node.js WhatsApp Microservice (`whatsapp-service/`):** Utilizes `whatsapp-web.js` to natively manage the WhatsApp connection, persist the `.wwebjs_auth/` session, serve the QR code locally, and trigger Python webhooks.
+- **Node.js WhatsApp Microservice (`whatsapp-service/`):** Utilises `whatsapp-web.js` to natively manage the WhatsApp connection, persist the `.wwebjs_auth/` session, serve the QR code locally, and trigger Python webhooks. Sends `instance: 'whatsapp-web-js'` in every webhook payload.
 - **Commands Engine:** Parses and executes user commands starting with `!` (`app/commands.py`).
-- **Translation Engine:** Handles language detection and auto-translation. It explicitly utilizes native WhatsApp reply/quoting (`reply_to_msg_id`) to maintain context in busy group chats (`app/translation.py`).
-- **AI Client Engine:** A unified, standard `AsyncOpenAI` interface. It inherently supports both Local AI (e.g., LM Studio) and Cloud AI (OpenAI) by allowing the developer to swap out the `LLM_ENDPOINT` in the environment configuration, creating a completely agnostic intelligence layer (`app/ai_client.py`).
-- **Contact Sync Engine:** Intercepts incoming webhooks and Gateway APIs to build strictly isolated group rosters (`app/contact_sync.py`).
+- **Translation Engine:** Handles language detection and auto-translation. Includes a `FULL_NAME_TO_CODE` map for robust LLM output normalisation. Utilises native WhatsApp reply/quoting (`reply_to_msg_id`) to maintain context in busy group chats (`app/translation.py`).
+- **AI Client Engine:** A unified, standard `AsyncOpenAI` interface. Supports both Local AI (e.g., LM Studio) and Cloud AI (OpenAI) by swapping `LLM_ENDPOINT` in `.env`. Temperature constants `_TEMP_PRECISE` / `_TEMP_CREATIVE` control task-specific LLM behaviour (`app/ai_client.py`).
+- **Contact Sync Engine:** Intercepts incoming webhooks and Gateway APIs to build strictly isolated group rosters. Exports path is configurable via `CONTACTS_EXPORT_DIR` (`app/contact_sync.py`).
+- **Health Check (`GET /health`):** Endpoint in `router_system.py` that checks DB liveness (`SELECT 1`) and Node.js gateway reachability. Returns `{status, db, gateway}` JSON with HTTP 503 on degradation.
+- **Rate Limiting:** `/webhook/whatsapp` is protected by `slowapi` (configurable via `WEBHOOK_RATE_LIMIT`, default 60 req/min per IP). System and health endpoints are exempt.
 
 ---
 
@@ -95,4 +97,6 @@ The core of the Isolated Ledger pattern. Composite Primary Keys ensure data is s
 
 ### Helper Tables
 - **`Task` / `Note`**: Simple CRUD tables linked to a `chat_id` for the assistant features.
-- **`MessageBuffer`**: A rolling window (default size 200) of the most recent messages per chat, utilized by the `!summary` command to generate context. Old messages are automatically pruned.
+- **`MessageBuffer`**: A rolling window (default size 200, set via `MESSAGE_BUFFER_SIZE`) of the
+  most recent messages per chat, utilised by the `!summary` command. Old messages are pruned with
+  a `while` loop (not `if`) so burst arrivals never overflow the buffer.

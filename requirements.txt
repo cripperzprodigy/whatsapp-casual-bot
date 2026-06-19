@@ -6,3 +6,6 @@ pydantic-settings
 sqlalchemy
 python-dotenv
 openai
+slowapi
+pytest
+pytest-asyncio

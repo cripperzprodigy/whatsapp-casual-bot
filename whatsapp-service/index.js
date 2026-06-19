@@ -63,6 +63,7 @@ function initClient() {
             
             const payload = {
                 event: 'messages.upsert',
+                instance: 'whatsapp-web-js', // Issue 1: populate instance for Python schema
                 data: {
                     key: {
                         remoteJid: msg.from,

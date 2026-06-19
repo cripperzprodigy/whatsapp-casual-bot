@@ -1,8 +1,12 @@
 import httpx
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
 from app.config import settings
 import logging
+
+# Issue 7: named constant — incoming msgs serialized as
+# 'false_<chat_id>_<msg_id>' in whatsapp-web.js
+_INCOMING_MSG_PREFIX = "false_"
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +28,17 @@ class WebhookData(BaseModel):
 
 class WhatsAppWebhookPayload(BaseModel):
     event: str
-    instance: str
+    # Issue 1: Optional — Node.js gateway does not send this field;
+    # made optional to prevent HTTP 422 on every incoming webhook.
+    instance: Optional[str] = None
     data: WebhookData
 
-async def fetch_group_metadata(chat_id: str) -> Optional[Dict[str, Any]]:
+async def fetch_group_metadata(
+    chat_id: str,
+) -> Optional[Dict[str, Any]]:
     """
-    Fetches group metadata to check the group name, members, and admin status from internal gateway.
+    Fetches group metadata to check the group name, members,
+    and admin status from internal gateway.
     """
     url = f"{settings.WHATSAPP_GATEWAY_URL}/group/findGroupInfos"
     
@@ -42,10 +51,15 @@ async def fetch_group_metadata(chat_id: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Failed to fetch group metadata for {chat_id}: {e}")
         return None
 
-async def send_text_message(chat_id: str, text: str, reply_to_msg_id: Optional[str] = None) -> bool:
+async def send_text_message(
+    chat_id: str,
+    text: str,
+    reply_to_msg_id: Optional[str] = None,
+) -> bool:
     """
-    Sends a text message back to the WhatsApp group via the internal gateway HTTP API.
-    Optionally quotes/replies to an original message if `reply_to_msg_id` is provided.
+    Sends a text message back to the WhatsApp group via the
+    internal gateway HTTP API. Optionally quotes/replies to an
+    original message if `reply_to_msg_id` is provided.
     """
     url = f"{settings.WHATSAPP_GATEWAY_URL}/message/sendText"
     
@@ -57,11 +71,15 @@ async def send_text_message(chat_id: str, text: str, reply_to_msg_id: Optional[s
     }
     
     if reply_to_msg_id:
-        # In our webhook schema, msg_key.id is just the string ID of the message.
-        # But whatsapp-web.js requires the fully serialized ID.
-        # For incoming messages, the serialized ID format is usually `false_<chat_id>_<msg_id>`.
-        # We construct it based on typical Baileys/whatsapp-web.js formats.
-        serialized_id = f"false_{chat_id}_{reply_to_msg_id}"
+        # Issue 7: whatsapp-web.js requires the fully-serialized
+        # message ID. Incoming (non-fromMe) messages follow the
+        # format: '<prefix>_<chat_id>_<msg_id>'.
+        # _INCOMING_MSG_PREFIX = 'false_' (defined at module top).
+        # NOTE: group messages may need participant info appended;
+        # this covers the standard DM and group reply case.
+        serialized_id = (
+            f"{_INCOMING_MSG_PREFIX}{chat_id}_{reply_to_msg_id}"
+        )
         payload["options"] = {"quoted": serialized_id}
     
     try:

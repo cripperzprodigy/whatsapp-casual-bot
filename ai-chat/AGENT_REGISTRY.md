@@ -23,3 +23,4 @@
 | Jules | 2026-06-19 09:11 | Technical Writer - Comprehensive AI-CHAT architecture documentation with ASCII diagrams | Active |
 | Jules | 2026-06-19 10:42 | Refactor Engineer - Implementing Single-Client Unified AI Architecture | Active |
 | Jules | 2026-06-19 11:07 | DevOps - Enhancing start.sh with automatic OS-level dependency installation | Active |
+| Antigravity | 2026-06-19 15:12 UTC | Refactor Engineer - 16-issue critical stability fix (Phases 1-4) + SOP docs | Active |

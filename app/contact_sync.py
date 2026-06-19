@@ -1,7 +1,7 @@
 import os
 import csv
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from app.state import GroupContactLedger, get_chat_settings
@@ -9,16 +9,20 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-def process_active_sweep(db: Session, chat_id: str, participants: List[Dict[str, Any]]):
+def process_active_sweep(  # Issue 13: added return type
+    db: Session,
+    chat_id: str,
+    participants: List[Dict[str, Any]],
+) -> None:
     """
-    Performs an active sweep. Takes the raw participants list from the Gateway API
-    and updates the Isolated Ledger for this specific group.
+    Performs an active sweep. Takes the raw participants list from
+    the Gateway API and updates the Isolated Ledger for this group.
     """
     if not settings.AUTO_SYNC_CONTACTS:
         return
-        
-    current_time = datetime.utcnow()
-    seen_numbers = set()
+
+    current_time = datetime.now(timezone.utc)  # Issue 4: utcnow
+    seen_numbers: set = set()
 
     for p in participants:
         phone_number = p.get("id", "").split("@")[0]
@@ -36,8 +40,9 @@ def process_active_sweep(db: Session, chat_id: str, participants: List[Dict[str,
         if ledger_entry:
             ledger_entry.is_admin = is_admin
             ledger_entry.is_active = True
-            # We don't overwrite push_name here because the active sweep from Gateway
-            # usually just gives phone numbers, not Push Names.
+            # We don't overwrite push_name here because
+            # the active sweep from Gateway usually just
+            # gives phone numbers, not Push Names.
         else:
             ledger_entry = GroupContactLedger(
                 chat_id=chat_id,
@@ -49,8 +54,12 @@ def process_active_sweep(db: Session, chat_id: str, participants: List[Dict[str,
             )
             db.add(ledger_entry)
 
-    # Mark anyone no longer in the sweep as inactive (they left the group)
-    all_members = db.query(GroupContactLedger).filter(GroupContactLedger.chat_id == chat_id).all()
+    # Mark anyone no longer in the sweep as inactive
+    all_members = (
+        db.query(GroupContactLedger)
+        .filter(GroupContactLedger.chat_id == chat_id)
+        .all()
+    )
     for mem in all_members:
         if mem.phone_number not in seen_numbers:
             mem.is_active = False
@@ -59,9 +68,16 @@ def process_active_sweep(db: Session, chat_id: str, participants: List[Dict[str,
     export_group_contacts(db, chat_id, force=True)
 
 
-def update_contact(db: Session, chat_id: str, phone_number: str, push_name: str, is_admin: bool = False):
+def update_contact(  # Issue 13: added return type
+    db: Session,
+    chat_id: str,
+    phone_number: str,
+    push_name: str,
+    is_admin: bool = False,
+) -> None:
     """
-    Passively updates a contact in the isolated ledger when they send a message.
+    Passively updates a contact in the isolated ledger when they
+    send a message.
     """
     if not settings.AUTO_SYNC_CONTACTS:
         return
@@ -69,16 +85,21 @@ def update_contact(db: Session, chat_id: str, phone_number: str, push_name: str,
     phone_number = phone_number.split("@")[0]
 
     ledger_entry = db.query(GroupContactLedger).filter(
-        GroupContactLedger.chat_id == chat_id, 
-        GroupContactLedger.phone_number == phone_number
+        GroupContactLedger.chat_id == chat_id,
+        GroupContactLedger.phone_number == phone_number,
     ).first()
-    
-    current_time = datetime.utcnow()
+
+    current_time = datetime.now(timezone.utc)  # Issue 4: utcnow
 
     if ledger_entry:
         ledger_entry.last_seen_at = current_time
-        ledger_entry.is_active = True # They spoke, so they are definitely active
-        if push_name and push_name != "Unknown" and ledger_entry.push_name != push_name:
+        # They spoke, so they are definitely active
+        ledger_entry.is_active = True
+        if (
+            push_name
+            and push_name != "Unknown"
+            and ledger_entry.push_name != push_name
+        ):
             ledger_entry.push_name = push_name
             # If name changed, force export
             db.commit()
@@ -101,39 +122,59 @@ def update_contact(db: Session, chat_id: str, phone_number: str, push_name: str,
     export_group_contacts(db, chat_id)
 
 
-def export_group_contacts(db: Session, chat_id: str, force: bool = False):
+def export_group_contacts(  # Issue 13: added return type
+    db: Session, chat_id: str, force: bool = False
+) -> None:
     """
     Exports the group contacts to CSV and MD files.
-    Throttles exports to once per 60 seconds to prevent disk thrashing, unless forced.
+    Throttles exports to once per ROSTER_EXPORT_THROTTLE_SECONDS
+    to prevent disk thrashing, unless forced.
     """
     if not settings.AUTO_SYNC_CONTACTS:
         return
 
     chat_settings = get_chat_settings(db, chat_id)
-    
-    # Throttle check
-    now = datetime.utcnow()
+
+    # Issue 14: use config constant instead of magic number 60
+    throttle = timedelta(
+        seconds=settings.ROSTER_EXPORT_THROTTLE_SECONDS
+    )
+    now = datetime.now(timezone.utc)  # Issue 4: utcnow
     if not force and chat_settings.last_roster_export_at:
-        if now - chat_settings.last_roster_export_at < timedelta(seconds=60):
+        if now - chat_settings.last_roster_export_at < throttle:
             return
 
     # Fetch all members of this group ledger
-    memberships = db.query(GroupContactLedger).filter(GroupContactLedger.chat_id == chat_id).order_by(GroupContactLedger.is_active.desc()).all()
+    memberships = (
+        db.query(GroupContactLedger)
+        .filter(GroupContactLedger.chat_id == chat_id)
+        .order_by(GroupContactLedger.is_active.desc())
+        .all()
+    )
     if not memberships:
         return
 
     group_name = chat_settings.group_name or "Unknown Group"
     bot_is_admin = chat_settings.bot_is_admin
 
-    export_dir = os.path.join("exports", "groups", chat_id.replace('@g.us', ''))
+    # Issue 10: use configurable export dir from settings
+    export_dir = os.path.join(
+        settings.CONTACTS_EXPORT_DIR,
+        chat_id.replace("@g.us", ""),
+    )
     os.makedirs(export_dir, exist_ok=True)
 
     csv_path = os.path.join(export_dir, "contacts.csv")
     md_path = os.path.join(export_dir, "summary.md")
 
     # Write CSV
-    with open(csv_path, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=["Phone Number", "Name", "Is Admin", "Is Active"])
+    fieldnames = [
+        "Phone Number", "Name", "Is Admin", "Is Active",
+    ]
+    with open(
+        csv_path, mode="w", newline="", encoding="utf-8"
+    ) as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for mem in memberships:
             writer.writerow({
@@ -160,7 +201,10 @@ def export_group_contacts(db: Session, chat_id: str, force: bool = False):
             admin_status = "✅" if mem.is_admin else "❌"
             status = "🟢 Active" if mem.is_active else "🔴 Left"
             name = mem.push_name or "Unknown"
-            f.write(f"| `{mem.phone_number}` | {name} | {admin_status} | {status} |\n")
+            f.write(
+                f"| `{mem.phone_number}` | {name}"
+                f" | {admin_status} | {status} |\n"
+            )
 
     # Update throttle timestamp
     chat_settings.last_roster_export_at = now

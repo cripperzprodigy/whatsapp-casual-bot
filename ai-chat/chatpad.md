@@ -96,3 +96,40 @@ Completed implementation of the core WhatsApp bot architecture.
 - Further enhanced `start.sh` to deal with clean Linux VM environments (like Ubuntu).
 - The script now dynamically checks if `node`, `npm`, or `python3-venv` are entirely missing from the OS.
 - If they are missing and `apt` is available, it interactively prompts the user to automatically install the underlying OS packages via `sudo apt install` before attempting to boot the bot dependencies.
+
+### [Antigravity] - [2026-06-19 15:12 UTC]
+Executed a 16-issue critical refactor and stability pass across all Python and Node.js modules.
+Worked under full AI-CHAT SOP protocol compliance (read all 5 docs before writing any code).
+
+**Phase 1 — Critical Blockers (bot was non-functional before these):**
+- **Issue 1:** Made `instance` field `Optional` in `WhatsAppWebhookPayload` (was causing HTTP 422 on every webhook, bot received zero messages). Also patched Node.js to send `instance: 'whatsapp-web-js'`.
+- **Issue 2:** Changed `if` → `while` in `add_message_to_buffer` to properly drain overflow during message bursts. Added `if not oldest: break` guard.
+- **Issue 3:** Fixed `detect_language` to strip whitespace before validation and added `FULL_NAME_TO_CODE` mapping for 20 common languages so LLM responses like `"English"` correctly return `"en"`.
+
+**Phase 2 — Stability:**
+- **Issue 4:** Replaced all 8 × `datetime.utcnow()` with `datetime.now(timezone.utc)` in `state.py` and `contact_sync.py`.
+- **Issue 5:** Added `@model_validator(mode='after')` to `Settings` to `logger.warning` on empty `BOT_NUMBER` / `LLM_API_KEY` at startup.
+- **Issue 6:** Wrapped `init_db()` in `try/except` in `startup_event`; logs `CRITICAL` and re-raises on failure.
+- **Issue 7:** Replaced magic string `"false_"` with named constant `_INCOMING_MSG_PREFIX` and improved docstring.
+
+**Phase 3 — Architecture:**
+- **Issue 8:** Integrated `slowapi` rate limiter on `/webhook/whatsapp` (configurable via `WEBHOOK_RATE_LIMIT`, default 60/min). System/health routes are exempt.
+- **Issue 9:** Added `GET /health` endpoint to `router_system.py` — checks DB (`SELECT 1`) and gateway reachability; returns `{status, db, gateway}` with HTTP 503 on degradation.
+- **Issue 10:** Replaced hardcoded `"exports/groups/"` with `settings.CONTACTS_EXPORT_DIR` (configurable via `.env`).
+- **Issue 11:** Replaced generic `except Exception` in `process_message` with structured handlers for `httpx.HTTPError` (warning), `SQLAlchemyError` (error), and `Exception` (error + traceback).
+
+**Phase 4 — Code Quality:**
+- **Issue 12:** Reformatted all files to ≤80-char lines.
+- **Issue 13:** Added `-> None` return types to `add_message_to_buffer`, `update_contact`, `process_active_sweep`, `export_group_contacts`, `handle_command`.
+- **Issue 14:** Replaced magic numbers: `30→SUMMARY_MESSAGE_LIMIT`, `1024→LLM_MAX_TOKENS`, `60→ROSTER_EXPORT_THROTTLE_SECONDS`, `0.3/0.7→_TEMP_PRECISE/_TEMP_CREATIVE`.
+- **Issue 15:** Wrapped `int(args[1])` in `!task done` with `try/except ValueError` → user-friendly error message instead of generic crash.
+- **Issue 16:** Replaced `logging.basicConfig` with `logging.config.dictConfig` using structured format `%(asctime)s [%(levelname)s] %(name)s: %(message)s`. Honouring `LOG_LEVEL` env var.
+
+**Phase 5 — Tests (SOP required):** Created `tests/test_fixes.py` with 11 unit tests covering Issues 1, 2, 3, 15.
+
+**Handoff clues for next agent:**
+- The `_INCOMING_MSG_PREFIX` for quoted messages (`false_`) may need updating if group reply quoting is broken — see `whatsapp_gateway.py`.
+- `CONTACTS_EXPORT_DIR` defaults to `"exports/groups"` — Docker users should mount this as a volume.
+- The `/health` endpoint pings the Node.js gateway with a 3-second timeout — adjust if gateway is slow.
+- `tests/test_fixes.py` uses `pytest-asyncio` — run with `pytest tests/ -v`.
+

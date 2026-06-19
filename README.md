@@ -57,19 +57,22 @@ Once the servers are running, you need to link the bot to your WhatsApp account:
 
 **Resetting:** If you ever need to log out and link a different number, simply run an HTTP POST to `http://localhost:8000/whatsapp/reset-session` or delete the `.wwebjs_auth/` folder manually.
 
+**Health Check:** A readiness endpoint is available at `http://localhost:8000/health`. It checks the database and gateway connectivity and is suitable for use in Docker `healthcheck` directives.
+
 ---
 
 ## ⚙️ Configuration (`.env`)
 
 To configure the bot, simply rename `.env.example` to `.env` and fill in your details. 
 
-The repository includes a ready-to-go template designed perfectly for **LM Studio** and Local AI models (like Gemma, Llama, etc.). 
+The repository includes a ready-to-go template designed perfectly for **LM Studio** and Local AI models (like Gemma, Llama, etc.).
 
 If you are using LM Studio:
 1. Start the Local Server in LM Studio.
 2. Note your IP address, Port, and the Model Name you have loaded.
-3. Open the `.env` file and verify the `LOCAL_LLM_ENDPOINT`, `LOCAL_LLM_API_KEY`, and `DEFAULT_MODEL_NAME_LOCAL` match what LM Studio is broadcasting.
-4. Ensure `USE_LOCAL_LLM=True`.
+3. Open the `.env` file and set `LLM_ENDPOINT`, `LLM_API_KEY`, and `DEFAULT_MODEL_NAME` to match
+   what LM Studio is broadcasting (e.g. `LLM_ENDPOINT=http://localhost:1234/v1`).
+4. If your local server requires no key, set `LLM_API_KEY=lm-studio`.
 
 *See `.env.example` for a complete breakdown of every variable.*
 
@@ -119,6 +122,6 @@ If `AUTO_SYNC_CONTACTS` is enabled, the bot employs an advanced **Isolated Ledge
 3. **No Deletions:** If someone leaves the group, they are simply marked as `Inactive` so you never lose the historical record of who was there.
 4. **Throttled Exports:** To maintain high performance during busy chats, the bot will automatically write changes to your filesystem (maximum once per minute).
 
-It exports two files per group in the `exports/groups/<group_id>/` directory:
+It exports two files per group in the directory configured by `CONTACTS_EXPORT_DIR` (default: `exports/groups/<group_id>/`):
 - `contacts.csv` - Includes Phone Number, Name, Admin Status, and Active Status. Ideal for importing into Excel or Google Contacts.
 - `summary.md` - A neat Markdown overview showing the group name, total members, active members, and a table of synced users.
