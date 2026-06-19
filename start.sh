@@ -8,16 +8,40 @@ echo "    WhatsApp Casual Bot - Setup & Run     "
 echo "=========================================="
 echo ""
 
-# Check if python3 is available
+# OS-Level Dependency Checks
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Error: python3 is not installed or not in PATH."
+    echo "❌ Error: python3 is not installed or not in PATH. Please install Python 3."
     exit 1
 fi
 
-# Check if Node.js is available
-if ! command -v node &> /dev/null; then
-    echo "❌ Error: node is not installed or not in PATH."
-    exit 1
+# Function to ask and install OS packages if on apt-based Linux
+install_os_pkg() {
+    PKG_NAME=$1
+    if [ -x "$(command -v apt-get)" ]; then
+        echo "⚠️  Missing OS package: $PKG_NAME"
+        read -p "Would you like to install it now via sudo apt? (y/n) " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            sudo apt-get update
+            sudo apt-get install -y $PKG_NAME
+        else
+            echo "❌ Cannot proceed without $PKG_NAME."
+            exit 1
+        fi
+    else
+        echo "❌ Error: $PKG_NAME is not installed. Please install it manually."
+        exit 1
+    fi
+}
+
+# Check if Node.js/npm is available
+if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    install_os_pkg "nodejs npm"
+fi
+
+# Check if python3-venv is available (often missing on clean Ubuntu)
+if ! python3 -c "import venv" &> /dev/null; then
+    install_os_pkg "python3-venv"
 fi
 
 # Check if installation is needed

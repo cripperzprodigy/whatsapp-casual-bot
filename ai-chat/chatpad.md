@@ -91,3 +91,8 @@ Completed implementation of the core WhatsApp bot architecture.
 - Stripped out all hardcoded Local/Cloud separation variables from `app/config.py` and `app/ai_client.py`.
 - The bot now elegantly uses one `AsyncOpenAI` client pointing to three unified `.env` variables (`LLM_ENDPOINT`, `LLM_API_KEY`, `DEFAULT_MODEL_NAME`), exploiting the fact that Local instances (LM Studio) and Cloud instances (OpenAI) conform to the same API standard.
 - Updated `ARCHITECTURE.md`, `PROJECT_HISTORY.md`, and `README.md` to document this vastly cleaner pattern.
+
+### [Jules] - [2026-06-19 11:10 UTC]
+- Further enhanced `start.sh` to deal with clean Linux VM environments (like Ubuntu).
+- The script now dynamically checks if `node`, `npm`, or `python3-venv` are entirely missing from the OS.
+- If they are missing and `apt` is available, it interactively prompts the user to automatically install the underlying OS packages via `sudo apt install` before attempting to boot the bot dependencies.
