@@ -34,6 +34,32 @@ install_os_pkg() {
     fi
 }
 
+install_puppeteer_deps() {
+    if [ -x "$(command -v apt-get)" ]; then
+        echo "⚠️  Checking for Puppeteer (Headless Chrome) OS dependencies..."
+        # Check if a critical library like libatk1.0-0 is missing
+        if ! dpkg -l | grep -q "libatk1.0-0"; then
+            echo "⚠️  Puppeteer requires several OS libraries to run headless Chrome on Ubuntu/Debian."
+            read -p "Would you like to install them now via sudo apt? (y/n) " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                sudo apt-get update
+                sudo apt-get install -y \
+                    ca-certificates fonts-liberation libappindicator3-1 libasound2 \
+                    libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 \
+                    libexpat1 libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 \
+                    libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 \
+                    libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
+                    libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 \
+                    lsb-release wget xdg-utils
+            else
+                echo "❌ Cannot proceed. The WhatsApp Web gateway will crash without these libraries."
+                exit 1
+            fi
+        fi
+    fi
+}
+
 # Check if Node.js/npm is available
 if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     install_os_pkg "nodejs npm"
@@ -43,6 +69,9 @@ fi
 if ! python3 -c "import venv" &> /dev/null; then
     install_os_pkg "python3-venv"
 fi
+
+# Ensure Puppeteer dependencies are present
+install_puppeteer_deps
 
 # Check if installation is needed
 NEEDS_INSTALL=false

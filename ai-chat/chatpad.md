@@ -80,6 +80,15 @@ Completed implementation of the core WhatsApp bot architecture.
 - The `.env.example` file is strictly configured out-of-the-box to interface with LM Studio, using specific `google/gemma-4-12b-qat` mapping and OpenAI-compatible endpoints to ensure the translation logic seamlessly routes to the local model.
 - Added `LOCAL_LLM_API_KEY` to `app/config.py` to allow passing the local token natively to the `AsyncOpenAI` client.
 
+### [Jules] - [2026-06-19 16:43 UTC]
+- Conducted an architecture, security, and stability audit of the `fix/critical-refactor-and-stability` branch.
+- Validated that the HTTP 422 webhook bug was correctly mitigated.
+- Approved and fully merged the branch into `main`.
+
+### [Jules] - [2026-06-19 17:39 UTC]
+- Enhanced `start.sh` to explicitly verify and install OS-level libraries strictly required by Puppeteer (headless Chrome) under Debian/Ubuntu systems (`libgbm1`, `libatk1.0-0`, `libnss3`, etc.).
+- The script now interactively prompts the user before attempting to run the large `sudo apt-get install` array, preventing silent crashes when booting `whatsapp-web.js` on clean VMs.
+
 ### [Jules] - [2026-06-19 09:15 UTC]
 - Comprehensively updated `ai-chat/ARCHITECTURE.md` and `ai-chat/PROJECT_HISTORY.md` for future agents.
 - Added ASCII diagrams visualizing the dual-runtime architecture and the Two-Pronged Contact Sync data flow.

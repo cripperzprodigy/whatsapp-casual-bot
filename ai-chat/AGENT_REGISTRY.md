@@ -27,4 +27,5 @@
 | Antigravity | 2026-06-19 15:12 UTC | Refactor Engineer - 16-issue critical stability fix (Phases 1-4) + SOP docs | Active |
 
 | Jules | 2026-06-19 15:44 | Code Reviewer - Auditing fix/critical-refactor-and-stability branch | Active |
+| Jules | 2026-06-19 17:39 | DevOps - Fixing Puppeteer OS dependencies in start.sh | Active |
 
