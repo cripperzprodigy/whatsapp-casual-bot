@@ -171,3 +171,67 @@ If `AUTO_SYNC_CONTACTS` is enabled, the bot employs an advanced **Isolated Ledge
 It exports two files per group in the directory configured by `CONTACTS_EXPORT_DIR` (default: `exports/groups/<group_id>/`):
 - `contacts.csv` - Includes Phone Number, Name, Admin Status, and Active Status. Ideal for importing into Excel or Google Contacts.
 - `summary.md` - A neat Markdown overview showing the group name, total members, active members, and a table of synced users.
+
+---
+
+## ⚡ Critical Configuration & Backup
+
+### Important Files to Back Up
+
+As the bot owner, these files contain irreplaceable data. **Back them up regularly:**
+
+1. **`bot.db`** (SQLite database - **CRITICAL**)
+   - Contains all ownership and admin role assignments
+   - Stores chat settings (auto-translation toggles, target languages, ignored languages)
+   - Holds all tasks, notes, and message buffers
+   - **Location:** Project root directory
+   - **Size:** Grows over time as the bot accumulates chat history
+   - **Backup strategy:** Copy before VM reboots, version control backups before major updates
+
+2. **`.env`** (Configuration file)
+   - Stores your LLM endpoint, API keys, and global translation settings
+   - Contains `BOT_OWNER_ID` (if set) for bootstrap ownership
+   - **⚠️ WARNING:** Never commit this file to git. Keep it private and version-controlled separately (e.g., in a secure password manager or encrypted backup)
+   - **Backup strategy:** Store in a secure, encrypted location outside the repository
+
+3. **`.wwebjs_auth/`** (WhatsApp session directory)
+   - Contains encrypted session tokens for your linked WhatsApp account
+   - **⚠️ WARNING:** Keep this directory completely private—do not share or expose
+   - **Location:** Project root directory
+   - **Backup strategy:** Optional (if you need to migrate to a different machine and avoid re-linking)
+
+### Configuration Persistence Across Restarts
+
+**Ownership and Admin Roles:** All role assignments are stored in `bot.db` and persist automatically across:
+- Bot restarts
+- Server shutdowns
+- VM reboots
+- Docker container restarts (as long as the volume isn't deleted)
+
+**No data is lost on shutdown.** Your admins and owners remain assigned indefinitely until explicitly revoked via `!owner revoke` or `!admin revoke` commands.
+
+### First-Time Setup Checklist
+
+1. ✅ Configure `.env` with your LLM endpoint and API keys
+2. ✅ Run `./start.bat` (Windows) or `./start.sh` (Linux/macOS)
+3. ✅ Scan the QR code at `http://localhost:8000/whatsapp/qr`
+4. ✅ Set `BOT_OWNER_ID` in `.env` to your WhatsApp JID (e.g., `1234567890@s.whatsapp.net`), **OR** send `!claim_ownership` in a private chat to the bot to claim initial ownership
+5. ✅ Grant additional admins/owners via `!owner grant <jid>` or `!admin grant <jid>`
+6. ✅ **Back up `bot.db` and `.env` immediately** after initial setup
+7. ✅ Set up regular backups of `bot.db` to preserve role assignments and chat data
+
+### Recovery Procedures
+
+**If `bot.db` is lost or corrupted:**
+- The bot will create a fresh database on next startup
+- **All role assignments, tasks, notes, and custom chat settings will be lost**
+- You must re-run bootstrap ownership and re-grant all admin roles
+- Recovery is only possible if you have a backed-up copy of `bot.db`
+
+**If `.wwebjs_auth/` is lost:**
+- The bot will prompt you to scan the QR code again to re-link
+- No user data is lost; only the session token is reset
+
+**If `.env` is lost:**
+- Use your backup to restore it
+- The bot will not function without this configuration file
