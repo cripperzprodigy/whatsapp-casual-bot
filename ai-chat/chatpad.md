@@ -74,3 +74,8 @@ Completed implementation of the core WhatsApp bot architecture.
 - Added `is_active` flags. We no longer delete contacts when they leave; we mark them inactive to preserve historical logs.
 - Optimized the disk I/O in `export_group_contacts` to throttle CSV/MD file writing to a maximum of once per 60 seconds per group.
 - Restored and updated the `Contact Exports` section of the `README.md` to reflect these advanced features.
+
+### [Jules] - [2026-06-19 08:44 UTC]
+- Replaced the hardcoded README `.env` block with a dedicated `.env.example` file.
+- The `.env.example` file is strictly configured out-of-the-box to interface with LM Studio, using specific `google/gemma-4-12b-qat` mapping and OpenAI-compatible endpoints to ensure the translation logic seamlessly routes to the local model.
+- Added `LOCAL_LLM_API_KEY` to `app/config.py` to allow passing the local token natively to the `AsyncOpenAI` client.

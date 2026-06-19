@@ -2,9 +2,10 @@ from typing import Literal
 from openai import AsyncOpenAI
 from app.config import settings
 
+# Use the local API key if provided in settings, otherwise fallback to placeholder
 local_client = AsyncOpenAI(
     base_url=settings.LOCAL_LLM_ENDPOINT,
-    api_key="local-placeholder"
+    api_key=getattr(settings, 'LOCAL_LLM_API_KEY', 'local-placeholder')
 )
 
 cloud_client = AsyncOpenAI(

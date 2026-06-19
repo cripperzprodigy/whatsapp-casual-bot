@@ -61,32 +61,17 @@ Once the servers are running, you need to link the bot to your WhatsApp account:
 
 ## ⚙️ Configuration (`.env`)
 
-Create a `.env` file in the root directory.
+To configure the bot, simply rename `.env.example` to `.env` and fill in your details. 
 
-```env
-# Security: Comma separated list of allowed chat IDs (e.g. 123@g.us). Leave empty to allow all.
-WHITELISTED_CHATS=
+The repository includes a ready-to-go template designed perfectly for **LM Studio** and Local AI models (like Gemma, Llama, etc.). 
 
-# Bot Identity (Important: Prevents the bot from responding to itself)
-BOT_NUMBER=1234567890
+If you are using LM Studio:
+1. Start the Local Server in LM Studio.
+2. Note your IP address, Port, and the Model Name you have loaded.
+3. Open the `.env` file and verify the `LOCAL_LLM_ENDPOINT`, `LOCAL_LLM_API_KEY`, and `DEFAULT_MODEL_NAME_LOCAL` match what LM Studio is broadcasting.
+4. Ensure `USE_LOCAL_LLM=True`.
 
-# Global Translation Settings
-# These act as the defaults if a specific chat has not overridden them.
-GLOBAL_AUTO_TRANSLATE=True
-GLOBAL_TARGET_LANGUAGE=en
-GLOBAL_IGNORED_LANGUAGES=en,id
-
-# AI Configuration
-USE_LOCAL_LLM=False
-LOCAL_LLM_ENDPOINT=http://localhost:11434/v1
-CLOUD_LLM_ENDPOINT=https://api.openai.com/v1
-CLOUD_LLM_API_KEY=sk-your-openai-key
-DEFAULT_MODEL_NAME_CLOUD=gpt-3.5-turbo
-DEFAULT_MODEL_NAME_LOCAL=llama2
-
-# Contact Sync (Default is True)
-AUTO_SYNC_CONTACTS=True
-```
+*See `.env.example` for a complete breakdown of every variable.*
 
 ---
 

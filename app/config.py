@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     # AI Config
     USE_LOCAL_LLM: bool = False
     LOCAL_LLM_ENDPOINT: str = "http://localhost:11434/v1"
+    LOCAL_LLM_API_KEY: str = "local-placeholder"
     CLOUD_LLM_ENDPOINT: str = "https://api.openai.com/v1"
     CLOUD_LLM_API_KEY: str = ""
     DEFAULT_MODEL_NAME_LOCAL: str = "llama2"
