@@ -141,21 +141,21 @@ async def process_message(
                 and lang != target_lang
             ):
                 translated = await translate_text(text, target_lang)
-                # Issue 11: reply directly to original message ID
+                original_snippet = (
+                    text
+                    if len(text) <= 120
+                    else text[:117] + "..."
+                )
+                reply_text = (
+                    f"[{lang.upper()}] {translated}\n\n"
+                    f"Translated from: {original_snippet}"
+                )
                 await send_text_message(
                     chat_id,
-                    f"[{lang.upper()}] {translated}",
+                    reply_text,
                     reply_to_msg_id=msg_key.id,
+                    quoted_participant=msg_key.participant,
                 )
-
-    # Issue 11: structured exception handling by error type
-    except httpx.HTTPError as exc:
-        logger.warning(
-            "Gateway HTTP error while processing message "
-            "in chat %s: %s",
-            payload.data.key.remoteJid if payload.data else "unknown",
-            exc,
-        )
     except sqlalchemy.exc.SQLAlchemyError as exc:
         logger.error(
             "Database error while processing message: %s", exc

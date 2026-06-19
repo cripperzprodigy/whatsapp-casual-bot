@@ -55,6 +55,7 @@ async def send_text_message(
     chat_id: str,
     text: str,
     reply_to_msg_id: Optional[str] = None,
+    quoted_participant: Optional[str] = None,
 ) -> bool:
     """
     Sends a text message back to the WhatsApp group via the
@@ -71,15 +72,16 @@ async def send_text_message(
     }
     
     if reply_to_msg_id:
-        # Issue 7: whatsapp-web.js requires the fully-serialized
-        # message ID. Incoming (non-fromMe) messages follow the
-        # format: '<prefix>_<chat_id>_<msg_id>'.
-        # _INCOMING_MSG_PREFIX = 'false_' (defined at module top).
-        # NOTE: group messages may need participant info appended;
-        # this covers the standard DM and group reply case.
+        # whatsapp-web.js requires the fully-serialized message ID.
+        # Incoming (non-fromMe) group messages may need participant
+        # info appended for the reply to work properly.
         serialized_id = (
             f"{_INCOMING_MSG_PREFIX}{chat_id}_{reply_to_msg_id}"
         )
+        if quoted_participant and chat_id.endswith("@g.us"):
+            serialized_id = (
+                f"{serialized_id}_{quoted_participant}"
+            )
         payload["options"] = {"quoted": serialized_id}
     
     try:

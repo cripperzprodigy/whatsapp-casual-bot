@@ -267,16 +267,29 @@ async def handle_command(  # Issue 13: added return type
             if len(args) > 0:
                 query = " ".join(args)
                 prompt = (
-                    "Using your internal knowledge as a simulated "
-                    "web search, answer this query concisely: "
-                    f"{query}"
+                    "Answer this query concisely using internal knowledge "
+                    "and reasoning. Do not claim live web access is available. "
+                    "If the query asks for current news, weather, or live data, "
+                    "state that live access is unavailable and provide useful "
+                    "guidance on how the user can obtain the latest information."
+                    f"\n\nQuery: {query}"
                 )
                 answer = await ask_llm(
                     prompt, task_type="search_answer"
                 )
-                await send_text_message(
-                    chat_id, f"*Search Results:*\n{answer}"
-                )
+                if answer.lower().startswith(
+                    "i do not have access"
+                ) or "cannot access" in answer.lower():
+                    await send_text_message(
+                        chat_id,
+                        "This bot currently does not have live web search "
+                        "access. Please ask a different question or verify "
+                        "your search API configuration.",
+                    )
+                else:
+                    await send_text_message(
+                        chat_id, f"*Search Results:*\n{answer}"
+                    )
 
     except Exception as exc:
         logger.error(
