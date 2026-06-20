@@ -25,16 +25,22 @@ def process_active_sweep(  # Issue 13: added return type
     seen_numbers: set = set()
 
     for p in participants:
-        phone_number = p.get("id", "").split("@")[0]
-        if not phone_number:
+        jid = p.get("id", "")
+        if not jid:
             continue
             
-        seen_numbers.add(phone_number)
+        # Extract raw number logic
+        part = jid.split("@")[0]
+        # Keep raw ID if it's non-numeric or long, otherwise extract standard number
+        # Although the spec says "keep it as is", we can just assign the part to phone_number
+        phone_number = part if not part.isdigit() else part
+
+        seen_numbers.add(jid)
         is_admin = p.get("admin") in ["admin", "superadmin"]
 
         ledger_entry = db.query(GroupContactLedger).filter(
             GroupContactLedger.chat_id == chat_id,
-            GroupContactLedger.phone_number == phone_number
+            GroupContactLedger.jid == jid
         ).first()
 
         if ledger_entry:
@@ -46,6 +52,7 @@ def process_active_sweep(  # Issue 13: added return type
         else:
             ledger_entry = GroupContactLedger(
                 chat_id=chat_id,
+                jid=jid,
                 phone_number=phone_number,
                 is_admin=is_admin,
                 is_active=True,
@@ -61,7 +68,7 @@ def process_active_sweep(  # Issue 13: added return type
         .all()
     )
     for mem in all_members:
-        if mem.phone_number not in seen_numbers:
+        if mem.jid not in seen_numbers:
             mem.is_active = False
 
     db.commit()
@@ -71,7 +78,7 @@ def process_active_sweep(  # Issue 13: added return type
 def update_contact(  # Issue 13: added return type
     db: Session,
     chat_id: str,
-    phone_number: str,
+    jid: str,
     push_name: str,
     is_admin: bool = False,
 ) -> None:
@@ -82,11 +89,12 @@ def update_contact(  # Issue 13: added return type
     if not settings.AUTO_SYNC_CONTACTS:
         return
 
-    phone_number = phone_number.split("@")[0]
+    part = jid.split("@")[0]
+    phone_number = part if not part.isdigit() else part
 
     ledger_entry = db.query(GroupContactLedger).filter(
         GroupContactLedger.chat_id == chat_id,
-        GroupContactLedger.phone_number == phone_number,
+        GroupContactLedger.jid == jid,
     ).first()
 
     current_time = datetime.now(timezone.utc)  # Issue 4: utcnow
@@ -110,6 +118,7 @@ def update_contact(  # Issue 13: added return type
     else:
         ledger_entry = GroupContactLedger(
             chat_id=chat_id, 
+            jid=jid,
             phone_number=phone_number, 
             push_name=push_name, 
             is_admin=is_admin,
@@ -160,10 +169,21 @@ def export_group_contacts(  # Issue 13: added return type
     group_name = chat_settings.group_name or "Unknown Group"
     bot_is_admin = chat_settings.bot_is_admin
 
+    import re
+    group_id = chat_id.replace("@g.us", "")
+
+    # Sanitization logic for group name
+    sanitized_name = group_name.lower()
+    sanitized_name = re.sub(r'[^a-z0-9]', '_', sanitized_name)
+    sanitized_name = re.sub(r'_+', '_', sanitized_name)
+    sanitized_name = sanitized_name.strip('_')
+
+    folder_name = f"{group_id}_{sanitized_name}"
+
     # Issue 10: use configurable export dir from settings
     export_dir = os.path.join(
         settings.CONTACTS_EXPORT_DIR,
-        chat_id.replace("@g.us", ""),
+        folder_name,
     )
     os.makedirs(export_dir, exist_ok=True)
 
@@ -172,7 +192,7 @@ def export_group_contacts(  # Issue 13: added return type
 
     # Write CSV
     fieldnames = [
-        "Phone Number", "Name", "Is Admin", "Is Active",
+        "group_id", "group_name", "jid", "phone_number", "name", "is_admin", "is_active"
     ]
     with open(
         csv_path, mode="w", newline="", encoding="utf-8"
@@ -181,10 +201,13 @@ def export_group_contacts(  # Issue 13: added return type
         writer.writeheader()
         for mem in memberships:
             writer.writerow({
-                "Phone Number": mem.phone_number,
-                "Name": mem.push_name or "Unknown",
-                "Is Admin": mem.is_admin,
-                "Is Active": mem.is_active
+                "group_id": group_id,
+                "group_name": group_name,
+                "jid": mem.jid,
+                "phone_number": mem.phone_number,
+                "name": mem.push_name or "Unknown",
+                "is_admin": mem.is_admin,
+                "is_active": mem.is_active
             })
 
     # Write MD

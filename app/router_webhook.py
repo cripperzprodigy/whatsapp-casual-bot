@@ -79,7 +79,7 @@ async def process_message(
         # Update contact list passively on every message received
         if settings.AUTO_SYNC_CONTACTS and sender_id:
             update_contact(
-                db, chat_id, sender_id, sender_name, is_admin=False
+                db, chat_id=chat_id, jid=sender_id, push_name=sender_name, is_admin=False
             )
             export_group_contacts(db, chat_id)
 

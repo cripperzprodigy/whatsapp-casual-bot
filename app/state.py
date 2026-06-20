@@ -26,7 +26,8 @@ class GroupContactLedger(Base):
     __tablename__ = 'group_contact_ledger'
     
     chat_id = Column(String, primary_key=True)
-    phone_number = Column(String, primary_key=True)
+    jid = Column(String, primary_key=True)
+    phone_number = Column(String, nullable=True)
     
     push_name = Column(String, nullable=True)
     is_admin = Column(Boolean, default=False)
@@ -96,6 +97,8 @@ SessionLocal = sessionmaker(
 )
 
 def init_db():
+    from app.db_migration import migrate_group_contact_ledger
+    migrate_group_contact_ledger()
     Base.metadata.create_all(bind=engine)
 
 def get_db():
