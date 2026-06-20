@@ -700,6 +700,81 @@ async def handle_command(  # Issue 13: added return type
                     await send_text_message(
                         chat_id, f"*Search Results:*\n{answer}")
 
+        elif command == "!contacts":
+            if len(args) == 0:
+                await send_text_message(
+                    chat_id,
+                    "Usage: !contacts list | !contacts global"
+                )
+            else:
+                subcmd = args[0]
+                if subcmd == "list":
+                    # Check if user is an admin of the current group
+                    if not is_group_chat:
+                        await send_text_message(chat_id, "This command can only be used in a group.")
+                    else:
+                        # Check sender permissions
+                        user_ledger = db.query(GroupContactLedger).filter(
+                            GroupContactLedger.chat_id == chat_id,
+                            GroupContactLedger.jid == sender_id
+                        ).first()
+                        
+                        if not user_ledger or not user_ledger.is_admin:
+                            await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin to use this command.")
+                        else:
+                            contacts = db.query(GroupContactLedger).filter(
+                                GroupContactLedger.chat_id == chat_id,
+                                GroupContactLedger.is_active == True
+                            ).order_by(GroupContactLedger.push_name).all()
+                            
+                            chat_settings = get_chat_settings(db, chat_id)
+                            group_name = chat_settings.group_name or "Unknown Group"
+                            
+                            msg = f"📋 *Active Contacts for {group_name}*\n\n"
+                            for c in contacts:
+                                name = c.push_name or "Unknown"
+                                phone = c.phone_number or "Unknown"
+                                role = "(Admin)" if c.is_admin else ""
+                                msg += f"• {name} {role}\n  📞 {phone}\n"
+                            
+                            await send_text_message(chat_id, msg)
+                
+                elif subcmd == "global":
+                    if not await is_owner(db, sender_id):
+                        await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
+                    else:
+                        contacts = db.query(GroupContactLedger).filter(
+                            GroupContactLedger.is_active == True
+                        ).order_by(GroupContactLedger.chat_id, GroupContactLedger.push_name).all()
+                        
+                        # Group contacts by chat_id
+                        from collections import defaultdict
+                        grouped_contacts = defaultdict(list)
+                        for c in contacts:
+                            grouped_contacts[c.chat_id].append(c)
+                        
+                        if not grouped_contacts:
+                            await send_text_message(chat_id, "No active contacts found globally.")
+                        else:
+                            msg = "🌍 *Global Contacts Summary*\n"
+                            for g_id, g_contacts in grouped_contacts.items():
+                                chat_settings = get_chat_settings(db, g_id)
+                                g_name = chat_settings.group_name or "Unknown Group"
+                                total_contacts = len(g_contacts)
+                                
+                                msg += f"\n*Group: {g_name}* (ID: {g_id})\n"
+                                
+                                limit = 10
+                                for c in g_contacts[:limit]:
+                                    name = c.push_name or "Unknown"
+                                    phone = c.phone_number or "Unknown"
+                                    msg += f"• {name} - {phone}\n"
+                                
+                                if total_contacts > limit:
+                                    msg += f"...and {total_contacts - limit} more (Showing {limit} of {total_contacts})\n"
+                                    
+                            await send_text_message(chat_id, msg)
+
         elif command == "!a":
             if len(args) > 0:
                 ai_prompt = " ".join(args)

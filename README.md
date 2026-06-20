@@ -143,6 +143,10 @@ The bot supports three roles:
 - `!broadcast <message>` - Broadcast a message to all active chats.
 - `!stats` - Show system statistics.
 - `!export ledger` - Export the active contact ledger to CSV.
+- `!contacts list` - View active contacts in the current group.
+
+#### Owner-only commands
+- `!contacts global` - View a global summary of all active contacts across all groups.
 
 #### Owner-only commands
 - `!owner grant <jid>` - Grant owner privileges.
@@ -168,8 +172,8 @@ If `AUTO_SYNC_CONTACTS` is enabled, the bot employs an advanced **Isolated Ledge
 3. **No Deletions:** If someone leaves the group, they are simply marked as `Inactive` so you never lose the historical record of who was there.
 4. **Throttled Exports:** To maintain high performance during busy chats, the bot will automatically write changes to your filesystem (maximum once per minute).
 
-It exports two files per group in the directory configured by `CONTACTS_EXPORT_DIR` (default: `exports/groups/<group_id>/`):
-- `contacts.csv` - Includes Phone Number, Name, Admin Status, and Active Status. Ideal for importing into Excel or Google Contacts.
+It exports two files per group in the directory configured by `CONTACTS_EXPORT_DIR` (default: `exports/groups/<group_id>_<sanitized_group_name>/`):
+- `contacts.csv` - Includes Group ID, Group Name, JID, Phone Number, Name, Admin Status, and Active Status. Ideal for importing into Excel or Google Contacts.
 - `summary.md` - A neat Markdown overview showing the group name, total members, active members, and a table of synced users.
 
 ---
