@@ -61,6 +61,13 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
         "└ `!note list` - List notes\n"
     ])
 
+
+    if role in {ADMIN_ROLE, OWNER_ROLE} or not is_group_chat:
+        lines.extend([
+            "🧠 *AI Memory & RAG*",
+            "└ `!chatty on|off` - Toggle continuous AI conversation\n"
+        ])
+
     if role in {ADMIN_ROLE, OWNER_ROLE}:
         lines.extend([
             "⚙️ *Admin Commands*",
