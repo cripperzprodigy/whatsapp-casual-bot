@@ -72,6 +72,27 @@ if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     install_os_pkg "nodejs npm ffmpeg"
 fi
 
+
+# Swap check for low memory environments (like 1GB VMs)
+if [ "$(uname)" = "Linux" ]; then
+    total_mem=$(free -m | awk '/^Mem:/{print $2}')
+    if [ "$total_mem" -lt 2000 ]; then
+        if [ ! -f /swapfile ] && [ -z "$(swapon --show)" ]; then
+            echo "⚠️  Low memory detected (< 2GB RAM) and no swap space found."
+            echo "Creating 2G swap file to prevent OOM (Out Of Memory) crashes during pip install..."
+            if [ -x "$(command -v sudo)" ]; then
+                sudo fallocate -l 2G /swapfile
+                sudo chmod 600 /swapfile
+                sudo mkswap /swapfile
+                sudo swapon /swapfile
+                echo "✅ 2GB Swap file created successfully."
+            else
+                echo "❌ Cannot create swap file: 'sudo' not found or insufficient privileges."
+            fi
+        fi
+    fi
+fi
+
 # Check if python3-venv is available (often missing on clean Ubuntu)
 if ! python3 -c "import venv" &> /dev/null; then
     install_os_pkg "python3-venv python3-dev"
