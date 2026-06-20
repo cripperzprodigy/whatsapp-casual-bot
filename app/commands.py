@@ -10,8 +10,11 @@ from app.state import (
     Note,
     Task,
     get_chat_settings,
+    get_global_setting,
+    set_global_setting,
 )
 from app.translation import translate_text, detect_language
+from app.pm_service import start_batched_pm_task
 from app.whatsapp_gateway import send_text_message
 from app.ai_client import ask_llm
 from app.config import settings as app_settings
@@ -58,6 +61,8 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
                 "!stats - Show system statistics",
                 "!export ledger - Export the contact ledger to CSV",
                 "!contacts list - View active contacts in the current group",
+                "!pm @user <text> - DM a specific user",
+                "!pm group <text> - DM all members in the current group",
                 "!auto global - Reset auto-translate to global config",
                 "!ignore global - Reset ignore list to global config",
             ]
@@ -74,6 +79,8 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
                 "!admin revoke <jid> - Revoke admin privileges",
                 "!admin list - Show active admins",
                 "!contacts global - View a global summary of all active contacts",
+                "!pm global <text> - DM all members across all groups",
+                "!pm flood limit|interval <val> - Update PM flood control",
                 "!shutdown - Shut down the bot",
                 "!restart - Restart the bot",
             ]
@@ -701,6 +708,134 @@ async def handle_command(  # Issue 13: added return type
                 else:
                     await send_text_message(
                         chat_id, f"*Search Results:*\n{answer}")
+
+        elif command == "!pm":
+            if len(args) < 2:
+                await send_text_message(
+                    chat_id,
+                    "Usage:\n!pm @user <text>\n!pm group <text>\n!pm global <text>\n!pm flood limit <n>\n!pm flood interval <s>"
+                )
+                return
+
+            subcmd = args[0]
+            
+            # Owner config checks
+            if subcmd == "flood":
+                if not await is_owner(db, sender_id):
+                    await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
+                    return
+                if len(args) == 3 and args[1] in ["limit", "interval"]:
+                    try:
+                        val = int(args[2])
+                        if val <= 0:
+                            await send_text_message(chat_id, "❌ Value must be greater than 0.")
+                            return
+                            
+                        if args[1] == "limit":
+                            set_global_setting(db, "pm_flood_limit", str(val))
+                            await send_text_message(chat_id, f"✅ PM flood limit updated to {val} messages per batch.")
+                        else:
+                            set_global_setting(db, "pm_flood_interval_seconds", str(val))
+                            await send_text_message(chat_id, f"✅ PM flood interval updated to {val} seconds.")
+                    except ValueError:
+                        await send_text_message(chat_id, "❌ Please provide a valid integer.")
+                else:
+                    await send_text_message(chat_id, "Usage: !pm flood limit <n> | !pm flood interval <s>")
+                return
+
+            text_to_send = " ".join(args[1:])
+
+            if subcmd == "group":
+                # Must be group admin or bot owner
+                if not is_group_chat:
+                    await send_text_message(chat_id, "This command can only be used in a group.")
+                    return
+                
+                user_ledger = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                    GroupContactLedger.jid == sender_id
+                ).first()
+                is_group_admin = user_ledger and user_ledger.is_admin
+                is_bot_owner = await is_owner(db, sender_id)
+                
+                if not is_group_admin and not is_bot_owner:
+                    await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner to use this command.")
+                    return
+                    
+                contacts = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                    GroupContactLedger.is_active == True,
+                    GroupContactLedger.jid != sender_id # Don't PM self
+                ).all()
+                
+                jids = [c.jid for c in contacts]
+                if not jids:
+                    await send_text_message(chat_id, "No active contacts found to PM.")
+                    return
+                    
+                await send_text_message(chat_id, f"Initiating PM to {len(jids)} group members...")
+                start_batched_pm_task(chat_id, jids, text_to_send)
+                return
+
+            elif subcmd == "global":
+                if not await is_owner(db, sender_id):
+                    await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
+                    return
+                
+                # Fetch distinct JIDs across all groups
+                contacts = db.query(GroupContactLedger.jid).filter(
+                    GroupContactLedger.is_active == True,
+                    GroupContactLedger.jid != sender_id
+                ).distinct().all()
+                
+                jids = [c[0] for c in contacts]
+                if not jids:
+                    await send_text_message(chat_id, "No active contacts found globally.")
+                    return
+                    
+                await send_text_message(chat_id, f"Initiating Global PM to {len(jids)} unique members...")
+                start_batched_pm_task(chat_id, jids, text_to_send)
+                return
+                
+            else:
+                # Direct user mention e.g. !pm @628123456789 Hello OR !pm 628123456789 Hello
+                # Or standard mentions in WhatsApp format
+                # Check permissions
+                if not is_group_chat:
+                     # In private chat, just checking if owner/admin
+                     if not await is_admin(db, sender_id):
+                         await send_text_message(chat_id, "🚫 Access Denied: Requires Admin/Owner.")
+                         return
+                else:
+                    user_ledger = db.query(GroupContactLedger).filter(
+                        GroupContactLedger.chat_id == chat_id,
+                        GroupContactLedger.jid == sender_id
+                    ).first()
+                    is_group_admin = user_ledger and user_ledger.is_admin
+                    is_bot_owner = await is_owner(db, sender_id)
+                    if not is_group_admin and not is_bot_owner:
+                        await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner to use this command.")
+                        return
+
+                target = subcmd.strip("@")
+                # Format to JID if it doesn't have the suffix
+                if "@" not in target:
+                    # Strip any non-digit chars if they sent formatted number
+                    import re
+                    target = re.sub(r'\D', '', target)
+                    if not target:
+                        await send_text_message(chat_id, "Invalid number format.")
+                        return
+                    target_jid = f"{target}@s.whatsapp.net"
+                else:
+                    target_jid = target
+                    
+                success = await send_text_message(target_jid, text_to_send)
+                if success:
+                    await send_text_message(chat_id, f"✅ PM sent to {target_jid}.")
+                else:
+                    await send_text_message(chat_id, f"❌ Failed to send PM to {target_jid}.")
+                return
 
         elif command == "!contacts":
             if len(args) == 0:

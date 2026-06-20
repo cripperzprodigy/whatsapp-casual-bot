@@ -74,6 +74,15 @@ class MessageBuffer(Base):
     )  # Issue 4: replace deprecated utcnow
 
 
+class GlobalSettings(Base):
+    __tablename__ = 'global_settings'
+    
+    key = Column(String, primary_key=True, index=True)
+    value = Column(String, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
+
 class BotAdmin(Base):
     __tablename__ = 'bot_admins'
 
@@ -100,6 +109,21 @@ def init_db():
     from app.db_migration import migrate_group_contact_ledger
     migrate_group_contact_ledger()
     Base.metadata.create_all(bind=engine)
+
+def get_global_setting(db, key: str, default: str = None) -> str:
+    setting = db.query(GlobalSettings).filter(GlobalSettings.key == key).first()
+    if setting:
+        return setting.value
+    return default
+
+def set_global_setting(db, key: str, value: str):
+    setting = db.query(GlobalSettings).filter(GlobalSettings.key == key).first()
+    if setting:
+        setting.value = str(value)
+    else:
+        setting = GlobalSettings(key=key, value=str(value))
+        db.add(setting)
+    db.commit()
 
 def get_db():
     db = SessionLocal()

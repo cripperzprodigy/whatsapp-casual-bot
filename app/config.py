@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     LOG_LEVEL: str = "INFO"
 
+    # ------------------------------------------------------------------ #
+    #  PM Flood Control Defaults
+    # ------------------------------------------------------------------ #
+    PM_FLOOD_LIMIT: int = 10
+    PM_FLOOD_INTERVAL_SECONDS: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"
     )
