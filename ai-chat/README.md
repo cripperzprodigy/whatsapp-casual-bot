@@ -19,3 +19,6 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 - Hardened `!search` behavior with a safer prompt that avoids claiming live web access, reduces truncated answer risks, and provides a clear fallback message when search access is unavailable.
 - Documented the latest fixes and operational behavior across `ARCHITECTURE.md`, `PROJECT_HISTORY.md`, and `chatpad.md`.
 - Added the new public `!a <text>` general AI prompt command and expanded `!help` command coverage.
+
+## Chatty Feature
+We recently integrated a highly sophisticated long-term memory conversational assistant called `!chatty`. See [CHATTY_FEATURE.md](./CHATTY_FEATURE.md) for architectural details and execution flow.
