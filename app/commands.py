@@ -35,66 +35,68 @@ logger = logging.getLogger(__name__)
 
 
 async def _build_help_text(role: str, is_group_chat: bool) -> str:
-    lines = ["*WhatsApp Casual Bot Commands*"]
+    lines = ["🤖 *WhatsApp Casual Bot Commands*\n"]
 
-    lines.extend(
-        [
-            "!help - Show this help message",
-            "!a <text> - Ask the AI any general question or request",
-            "!t <lang> <text> - Translate text to lang",
-            "!t auto <text> - Translate to default target",
-            "!summary [short|full] - Summarize recent messages",
-            "!task add <desc> - Add a task",
-            "!task list - List tasks",
-            "!task done <id> - Complete a task",
-            "!note add <text> - Add a note",
-            "!note list - List notes",
-            "!search <query> - Search the web (if enabled)",
-            "!ping - Check if the bot is responsive",
-        ]
-    )
+    lines.extend([
+        "💬 *General / AI*",
+        "├ `!a <text>` - Ask the AI a question",
+        "├ `!search <query>` - Search the web",
+        "├ `!summary` - Summarize recent messages",
+        "├ `!ping` - Check bot status",
+        "└ `!help` - Show this menu\n"
+    ])
+
+    lines.extend([
+        "🌐 *Translation*",
+        "├ `!t <lang> <text>` - Translate text",
+        "└ `!t auto <text>` - Translate to default\n"
+    ])
+    
+    lines.extend([
+        "📝 *Productivity*",
+        "├ `!task add <desc>` - Add a task",
+        "├ `!task list` - List tasks",
+        "├ `!task done <id>` - Complete a task",
+        "├ `!note add <text>` - Add a note",
+        "└ `!note list` - List notes\n"
+    ])
 
     if role in {ADMIN_ROLE, OWNER_ROLE}:
-        lines.extend(
-            [
-                "!broadcast <message> - Send a message to all active chats",
-                "!stats - Show system statistics",
-                "!export ledger - Export the contact ledger to CSV",
-                "!contacts list - View active contacts in the current group",
-                "!pm @user <text> - DM a specific user",
-                "!pm group <text> - DM all members in the current group",
-                "!auto global - Reset auto-translate to global config",
-                "!ignore global - Reset ignore list to global config",
-            ]
-        )
+        lines.extend([
+            "⚙️ *Admin Commands*",
+            "├ `!contacts list` - View group contacts",
+            "├ `!pm group <text>` - DM current group",
+            "├ `!pm @user <text>` - DM specific user",
+            "├ `!export ledger` - Export group contacts",
+            "├ `!broadcast <msg>` - Message all chats",
+            "├ `!stats` - System statistics",
+            "├ `!auto global` - Reset auto-translate",
+            "└ `!ignore global` - Reset ignore list\n"
+        ])
 
     if role == OWNER_ROLE:
-        lines.extend(
-            [
-                "!owner grant <jid> - Grant owner privileges",
-                "!owner revoke <jid> - Revoke owner privileges",
-                "!owner list - Show active owners",
-                "!owner transfer <jid> - Transfer ownership",
-                "!admin grant <jid> - Grant admin privileges",
-                "!admin revoke <jid> - Revoke admin privileges",
-                "!admin list - Show active admins",
-                "!contacts global - View a global summary of all active contacts",
-                "!pm global <text> - DM all members across all groups",
-                "!pm flood limit|interval <val> - Update PM flood control",
-                "!shutdown - Shut down the bot",
-                "!restart - Restart the bot",
-            ]
-        )
+        lines.extend([
+            "👑 *Owner Commands*",
+            "├ `!contacts global` - View all contacts globally",
+            "├ `!pm global <text>` - DM all groups",
+            "├ `!pm flood limit|interval <val>` - PM flood settings",
+            "├ `!owner grant|revoke <jid>` - Manage Owners",
+            "├ `!admin grant|revoke <jid>` - Manage Admins",
+            "├ `!owner|admin list` - List privileged users",
+            "├ `!owner transfer <jid>` - Transfer ownership",
+            "└ `!shutdown | !restart` - Lifecycle controls\n"
+        ])
 
     if role == PUBLIC_ROLE and not is_group_chat:
         from app.permissions import CLAIM_OWNERSHIP_ENABLED
 
         if CLAIM_OWNERSHIP_ENABLED:
-            lines.append(
-                "!claim_ownership - Claim initial bot ownership in a private chat"
-            )
+            lines.extend([
+                "🔑 *Setup*",
+                "└ `!claim_ownership` - Claim initial bot ownership\n"
+            ])
 
-    return "\n".join(lines)
+    return "\n".join(lines).strip()
 
 
 async def handle_command(  # Issue 13: added return type
