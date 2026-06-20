@@ -278,3 +278,22 @@ The bot employs an **Isolated Ledger System**. All data related to a user (Logs,
 
 - **No data leaves your local machine** unless you have specifically configured a Cloud Provider (e.g. OpenAI) as your Chat LLM.
 - **RAG embeddings** never hit the cloud; they are always processed strictly on your host machine.
+
+---
+
+## 🧳 Backup & Migration
+
+If you are moving the bot to a new server, the repository includes a self-contained Python script to easily pack and unpack your authentication keys (`.wwebjs_auth`), database (`bot.db`), configuration (`.env`), and RAG memory files (`data/`).
+
+**To Backup:**
+```bash
+python3 backup_restore.py --mode backup
+```
+*This will generate a ZIP file containing everything you need, securely skipping bloat like `node_modules` or `.git`.*
+
+**To Restore (on the new server):**
+```bash
+# After git clone, place the ZIP in the root directory
+python3 backup_restore.py --mode restore --file <your_backup_file>.zip
+```
+*The script will safely restore your environment and verify no data is unintentionally overwritten. See [ai-chat/BACKUP_RESTORE_FEATURE.md](ai-chat/BACKUP_RESTORE_FEATURE.md) for full architectural details.*

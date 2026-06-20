@@ -22,3 +22,6 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 
 ## Chatty Feature
 We recently integrated a highly sophisticated long-term memory conversational assistant called `!chatty`. See [CHATTY_FEATURE.md](./CHATTY_FEATURE.md) for architectural details and execution flow.
+
+## Backup & Restore Utilities
+For migrating the bot to new machines without losing active WhatsApp sessions or local RAG memory, see [BACKUP_RESTORE_FEATURE.md](./BACKUP_RESTORE_FEATURE.md).
