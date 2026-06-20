@@ -147,8 +147,6 @@ The bot supports three roles:
 
 #### Owner-only commands
 - `!contacts global` - View a global summary of all active contacts across all groups.
-
-#### Owner-only commands
 - `!owner grant <jid>` - Grant owner privileges.
 - `!owner revoke <jid>` - Revoke owner privileges.
 - `!owner list` - Show active owners.

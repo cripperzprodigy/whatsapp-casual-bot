@@ -57,6 +57,7 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
                 "!broadcast <message> - Send a message to all active chats",
                 "!stats - Show system statistics",
                 "!export ledger - Export the contact ledger to CSV",
+                "!contacts list - View active contacts in the current group",
                 "!auto global - Reset auto-translate to global config",
                 "!ignore global - Reset ignore list to global config",
             ]
@@ -72,6 +73,7 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
                 "!admin grant <jid> - Grant admin privileges",
                 "!admin revoke <jid> - Revoke admin privileges",
                 "!admin list - Show active admins",
+                "!contacts global - View a global summary of all active contacts",
                 "!shutdown - Shut down the bot",
                 "!restart - Restart the bot",
             ]
@@ -719,8 +721,11 @@ async def handle_command(  # Issue 13: added return type
                             GroupContactLedger.jid == sender_id
                         ).first()
                         
-                        if not user_ledger or not user_ledger.is_admin:
-                            await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin to use this command.")
+                        is_group_admin = user_ledger and user_ledger.is_admin
+                        is_bot_owner = await is_owner(db, sender_id)
+                        
+                        if not is_group_admin and not is_bot_owner:
+                            await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner to use this command.")
                         else:
                             contacts = db.query(GroupContactLedger).filter(
                                 GroupContactLedger.chat_id == chat_id,
