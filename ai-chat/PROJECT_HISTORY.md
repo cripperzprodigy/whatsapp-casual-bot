@@ -26,5 +26,6 @@
   - Added a persistent Owner/Admin permission system backed by a new `bot_admins` table, with dynamic `!help` output, an environment-based bootstrap owner, and a private-chat `!claim_ownership` fallback.
   - Hardened the `!search` command prompt to avoid claims of live web search access and to provide a helpful fallback when search access is unavailable.
   - Added contact export enhancements: Updated `GroupContactLedger` to use a `jid` composite primary key, added `db_migration.py` for SQLite table migrations, sanitized export folder names, included extra fields in CSV exports, and implemented role-restricted `!contacts list` and `!contacts global` admin commands.
+  - Implemented asynchronous batch PM system (`!pm`) with dynamic flood control configurations (overriding `.env` via `GlobalSettings`). Added user targeting, group-wide targeting, and global targeting logic strictly mapped to Admin and Owner privileges.
   - Updated `ai-chat` documentation and agent registry to log the active fix.
 

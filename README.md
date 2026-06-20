@@ -144,9 +144,13 @@ The bot supports three roles:
 - `!stats` - Show system statistics.
 - `!export ledger` - Export the active contact ledger to CSV.
 - `!contacts list` - View active contacts in the current group.
+- `!pm @user <text>` - Send a direct message to a specific user.
+- `!pm group <text>` - Send a direct message to all members in the current group.
 
 #### Owner-only commands
 - `!contacts global` - View a global summary of all active contacts across all groups.
+- `!pm global <text>` - Send a direct message to all members across all groups.
+- `!pm flood limit|interval <val>` - Update PM flood control settings.
 - `!owner grant <jid>` - Grant owner privileges.
 - `!owner revoke <jid>` - Revoke owner privileges.
 - `!owner list` - Show active owners.
