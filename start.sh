@@ -9,8 +9,13 @@ echo "=========================================="
 echo ""
 
 # OS-Level Dependency Checks
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Error: python3 is not installed or not in PATH. Please install Python 3."
+TARGET_PYTHON="python3.12"
+
+# 1. Check existence of Python 3.12
+if ! command -v $TARGET_PYTHON &> /dev/null; then
+    echo "❌ ERROR: Python 3.12 is required but not found."
+    echo "Please install it alongside your current Python version:"
+    echo "sudo apt update && sudo apt install python3.12 python3.12-venv python3.12-dev -y"
     exit 1
 fi
 
@@ -94,7 +99,7 @@ if [ "$(uname)" = "Linux" ]; then
 fi
 
 # Check if python3-venv is available (often missing on clean Ubuntu)
-if ! python3 -c "import venv" &> /dev/null; then
+if ! $TARGET_PYTHON -c "import venv" &> /dev/null; then
     install_os_pkg "python3-venv python3-dev"
 fi
 
@@ -108,6 +113,16 @@ if [ ! -f ".env" ]; then
     echo "Please copy .env.example to .env and configure it before starting."
     read -p "Press any key to continue anyway or Ctrl+C to exit..." -n 1 -r
     echo ""
+fi
+
+
+# 2. Validate existing venv Python version
+if [ -d "venv" ]; then
+    CURRENT_VERSION=$(venv/bin/python --version 2>&1 | grep -oP '\d+\.\d+')
+    if [ "$CURRENT_VERSION" != "3.12" ]; then
+        echo "⚠️  Detected existing venv with Python $CURRENT_VERSION. Recreating with Python 3.12..."
+        rm -rf venv
+    fi
 fi
 
 # Check if installation is needed
@@ -132,7 +147,7 @@ if [ "$NEEDS_INSTALL" = true ]; then
 
         # Create virtual environment
         echo "-> Creating Python virtual environment..."
-        python3 -m venv venv
+        $TARGET_PYTHON -m venv venv
 
         # Activate virtual environment and install python dependencies
         echo "-> Installing Python dependencies..."
