@@ -207,7 +207,7 @@ async def process_message(
                 and lang not in ignore_list
                 and lang != target_lang
             ):
-                translated = await translate_text(text, target_lang)
+                translated = await translate_text(text, target_lang, source_lang=lang)
                 reply_text = f"[{lang.upper()}] {translated}"
                 await send_text_message(
                     chat_id,

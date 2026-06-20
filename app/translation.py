@@ -1,4 +1,6 @@
 from app.ai_client import ask_llm
+from langdetect import detect
+from langdetect.lang_detect_exception import LangDetectException
 
 # Issue 3: fallback map for LLMs that return full language names
 # instead of ISO 639-1 codes (e.g. "English" -> "en").
@@ -28,38 +30,49 @@ FULL_NAME_TO_CODE: dict[str, str] = {
 
 async def detect_language(text: str) -> str:
     """
-    Detects the primary language of the given text using the LLM.
+    Detects the primary language of the given text using langdetect.
+    Falls back to LLM if langdetect fails.
     Returns the ISO 639-1 two-letter lowercase language code
     (e.g. 'en', 'id', 'es'). Returns 'unknown' if detection fails.
     """
-    prompt = (
-        "Detect the primary language of the following text. "
-        "Respond ONLY with the ISO 639-1 two-letter lowercase language "
-        "code (e.g. 'en', 'es', 'id'). "
-        "If you are unsure, respond with 'unknown'.\n\n"
-        f"Text: {text}"
-    )
-    result = await ask_llm(prompt, task_type="language_detection")
+    try:
+        # Fast path
+        return detect(text)
+    except LangDetectException:
+        # Slow path fallback
+        prompt = (
+            "Detect the primary language of the following text. "
+            "Respond ONLY with the ISO 639-1 two-letter lowercase language "
+            "code (e.g. 'en', 'es', 'id'). "
+            "If you are unsure, respond with 'unknown'.\n\n"
+            f"Text: {text}"
+        )
+        result = await ask_llm(prompt, task_type="language_detection")
 
-    # Issue 3: strip whitespace FIRST, then lower, so " En " -> "en"
-    code = result.strip().lower()
+        # Issue 3: strip whitespace FIRST, then lower, so " En " -> "en"
+        code = result.strip().lower()
 
-    if len(code) == 2 or code == "unknown":
-        return code
+        if len(code) == 2 or code == "unknown":
+            return code
 
-    # Issue 3: fallback — LLM returned a full name like "english"
-    if code in FULL_NAME_TO_CODE:
-        return FULL_NAME_TO_CODE[code]
+        # Issue 3: fallback — LLM returned a full name like "english"
+        if code in FULL_NAME_TO_CODE:
+            return FULL_NAME_TO_CODE[code]
 
-    return "unknown"
+        return "unknown"
 
 
-async def translate_text(text: str, target_language: str) -> str:
+async def translate_text(text: str, target_language: str, source_lang: str = None) -> str:
     """
     Translates text to the target language using the LLM.
+    Optionally accepts a source_lang to improve accuracy and reduce guessing.
     """
+    source_hint = ""
+    if source_lang and source_lang != "unknown":
+        source_hint = f"from the language represented by the ISO 639-1 code '{source_lang}' "
+
     prompt = (
-        f"Translate the following text to the language represented "
+        f"Translate the following text {source_hint}to the language represented "
         f"by the ISO 639-1 code '{target_language}'.\n"
         "Rules:\n"
         "1. Preserve the exact original tone and formatting "
