@@ -62,7 +62,11 @@ async def detect_language(text: str) -> str:
         return "unknown"
 
 
-async def translate_text(text: str, target_language: str, source_lang: str = None) -> str:
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def translate_text(text: str, target_language: str, source_lang: str = None, chat_id: str = None, msg_id: str = None) -> str:
     """
     Translates text to the target language using the LLM.
     Optionally accepts a source_lang to improve accuracy and reduce guessing.
@@ -86,5 +90,14 @@ async def translate_text(text: str, target_language: str, source_lang: str = Non
         "'[Spanish] Translated text here'.\n\n"
         f"Text to translate:\n{text}"
     )
-    result = await ask_llm(prompt, task_type="translation")
-    return result
+
+    from app.config import settings
+    try:
+        result = await ask_llm(prompt, task_type="translation")
+        if not result or result.startswith("Error:"):
+            logger.error(f"Translation failed silently or returned error. chat_id={chat_id}, msg_id={msg_id}, response={result}")
+            return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
+        return result
+    except Exception as e:
+        logger.error(f"Critical error during translation API call. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")
+        return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"

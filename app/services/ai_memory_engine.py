@@ -5,7 +5,12 @@ import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+from filelock import FileLock
+import httpx
+
+
 from langdetect import detect
+from langdetect.lang_detect_exception import LangDetectException
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from sentence_transformers import SentenceTransformer
@@ -18,8 +23,31 @@ from app.ai_client import ask_llm
 
 logger = logging.getLogger(__name__)
 
+
+_global_embedding_model = None
+_chroma_clients = {}
+
+def get_embedding_model():
+    global _global_embedding_model
+    if _global_embedding_model is None:
+        model_name = settings.RAG_EMBEDDING_MODEL
+        try:
+            _global_embedding_model = SentenceTransformer(model_name)
+        except Exception as e:
+            logger.warning(f"Failed to load embedding model {model_name}. Fallback to all-MiniLM-L3-v2. Error: {e}")
+            _global_embedding_model = SentenceTransformer('all-MiniLM-L3-v2')
+    return _global_embedding_model
+
+def get_chroma_client(db_path: str):
+    if db_path not in _chroma_clients:
+        _chroma_clients[db_path] = chromadb.PersistentClient(
+            path=db_path,
+            settings=ChromaSettings(anonymized_telemetry=False)
+        )
+    return _chroma_clients[db_path]
+
 class AIMemoryEngine:
-    def __init__(self, chat_id: str, sender_name: str):
+    def __init__(self, chat_id: str, sender_name: str, profile: dict = None):
         self.chat_id = chat_id
         self.sender_name = sender_name
         self.safe_id = chat_id.replace('@', '_').replace('.', '_')
@@ -31,28 +59,19 @@ class AIMemoryEngine:
         self.vector_db_path = self.user_dir / "vector_db"
         self.vector_db_path.mkdir(parents=True, exist_ok=True)
 
-        self.profile = self._load_profile()
+        self.profile = profile if profile else self._load_profile()
 
-        # Load local embedding model
-        # Try to use TINY fallback if specified, otherwise default to config
-        model_name = settings.RAG_EMBEDDING_MODEL
-        try:
-            self.embedding_model = SentenceTransformer(model_name)
-        except Exception as e:
-            logger.warning(f"Failed to load embedding model {model_name}. Fallback to all-MiniLM-L3-v2. Error: {e}")
-            self.embedding_model = SentenceTransformer('all-MiniLM-L3-v2')
-
-        # Init ChromaDB strictly inside user folder
-        self.chroma_client = chromadb.PersistentClient(
-            path=str(self.vector_db_path),
-            settings=ChromaSettings(anonymized_telemetry=False)
-        )
+        self.embedding_model = get_embedding_model()
+        self.chroma_client = get_chroma_client(str(self.vector_db_path))
         self.collection = self.chroma_client.get_or_create_collection("user_memory")
 
+
     def _load_profile(self) -> Dict[str, Any]:
-        if self.profile_path.exists():
-            with open(self.profile_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+        lock_path = str(self.profile_path) + ".lock"
+        with FileLock(lock_path):
+            if self.profile_path.exists():
+                with open(self.profile_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
         return {
             "name": self.sender_name,
             "lang_pref": None,
@@ -62,21 +81,27 @@ class AIMemoryEngine:
         }
 
     def _save_profile(self):
-        with open(self.profile_path, "w", encoding="utf-8") as f:
-            json.dump(self.profile, f, indent=2)
+        lock_path = str(self.profile_path) + ".lock"
+        with FileLock(lock_path):
+            with open(self.profile_path, "w", encoding="utf-8") as f:
+                json.dump(self.profile, f, indent=2)
 
-    def _detect_language(self, text: str) -> str:
+    async def _detect_language(self, text: str) -> str:
         try:
             lang = detect(text)
             self.profile["lang_pref"] = lang
             self.profile["name"] = self.sender_name # Update name just in case
             self._save_profile()
             return lang
-        except Exception as e:
-            logger.warning(f"Langdetect failed: {e}")
-            # LLM Fallback (Simulated here due to prompt constraints, but can use ask_llm)
-            # For brevity and safety in webhook loop, default to global target if completely fails
-            return settings.GLOBAL_TARGET_LANGUAGE
+        except (LangDetectException, json.JSONDecodeError, ValueError) as e:
+            from app.translation import detect_language
+            try:
+                lang = await detect_language(text)
+                return lang
+            except (Exception) as inner_e:
+                # Swallowing here is necessary for language fallback reliability
+                logger.warning(f"Langdetect and LLM fallback both failed: {inner_e}")
+                return getattr(settings, 'GLOBAL_TARGET_LANGUAGE', 'en')
 
     async def _process_media(self, media_path: str) -> Optional[str]:
         if not settings.VISION_ENABLED or not media_path:
@@ -94,8 +119,10 @@ class AIMemoryEngine:
                     image_path=media_path
                 )
                 return f"[Image uploaded by user: {description}]"
+            except httpx.HTTPError as e:
+                logger.error(f"Vision API error: {e}")
             except Exception as e:
-                logger.error(f"Vision error: {e}")
+                logger.error(f"Vision unexpected error: {e}")
                 return "[Image uploaded by user, but failed to analyze]"
 
         elif ext == 'pdf':
@@ -105,7 +132,7 @@ class AIMemoryEngine:
                     for page in pdf.pages[:3]: # limit to 3 pages for speed
                         text += page.extract_text() + "\n"
                 return f"[PDF uploaded by user. Contents: {text[:1000]}]"
-            except Exception as e:
+            except (IOError, ValueError) as e:
                 logger.error(f"PDF extraction error: {e}")
                 return "[PDF uploaded by user, but failed to read]"
 
@@ -164,12 +191,14 @@ Output ONLY valid JSON."""
             summary = await ask_llm(summary_prompt, task_type="json")
             self.profile["conversation_summary"] = summary
             self._save_profile()
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to update summary (HTTP error): {e}")
         except Exception as e:
             logger.error(f"Failed to update summary: {e}")
 
     async def process_message(self, text: str, media_path: Optional[str] = None) -> Optional[str]:
         # 1. Process Language
-        lang = self._detect_language(text)
+        lang = await self._detect_language(text)
 
         # 2. Process Media
         media_desc = await self._process_media(media_path)
@@ -191,7 +220,7 @@ Output ONLY valid JSON."""
                 )
                 if results['documents'] and results['documents'][0]:
                     retrieved_context = "\n".join(results['documents'][0])
-        except Exception as e:
+        except ValueError as e:
             logger.error(f"RAG retrieval error: {e}")
 
         # 5. Build System Prompt
@@ -234,6 +263,8 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
             await self._update_summary()
 
             return ai_reply
+        except httpx.HTTPError as e:
+            logger.error(f"LLM API HTTP Error during Chatty reply: {e}")
         except Exception as e:
-            logger.error(f"LLM API Error during Chatty reply: {e}")
+            logger.error(f"Unexpected LLM API Error during Chatty reply: {e}")
             return None

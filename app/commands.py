@@ -935,23 +935,26 @@ async def handle_command(  # Issue 13: added return type
 
                 import json
                 from pathlib import Path
+                from filelock import FileLock
                 safe_id = chat_id.replace('@', '_').replace('.', '_')
                 contact_dir = Path(f"./data/contacts/{safe_id}")
                 contact_dir.mkdir(parents=True, exist_ok=True)
                 profile_path = contact_dir / "profile.json"
+                lock_path = str(profile_path) + ".lock"
 
                 profile = {}
-                if profile_path.exists():
-                    try:
-                        with open(profile_path, "r") as f:
-                            profile = json.load(f)
-                    except Exception:
-                        pass
+                with FileLock(lock_path):
+                    if profile_path.exists():
+                        try:
+                            with open(profile_path, "r", encoding="utf-8") as f:
+                                profile = json.load(f)
+                        except Exception:
+                            pass
 
-                profile["chatty_status"] = status
+                    profile["chatty_status"] = status
 
-                with open(profile_path, "w") as f:
-                    json.dump(profile, f)
+                    with open(profile_path, "w", encoding="utf-8") as f:
+                        json.dump(profile, f)
 
                 await send_text_message(chat_id, f"✅ Chatty mode turned {'ON' if status else 'OFF'}.")
             else:

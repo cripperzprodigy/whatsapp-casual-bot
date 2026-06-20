@@ -5,6 +5,7 @@ import base64
 import time
 import json
 from pathlib import Path
+from filelock import FileLock
 from app.services.ai_memory_engine import AIMemoryEngine
 
 import httpx
@@ -141,19 +142,23 @@ async def process_message(
         contact_dir = Path(f"./data/contacts/{safe_id}")
         contact_dir.mkdir(parents=True, exist_ok=True)
         profile_path = contact_dir / "profile.json"
+        lock_path = str(profile_path) + ".lock"
 
         chatty_status = settings.CHATTY_GROUP_DEFAULT if "@g.us" in chat_id else settings.CHATTY_DEFAULT
-        if profile_path.exists():
-            try:
-                with open(profile_path, "r") as f:
-                    profile = json.load(f)
-                    if "chatty_status" in profile:
-                        chatty_status = profile["chatty_status"]
-            except Exception:
-                pass
-        else:
-            with open(profile_path, "w") as f:
-                json.dump({"chatty_status": chatty_status}, f)
+        profile = {}
+        with FileLock(lock_path):
+            if profile_path.exists():
+                try:
+                    with open(profile_path, "r") as f:
+                        profile = json.load(f)
+                        if "chatty_status" in profile:
+                            chatty_status = profile["chatty_status"]
+                except Exception:
+                    pass
+            else:
+                profile = {"chatty_status": chatty_status}
+                with open(profile_path, "w") as f:
+                    json.dump(profile, f)
 
         # Handle Commands
         if text.startswith("!"):
@@ -164,7 +169,7 @@ async def process_message(
         # Trigger Chatty RAG response if enabled
         if chatty_status:
             try:
-                engine = AIMemoryEngine(chat_id, sender_name)
+                engine = AIMemoryEngine(chat_id, sender_name, profile=profile)
                 ai_reply = await engine.process_message(text, media_path)
                 if ai_reply:
                     await send_text_message(
@@ -178,8 +183,7 @@ async def process_message(
                 logger.error(f"AI Memory Engine Error: {e}")
 
         # Auto-translation
-        chat_settings = get_chat_settings(db, chat_id)
-
+        # Uses the chat_settings already fetched at the top of the function
         is_auto_enabled = (
             chat_settings.auto_translate_enabled
             if chat_settings.auto_translate_enabled is not None
@@ -207,7 +211,7 @@ async def process_message(
                 and lang not in ignore_list
                 and lang != target_lang
             ):
-                translated = await translate_text(text, target_lang, source_lang=lang)
+                translated = await translate_text(text, target_lang, source_lang=lang, chat_id=chat_id, msg_id=msg_key.id)
                 reply_text = f"[{lang.upper()}] {translated}"
                 await send_text_message(
                     chat_id,

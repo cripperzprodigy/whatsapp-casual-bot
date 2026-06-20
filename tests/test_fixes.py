@@ -1,3 +1,4 @@
+from langdetect.lang_detect_exception import LangDetectException
 """
 Unit tests for the 16-issue critical refactor.
 Per SOP: agents must write tests for all new logic introduced.
@@ -150,9 +151,8 @@ class TestLanguageDetection:
     @pytest.mark.asyncio
     async def test_strips_whitespace(self):
         """Issue 3: ' en ' (with spaces) must return 'en'."""
-        with patch(
-            "app.translation.ask_llm", new_callable=AsyncMock
-        ) as mock_llm:
+        with patch("app.translation.detect", side_effect=LangDetectException(0, "error")), \
+             patch("app.translation.ask_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = " en "
             from app.translation import detect_language
             result = await detect_language("Hello world")
@@ -161,9 +161,8 @@ class TestLanguageDetection:
     @pytest.mark.asyncio
     async def test_full_name_english(self):
         """Issue 3: 'English' must map to 'en'."""
-        with patch(
-            "app.translation.ask_llm", new_callable=AsyncMock
-        ) as mock_llm:
+        with patch("app.translation.detect", side_effect=LangDetectException(0, "error")), \
+             patch("app.translation.ask_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "English"
             from app.translation import detect_language
             result = await detect_language("Hello world")
@@ -172,9 +171,8 @@ class TestLanguageDetection:
     @pytest.mark.asyncio
     async def test_full_name_indonesian(self):
         """Issue 3: 'Indonesian' must map to 'id'."""
-        with patch(
-            "app.translation.ask_llm", new_callable=AsyncMock
-        ) as mock_llm:
+        with patch("app.translation.detect", side_effect=LangDetectException(0, "error")), \
+             patch("app.translation.ask_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "Indonesian"
             from app.translation import detect_language
             result = await detect_language("Halo dunia")
@@ -183,9 +181,8 @@ class TestLanguageDetection:
     @pytest.mark.asyncio
     async def test_unknown_returned_for_gibberish(self):
         """Issue 3: truly unrecognisable output must return 'unknown'."""
-        with patch(
-            "app.translation.ask_llm", new_callable=AsyncMock
-        ) as mock_llm:
+        with patch("app.translation.detect", side_effect=LangDetectException(0, "error")), \
+             patch("app.translation.ask_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "some random verbose response"
             from app.translation import detect_language
             result = await detect_language("???")
@@ -194,9 +191,8 @@ class TestLanguageDetection:
     @pytest.mark.asyncio
     async def test_valid_two_letter_code(self):
         """Issue 3: clean two-letter code must pass through unchanged."""
-        with patch(
-            "app.translation.ask_llm", new_callable=AsyncMock
-        ) as mock_llm:
+        with patch("app.translation.detect", side_effect=LangDetectException(0, "error")), \
+             patch("app.translation.ask_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "id"
             from app.translation import detect_language
             result = await detect_language("Halo")

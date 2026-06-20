@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     RAG_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     VISION_ENABLED: bool = True
 
+    # ------------------------------------------------------------------ #
+    #  User Facing Strings
+    # ------------------------------------------------------------------ #
+    MSG_TRANSLATION_ERROR: str = "[⚠️ Translation service temporarily unavailable]"
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"
     )
