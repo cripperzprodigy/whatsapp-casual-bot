@@ -1,4 +1,12 @@
 import logging
+
+import os
+import base64
+import time
+import json
+from pathlib import Path
+from app.services.ai_memory_engine import AIMemoryEngine
+
 import httpx
 import sqlalchemy.exc
 from fastapi import APIRouter, Depends, BackgroundTasks, Request
@@ -105,10 +113,69 @@ async def process_message(
             db, chat_id, sender_id, sender_name, text
         )
 
+
+        # Media Handling
+        media_path = None
+        if data.media_data:
+            try:
+                media = data.media_data
+                if media and isinstance(media, dict) and 'data' in media and 'filename' in media:
+                    media_bytes = base64.b64decode(media['data'])
+                    safe_id = chat_id.replace('@', '_').replace('.', '_')
+                    contact_dir = Path(f"./data/contacts/{safe_id}/media")
+                    contact_dir.mkdir(parents=True, exist_ok=True)
+
+                    timestamp = int(time.time())
+                    filename = f"{timestamp}_{media['filename']}"
+                    file_path = contact_dir / filename
+
+                    with open(file_path, "wb") as f:
+                        f.write(media_bytes)
+
+                    media_path = str(file_path)
+            except Exception as e:
+                logger.error(f"Failed to save media: {e}")
+
+        # Ensure user profile and Chatty Status is initialized
+        safe_id = chat_id.replace('@', '_').replace('.', '_')
+        contact_dir = Path(f"./data/contacts/{safe_id}")
+        contact_dir.mkdir(parents=True, exist_ok=True)
+        profile_path = contact_dir / "profile.json"
+
+        chatty_status = settings.CHATTY_GROUP_DEFAULT if "@g.us" in chat_id else settings.CHATTY_DEFAULT
+        if profile_path.exists():
+            try:
+                with open(profile_path, "r") as f:
+                    profile = json.load(f)
+                    if "chatty_status" in profile:
+                        chatty_status = profile["chatty_status"]
+            except Exception:
+                pass
+        else:
+            with open(profile_path, "w") as f:
+                json.dump({"chatty_status": chatty_status}, f)
+
         # Handle Commands
         if text.startswith("!"):
             await handle_command(text, chat_id, sender_id, db)
             return
+
+
+        # Trigger Chatty RAG response if enabled
+        if chatty_status:
+            try:
+                engine = AIMemoryEngine(chat_id, sender_name)
+                ai_reply = await engine.process_message(text, media_path)
+                if ai_reply:
+                    await send_text_message(
+                        chat_id,
+                        ai_reply,
+                        reply_to_msg_id=msg_key.id,
+                        quoted_participant=msg_key.participant,
+                    )
+                    return
+            except Exception as e:
+                logger.error(f"AI Memory Engine Error: {e}")
 
         # Auto-translation
         chat_settings = get_chat_settings(db, chat_id)

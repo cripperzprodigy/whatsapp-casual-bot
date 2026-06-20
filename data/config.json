@@ -1,0 +1,5 @@
+{
+  "chatty_enabled_default": true,
+  "chatty_group_enabled_default": false,
+  "dynamic_system_prompt_enabled": true
+}

@@ -17,6 +17,9 @@ llm_client = AsyncOpenAI(
 _PRECISE_TASKS = {"translation", "language_detection"}
 
 
+import base64
+from typing import Optional
+
 async def ask_llm(
     prompt: str,
     task_type: Literal[
@@ -25,7 +28,11 @@ async def ask_llm(
         "search_answer",
         "generic",
         "language_detection",
+        "vision",
+        "json"
     ] = "generic",
+    system_override: Optional[str] = None,
+    image_path: Optional[str] = None
 ) -> str:
     """
     Unified interface to call the LLM based on task type and
@@ -35,14 +42,52 @@ async def ask_llm(
     temperature = (
         _TEMP_PRECISE if task_type in _PRECISE_TASKS else _TEMP_CREATIVE
     )
+
+    messages = []
+    if system_override:
+        messages.append({"role": "system", "content": system_override})
+
+    if task_type == "vision" and image_path:
+        # Load image as base64
+        try:
+            with open(image_path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                ext = image_path.split('.')[-1].lower()
+                if ext == 'jpg':
+                    ext = 'jpeg'
+                image_url = f"data:image/{ext};base64,{encoded_string}"
+
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image_url
+                            }
+                        }
+                    ]
+                })
+        except Exception as e:
+            logger.error(f"Failed to read image for vision LLM: {e}")
+            messages.append({"role": "user", "content": prompt})
+    else:
+        messages.append({"role": "user", "content": prompt})
+
     try:
-        response = await llm_client.chat.completions.create(
-            model=settings.DEFAULT_MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            # Issue 14: use LLM_MAX_TOKENS instead of magic 1024
-            max_tokens=settings.LLM_MAX_TOKENS,
-        )
+        kwargs = {
+            "model": settings.DEFAULT_MODEL_NAME,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": settings.LLM_MAX_TOKENS,
+        }
+
+        # Support JSON mode if requested
+        if task_type == "json":
+            kwargs["response_format"] = { "type": "json_object" }
+
+        response = await llm_client.chat.completions.create(**kwargs)
         return response.choices[0].message.content.strip()
     except Exception as exc:
         logger.error("Error calling LLM: %s", exc)

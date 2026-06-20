@@ -25,6 +25,7 @@ class WebhookData(BaseModel):
     message: WebhookMessageContent
     key: WebhookMessage
     pushName: Optional[str] = None
+    media_data: Optional[Dict[str, Any]] = None
 
 class WhatsAppWebhookPayload(BaseModel):
     event: str

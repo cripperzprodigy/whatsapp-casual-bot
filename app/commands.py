@@ -917,6 +917,46 @@ async def handle_command(  # Issue 13: added return type
                                     
                             await send_text_message(chat_id, msg)
 
+        elif command == "!chatty":
+            if len(args) == 1 and args[0] in ["on", "off"]:
+                status = args[0] == "on"
+
+                # Check permissions for groups
+                if "@g.us" in chat_id:
+                    user_ledger = db.query(GroupContactLedger).filter(
+                        GroupContactLedger.chat_id == chat_id,
+                        GroupContactLedger.jid == sender_id
+                    ).first()
+                    is_group_admin = user_ledger and user_ledger.is_admin
+                    is_bot_owner = await is_owner(db, sender_id)
+                    if not is_group_admin and not is_bot_owner:
+                        await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner to toggle Chatty in a group.")
+                        return
+
+                import json
+                from pathlib import Path
+                safe_id = chat_id.replace('@', '_').replace('.', '_')
+                contact_dir = Path(f"./data/contacts/{safe_id}")
+                contact_dir.mkdir(parents=True, exist_ok=True)
+                profile_path = contact_dir / "profile.json"
+
+                profile = {}
+                if profile_path.exists():
+                    try:
+                        with open(profile_path, "r") as f:
+                            profile = json.load(f)
+                    except Exception:
+                        pass
+
+                profile["chatty_status"] = status
+
+                with open(profile_path, "w") as f:
+                    json.dump(profile, f)
+
+                await send_text_message(chat_id, f"✅ Chatty mode turned {'ON' if status else 'OFF'}.")
+            else:
+                await send_text_message(chat_id, "Usage: !chatty on | !chatty off")
+
         elif command == "!a":
             if len(args) > 0:
                 ai_prompt = " ".join(args)

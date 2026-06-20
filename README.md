@@ -241,3 +241,40 @@ As the bot owner, these files contain irreplaceable data. **Back them up regular
 **If `.env` is lost:**
 - Use your backup to restore it
 - The bot will not function without this configuration file
+
+---
+
+## 🧠 Chatty Mode & Persistent Memory (RAG)
+
+The bot features a highly sophisticated "Chatty Mode" that allows it to hold open-ended, continuous conversations with users, leveraging both Short-Term Context and Long-Term Memory (RAG).
+
+### 📐 Architecture & Data Flow
+
+1. **Incoming Message:** The user sends a text or media message via WhatsApp.
+2. **Language Detection:** The engine detects the language (via `langdetect` or LLM fallback) and locks the response language to preserve natural conversation flow.
+3. **Media Pipeline:**
+   - **Images:** Sent to the Vision LLM (if enabled) to generate descriptive text.
+   - **Documents:** Processed via `pdfplumber` to extract raw text context.
+4. **RAG Ingestion:** The combined text (message + media context) is embedded locally using `sentence-transformers` and stored in a user-specific ChromaDB vector database.
+5. **Prompt Construction:** The bot combines:
+   - System Profile (Name, preferred language).
+   - Long-Term Memory (Relevant chunks retrieved from ChromaDB).
+   - Short-Term Summary (An LLM-generated rolling summary of the recent state of conversation).
+   - The immediate user input.
+6. **LLM Generation:** The unified context is sent to your configured Chat LLM to generate a natural, context-aware reply.
+
+### ⚙️ Configuration & Storage
+
+Chatty Mode configuration can be found in your `.env` file under the `CHATTY FEATURE & PERSISTENT MEMORY (RAG)` section. You can toggle the feature globally for DMs (`CHATTY_DEFAULT`) and Groups (`CHATTY_GROUP_DEFAULT`), and configure the Embedding model.
+
+**Important:** The RAG implementation is completely independent of your Chat LLM provider.
+- **Embeddings:** All embeddings are generated completely locally using `sentence-transformers` on your machine (e.g. `all-MiniLM-L6-v2`).
+- **Chat/Generation:** The actual text generation is handled by whatever provider you have configured in `.env` (Local LM Studio, Ollama, Cloud OpenAI, etc.).
+This ensures that your RAG pipeline functions perfectly, regardless of what chat backend you hook the bot up to!
+
+### 🔒 Privacy First
+
+The bot employs an **Isolated Ledger System**. All data related to a user (Logs, Media, Vector DB, Profiles) is isolated explicitly within the local `./data/contacts/{id}/` folder.
+
+- **No data leaves your local machine** unless you have specifically configured a Cloud Provider (e.g. OpenAI) as your Chat LLM.
+- **RAG embeddings** never hit the cloud; they are always processed strictly on your host machine.

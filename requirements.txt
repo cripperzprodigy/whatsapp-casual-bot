@@ -9,3 +9,8 @@ openai
 slowapi
 pytest
 pytest-asyncio
+chromadb
+langdetect
+sentence-transformers
+pillow
+pdfplumber

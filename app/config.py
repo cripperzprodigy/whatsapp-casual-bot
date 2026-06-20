@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     PM_FLOOD_LIMIT: int = 10
     PM_FLOOD_INTERVAL_SECONDS: int = 60
 
+    # ------------------------------------------------------------------ #
+    #  Chatty Feature & Persistent Memory (RAG)
+    # ------------------------------------------------------------------ #
+    CHATTY_DEFAULT: bool = True
+    CHATTY_GROUP_DEFAULT: bool = False
+    DYNAMIC_SYSTEM_PROMPT: bool = True
+    RAG_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    VISION_ENABLED: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"
     )

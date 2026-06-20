@@ -69,16 +69,25 @@ install_puppeteer_deps() {
 
 # Check if Node.js/npm is available
 if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    install_os_pkg "nodejs npm"
+    install_os_pkg "nodejs npm ffmpeg"
 fi
 
 # Check if python3-venv is available (often missing on clean Ubuntu)
 if ! python3 -c "import venv" &> /dev/null; then
-    install_os_pkg "python3-venv"
+    install_os_pkg "python3-venv python3-dev"
 fi
 
 # Ensure Puppeteer dependencies are present
 install_puppeteer_deps
+
+
+# Check if .env exists
+if [ ! -f ".env" ]; then
+    echo "⚠️  WARNING: .env file not found."
+    echo "Please copy .env.example to .env and configure it before starting."
+    read -p "Press any key to continue anyway or Ctrl+C to exit..." -n 1 -r
+    echo ""
+fi
 
 # Check if installation is needed
 NEEDS_INSTALL=false
