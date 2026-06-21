@@ -57,3 +57,4 @@
   - Addressed a bug in `install_deps.sh` where successfully compiled Python binaries from source were still flagged as missing dependencies.
   - Rewrote the verification block in `start.sh` to properly perform functional checks instead of relying on package manager states.
   - Resolved a severe control flow issue where `install_deps.sh` exited with `1` on success, causing the parent `start.sh` script to abort prematurely before creating the virtual environment. Added robust `$PYTHON_BIN` variable logging and path exports.
+  - Completed a comprehensive rewrite of `start.sh` to introduce idempotency and state awareness (`.bot_ready_state` marker). Converted the script from a linear prompt-heavy installer into a robust service-launcher pipeline (`main()` flow) that safely skips verified steps, updates pip dependencies automatically when `requirements.txt` changes, and provides sub-5-second restarts.

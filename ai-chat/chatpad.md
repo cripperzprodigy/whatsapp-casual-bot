@@ -173,3 +173,9 @@ Applied a set of stability and UX fixes for the WhatsApp bot.
 - Refactored the verification block in `start.sh` to dynamically use `$PYTHON_BIN` and functionally test binary execution, `sys.version_info` matching 3.12, `import sqlite3`, and `import venv`.
 - Standardized the source compilation target prefix in `start.sh` to `$HOME/.local` so the binary aligns exactly with `$HOME/.local/bin/python3.12`.
 - Fixed control flow issue where bot failed to start after source compilation. Discovered a premature `exit 1` on success in `install_deps.sh` which caused `start.sh` to abort. Corrected this to `exit 0` and added `PATH` exports and debug logs to `start.sh`.
+
+### [Antigravity] - [2026-06-21 14:52 UTC]
+- Completely rewrote `start.sh` to introduce an idempotent, state-aware pipeline architecture (`check_ready_state()` -> `main()`).
+- Added the `.bot_ready_state` marker file system. The script now bypasses all redundant APT updates, compilation, and dependency checks on subsequent restarts, allowing <5s bot launches.
+- Eliminated interactive `(y/n)` prompts for dependency installation, transitioning to an automated "set-and-forget" behavior.
+- Hardened PIP requirements install with an elegant timestamp-based check (`requirements.txt -nt $MARKER_FILE`) to only run `pip install` when new dependencies are pushed.
