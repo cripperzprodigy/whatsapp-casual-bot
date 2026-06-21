@@ -263,7 +263,7 @@ async def handle_command(  # Issue 13: added return type
         elif command == "!t":
             if not args:
                 await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
-                continue
+                return
                 
             from app.translation import FULL_NAME_TO_CODE, is_valid_language_code
             first_word = args[0].lower()
@@ -283,20 +283,20 @@ async def handle_command(  # Issue 13: added return type
                 
             if not text_to_translate.strip():
                 await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
-                continue
+                return
 
-                if target_lang == "auto":
-                    # Cascade: Chat Setting -> Global -> Default 'en'
-                    target_lang = (
-                        settings.default_target_language
-                        if settings.default_target_language is not None
-                        else (app_settings.GLOBAL_TARGET_LANGUAGE or "en")
-                    )
-                if text_to_translate.strip():
-                    translated = await translate_text(
-                        text_to_translate, target_lang
-                    )
-                    await send_text_message(chat_id, translated)
+            if target_lang == "auto":
+                # Cascade: Chat Setting -> Global -> Default 'en'
+                target_lang = (
+                    settings.default_target_language
+                    if settings.default_target_language is not None
+                    else (app_settings.GLOBAL_TARGET_LANGUAGE or "en")
+                )
+            if text_to_translate.strip():
+                translated = await translate_text(
+                    text_to_translate, target_lang
+                )
+                await send_text_message(chat_id, translated)
 
         elif command == "!summary":
             mode = args[0] if len(args) > 0 else "full"
