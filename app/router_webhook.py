@@ -177,7 +177,8 @@ async def process_message(
 
         # Ensure user profile and Chatty Status is initialized
         profile = read_profile(chat_id)
-        chatty_status = profile.get("chatty_status", False)
+        default_status = settings.CHATTY_GROUP_DEFAULT if chat_id.endswith("@g.us") else settings.CHATTY_DEFAULT
+        chatty_status = profile.get("chatty_status", default_status)
 
         # Handle Commands
         if text.startswith("!"):
