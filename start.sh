@@ -274,6 +274,14 @@ start_services() {
     echo "🚀 Starting Services..."
     echo "=========================================="
 
+    # Cleanup orphaned node processes that might still hold the port
+    if command -v fuser &> /dev/null; then
+        echo "-> Cleaning up orphaned processes on port 3000..."
+        fuser -k 3000/tcp 2>/dev/null || true
+    else
+        killall node 2>/dev/null || true
+    fi
+
     echo "-> Starting Node.js WhatsApp Gateway (background)..."
     cd whatsapp-service
     node index.js &
