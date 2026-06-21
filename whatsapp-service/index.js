@@ -83,17 +83,17 @@ function initClient() {
                 instance: 'whatsapp-web-js', // Issue 1: populate instance for Python schema
                 data: {
                     key: {
-                        remoteJid: msg.from,
+                        remoteJid: msg.from.replace('@c.us', '@s.whatsapp.net'),
                         fromMe: msg.fromMe,
                         id: msg.id.id,
-                        participant: chat.isGroup ? msg.author : null
+                        participant: (chat.isGroup && msg.author) ? msg.author.replace('@c.us', '@s.whatsapp.net') : null
                     },
                     message: {
                         conversation: msg.body,
                         extendedTextMessage: {
                             text: msg.body,
                             contextInfo: {
-                                mentionedJid: msg.mentionedIds || []
+                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace('@c.us', '@s.whatsapp.net')) : []
                             }
                         }
                     },
@@ -188,8 +188,10 @@ app.post('/message/sendText', async (req, res) => {
             sendOptions.quotedMessageId = options.quoted;
         }
 
-        // whatsapp-web.js requires the id format `number@c.us` or `number@g.us`
-        await client.sendMessage(number, textMessage.text, sendOptions);
+        // The Python backend works with @s.whatsapp.net, but whatsapp-web.js requires @c.us for users.
+        let wwebjsNumber = number.replace('@s.whatsapp.net', '@c.us');
+        
+        await client.sendMessage(wwebjsNumber, textMessage.text, sendOptions);
         res.json({ status: 'ok' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -217,7 +219,7 @@ app.get('/group/findGroupInfos', async (req, res) => {
         const mappedInfo = {
             subject: chat.name,
             participants: chat.participants.map(p => ({
-                id: p.id._serialized,
+                id: p.id._serialized.replace('@c.us', '@s.whatsapp.net'),
                 admin: p.isAdmin ? 'admin' : (p.isSuperAdmin ? 'superadmin' : null)
             }))
         };
