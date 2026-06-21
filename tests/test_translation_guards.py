@@ -1,16 +1,12 @@
 import pytest
 from app.translation import detect_language_safe
 
-def test_length_and_word_guards():
-    # Length < 10 should return None
+def test_short_text():
+    # Texts shorter than 4 chars or mostly emoji should return None
     assert detect_language_safe("Hi", "en") is None
-    assert detect_language_safe("Shortest", "en") is None
-    
-    # Words < 3 should return None (even if length > 10)
-    assert detect_language_safe("LongWordHere Indeed", "en") is None
-    
-    # Emoji should return None
-    assert detect_language_safe("👍👍👍👍👍👍👍👍👍👍👍👍👍", "en") is None
+    assert detect_language_safe("Ok", "en") is None
+    assert detect_language_safe("Ya", "id") is None
+    assert detect_language_safe("👍", "en") is None
 
 def test_same_language():
     # English text with English target should return None

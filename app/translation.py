@@ -37,20 +37,15 @@ FULL_NAME_TO_CODE: dict[str, str] = {
 
 def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
     """
-    Determines if text should be translated based on length, emojis, 
+    Determines if text should be translated based on length, emojis,
     and probabilistic language detection. Returns detected code or None if skipped.
     """
     # 1. Length Guard
     if len(text.strip()) < settings.TRANSLATION_MIN_LENGTH:
         logger.debug(f"Skipping translation: Length < {settings.TRANSLATION_MIN_LENGTH}")
         return None
-        
-    # 2. Word Count Guard
-    if len(text.split()) < settings.TRANSLATION_MIN_WORDS:
-        logger.debug(f"Skipping translation: Words < {settings.TRANSLATION_MIN_WORDS}")
-        return None
-        
-    # 3. Emoji/Pattern Guard (Skip if >80% non-alphanumeric)
+
+    # 2. Emoji/Pattern Guard (Skip if >80% non-alphanumeric)
     alphanumeric_count = sum(c.isalnum() for c in text)
     if alphanumeric_count / max(len(text), 1) < 0.2:
         logger.debug("Skipping translation: High non-alphanumeric density")
@@ -62,31 +57,31 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         if not langs:
             logger.debug("Skipping translation: No language detected")
             return None
-            
+
         detected = langs[0]
         conf = detected.prob
-        
+
         # 4. Confidence Guard
         if conf < settings.TRANSLATION_CONFIDENCE_THRESHOLD:
             logger.debug(f"Skipping translation: Low confidence ({conf:.2f})")
             return None
-            
+
         code = detected.lang
-        
+
         # 5. ID/MS Equivalence
         equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
         if code in equivalent_langs and target_lang in equivalent_langs:
             logger.debug(f"Skipping translation: Equivalent languages ({code} -> {target_lang})")
             return None
-            
+
         # 6. Exact Match
         if code == target_lang:
             logger.debug(f"Skipping translation: Exact match ({code})")
             return None
-            
+
         # 7. Confirmed Mismatch
         return code
-        
+
     except LangDetectException:
         # Safe Fail: Do not translate if detection fails
         logger.debug("Skipping translation: LangDetectException")
@@ -116,10 +111,10 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
     Returns the original text immediately if safe language detection fails or matches target.
     """
     source_lang = detect_language_safe(text, target_language)
-    
+
     if source_lang is None:
         return text
-        
+
     if ignore_list and source_lang in ignore_list:
         logger.debug(f"Skipping translation: Source language '{source_lang}' is explicitly ignored")
         return text
@@ -147,7 +142,7 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
         if not result or result.startswith("Error:"):
             logger.error(f"Translation failed silently or returned error. chat_id={chat_id}, msg_id={msg_id}, response={result}")
             return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
-            
+
         return f"[{source_lang.upper()}] {result}"
     except Exception as e:
         logger.error(f"Critical error during translation API call. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")

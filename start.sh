@@ -15,20 +15,18 @@ check_ready_state() {
     if [ -f "$MARKER_FILE" ]; then
         local marker_content=$(cat "$MARKER_FILE")
         local saved_bin="${marker_content%%|*}"
-        
+
         if [ -x "$saved_bin" ]; then
             local version=$("$saved_bin" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
             if [ "$version" == "3.12" ]; then
-                echo "✅ Valid marker found. Skipping installation."
+                echo "✅ Ready state detected. Python 3.12 verified at $saved_bin."
                 export PYTHON_BIN="$saved_bin"
                 export PATH="$HOME/.local/bin:$PATH"
                 return 0
             fi
         fi
-        echo "⚠️  Marker found but binary broken. Re-installing..."
+        echo "⚠️  Ready state marker invalid or binary broken. Proceeding to full installation..."
         rm -f "$MARKER_FILE"
-    else
-        echo "ℹ️  No marker found. Fresh install required."
     fi
     return 1
 }
@@ -113,7 +111,7 @@ find_or_install_python() {
             echo "✅ Installed python3.12 via APT."
         else
             echo "⚠️  APT failed. Proceeding to Step 2..."
-            
+
             # Step 2: Attempt PPA Installation
             echo "⏳ Step 2: Attempting PPA installation (deadsnakes)..."
             if sudo apt-get install -y software-properties-common && \
@@ -123,7 +121,7 @@ find_or_install_python() {
                 echo "✅ Installed python3.12 via PPA."
             else
                 echo "⚠️  PPA failed. Proceeding to Step 3..."
-                
+
                 # Step 3: Autonomous Source Compilation
                 echo "⏳ Step 3: Compiling Python 3.12 from source..."
                 sudo apt-get install -y build-essential libssl-dev zlib1g-dev \
@@ -154,7 +152,7 @@ find_or_install_python() {
 
                     cd - >/dev/null
                     rm -rf "$TEMP_DIR"
-                    
+
                     if [ ! -x "$PYTHON_BIN" ]; then
                         echo "❌ Critical Error: Python source compilation failed."
                         exit 1
@@ -171,7 +169,7 @@ verify_python() {
     echo "⏳ Running functional tests on Python binary..."
     export PATH="$HOME/.local/bin:$PATH"
     hash -r
-    
+
     if ! command -v "$PYTHON_BIN" &> /dev/null; then
         echo "❌ Error: Python binary not found at $PYTHON_BIN"
         exit 1
@@ -230,6 +228,7 @@ create_venv_and_deps() {
         pip install -q --upgrade pip
         pip install -q --upgrade-strategy only-if-needed -r requirements.txt
         echo "✅ Python dependencies installed."
+        touch "$MARKER_FILE"
     else
         echo "✅ Python dependencies already present."
     fi
@@ -241,26 +240,6 @@ create_venv_and_deps() {
         npm install
         cd ..
     fi
-
-    echo "✅ Environment ready. Saving state marker..."
-
-    # 1. Resolve absolute path to the Python binary
-    ABS_PYTHON_PATH=$(realpath "$PYTHON_BIN")
-
-    # 2. Write to marker file (Atomic write using temp file + mv)
-    MARKER_FILE=".bot_ready_state"
-    TEMP_MARKER=".bot_ready_state.tmp"
-
-    echo "${ABS_PYTHON_PATH}|3.12" > "$TEMP_MARKER"
-    mv "$TEMP_MARKER" "$MARKER_FILE"
-
-    # 3. Verify write success
-    if [ -f "$MARKER_FILE" ]; then
-        echo "✅ State marker saved to $(pwd)/$MARKER_FILE"
-    else
-        echo "❌ CRITICAL: Failed to write state marker. Installation may repeat."
-        exit 1
-    fi
 }
 
 # --- 5. Start Services ---
@@ -268,6 +247,9 @@ start_services() {
     echo "=========================================="
     echo "🚀 Starting Services..."
     echo "=========================================="
+
+    # Write marker safely
+    echo "$PYTHON_BIN|3.12" > "$MARKER_FILE"
 
     echo "-> Starting Node.js WhatsApp Gateway (background)..."
     cd whatsapp-service

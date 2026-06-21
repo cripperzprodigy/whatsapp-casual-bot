@@ -23,7 +23,7 @@ This plan outlines the steps to refactor `start.sh` into a robust, state-aware s
 
 - **Idempotent Pre-Flight & System Checks**:
   - Auto-detect missing Node.js/ffmpeg/Puppeteer dependencies and install them via APT only if they are missing (using `dpkg -l` checks). Remove blocking `read -p` prompts.
-  
+
 - **Control Flow & Compilation Fixes**:
   - Refactor the execution into a clean, linear `main()` function pipeline.
   - Remove all inner `exit` calls from successful compilation paths.

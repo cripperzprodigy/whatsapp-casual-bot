@@ -5,7 +5,7 @@ The `start.sh` boot script has been completely refactored from a linear, prompt-
 ## Key Changes Made
 
 ### 1. The State Marker (`.bot_ready_state`)
-The script now writes a state marker containing the verified path to the Python 3.12 binary upon a successful startup. 
+The script now writes a state marker containing the verified path to the Python 3.12 binary upon a successful startup.
 - On subsequent runs, it reads this marker and dynamically bypasses the costly APT update, source compilation, and system-level dependency checks, allowing the bot to boot in under 5 seconds.
 - The marker is fail-safe: if the Python binary is moved or becomes invalid, the script automatically deletes the marker and gracefully falls back to a full installation.
 
@@ -21,7 +21,7 @@ The massive, nested logic blocks have been decoupled into single-responsibility 
 This guarantees that successful installation logically "falls through" to the next step rather than dead-ending or crashing out due to trapped sub-shell variables.
 
 ### 3. Automated "Set-and-Forget" Deployment
-The manual `(y/n)` prompts for dependency installations have been removed. If a clean VM is detected, the script now assumes authorization to install the exact OS packages required by Puppeteer, FFMpeg, and Node.js. 
+The manual `(y/n)` prompts for dependency installations have been removed. If a clean VM is detected, the script now assumes authorization to install the exact OS packages required by Puppeteer, FFMpeg, and Node.js.
 
 ### 4. Smart Pip Check
 `pip install` is now triggered intelligently using bash modification times:
