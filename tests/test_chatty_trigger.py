@@ -68,3 +68,34 @@ def test_explicit_mention_immediate_response():
     # DM — always triggers via is_bot_mentioned but is_explicitly_tagged can be False
     assert is_bot_mentioned("tell me a joke", "999", is_group=False) is True
     assert is_explicitly_tagged("tell me a joke", "999") is False
+
+# ── Test Suite: Translation Suppression on Explicit Mention ──
+
+def test_bot_mention_suppresses_translation():
+    """
+    When a message contains an explicit bot mention (@bot or @number),
+    is_explicitly_tagged returns True. The router uses this to skip
+    auto-translation, preventing duplicate responses.
+    """
+    bot_number = "1234567890"
+
+    # Case A: "@bot hi" -> explicit tag = True -> translation SKIPPED
+    assert is_explicitly_tagged("@bot hi", bot_number) is True
+
+    # Case B: "Hello everyone" -> explicit tag = False -> translation ALLOWED
+    assert is_explicitly_tagged("Hello everyone", bot_number) is False
+
+    # Case C: "@bot hi" in foreign language -> still explicit -> translation SKIPPED
+    assert is_explicitly_tagged("@bot 你好", bot_number) is True
+
+def test_normal_messages_still_translate():
+    """
+    Messages that do NOT mention the bot should still be eligible
+    for auto-translation. This ensures no regression.
+    """
+    bot_number = "999"
+
+    # Normal group messages without mentions
+    assert is_explicitly_tagged("Buenos días a todos", bot_number) is False
+    assert is_explicitly_tagged("Guten Morgen!", bot_number) is False
+    assert is_explicitly_tagged("Hello 12345", bot_number) is False

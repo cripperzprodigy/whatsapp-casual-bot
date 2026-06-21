@@ -287,6 +287,14 @@ async def process_message(
                 logger.error(f"AI Memory Engine Error: {e}")
 
         # Auto-translation
+        # Guard: Skip translation for messages explicitly directed at the bot.
+        # These are conversational commands, not content requiring translation.
+        # This also acts as defense-in-depth if the chatty try/except leaks.
+        bot_id = settings.BOT_NUMBER
+        if is_explicitly_tagged(text, bot_id):
+            logger.debug(f"Skipping auto-translation: message is an explicit bot mention.")
+            return
+
         # Uses the chat_settings already fetched at the top of the function
         is_auto_enabled = (
             chat_settings.auto_translate_enabled
