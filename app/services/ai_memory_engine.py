@@ -276,3 +276,91 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         except Exception as e:
             logger.error(f"Unexpected LLM API Error during Chatty reply: {e}")
             return None
+
+    async def generate_delayed_reply(self, is_burst: bool = False) -> Optional[str]:
+        """
+        Gathers all consecutive user messages from the end of the chat history
+        (simulating a burst of rapid-fire texts) and generates a single combined response.
+        """
+        # 1. Read history to find pending user messages
+        if not self.history_path.exists():
+            return None
+            
+        pending_texts = []
+        with open(self.history_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            # Iterate backwards to find all user messages until we hit an assistant message
+            for line in reversed(lines):
+                if not line.strip(): continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("role") == "user":
+                        pending_texts.insert(0, entry.get("content", ""))
+                    elif entry.get("role") == "assistant":
+                        break
+                except json.JSONDecodeError:
+                    continue
+                    
+        if not pending_texts:
+            return None
+            
+        full_text = "\n".join(pending_texts)
+        
+        # 2. Process Language
+        lang = await self._detect_language(full_text)
+
+        # 3. Retrieve RAG Context
+        retrieved_context = ""
+        try:
+            if self.collection.count() > 0:
+                query_embedding = self._embed_text(full_text)
+                results = self.collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=min(5, self.collection.count())
+                )
+                if results['documents'] and results['documents'][0]:
+                    retrieved_context = "\n".join(results['documents'][0])
+        except ValueError as e:
+            logger.error(f"RAG retrieval error: {e}")
+
+        # 4. Build System Prompt
+        base_prompt_path = Path("./data/system_prompts/default.txt")
+        base_prompt = "You are a helpful assistant."
+        if base_prompt_path.exists():
+            with open(base_prompt_path, "r", encoding="utf-8") as f:
+                base_prompt = f.read()
+
+        custom_instructions = self.profile.get("system_prompt") or "None"
+        summary = self.profile.get("conversation_summary") or "{}"
+
+        system_prompt = f"""[Global Instructions]
+{base_prompt}
+
+[User Profile]
+Name: {self.profile.get('name', 'Unknown')}
+Preferred Language: {lang}
+Custom Instructions: {custom_instructions}
+
+[Long Term Memory (RAG)]
+{retrieved_context}
+
+[Recent Context Summary]
+{summary}
+
+[Constraint]
+Reply ONLY in {lang}. Be natural, human-like, and concise."""
+
+        # 5. Call LLM
+        try:
+            ai_reply = await ask_llm(full_text, task_type="generic", system_override=system_prompt)
+
+            # 6. Append AI reply to history
+            self._append_history("assistant", ai_reply)
+
+            # 7. Trigger background summary
+            await self._update_summary()
+
+            return ai_reply
+        except Exception as e:
+            logger.error(f"Error during delayed Chatty reply: {e}")
+            return None

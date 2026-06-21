@@ -103,6 +103,8 @@ class Settings(BaseSettings):
     # Chatty Frequency Control Defaults
     CHATTY_DEFAULT_FREQUENCY: int = 10
     CHATTY_DEFAULT_BURST: int = 1
+    CHATTY_DELAY_MIN: int = 5
+    CHATTY_DELAY_MAX: int = 10
     CHATTY_ENABLED_LANGUAGES: str = "en,id,ms"
     DEFAULT_GROUP_LANGUAGE: str = "en"
     DEFAULT_DM_LANGUAGE: str = "en"

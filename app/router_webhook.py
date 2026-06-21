@@ -4,6 +4,9 @@ import os
 import base64
 import time
 import json
+import asyncio
+import random
+from typing import Dict
 from pathlib import Path
 from filelock import FileLock
 from app.services.profile_service import read_profile, write_profile
@@ -36,6 +39,40 @@ router = APIRouter()
 # Issue 8: limiter instance — shared state injected from main.py
 limiter = Limiter(key_func=get_remote_address)
 
+pending_chatty_tasks: Dict[str, asyncio.Task] = {}
+
+async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, engine: AIMemoryEngine, delay: float, burst_count: int):
+    try:
+        if delay > 0:
+            await asyncio.sleep(delay)
+            
+        ai_reply = await engine.generate_delayed_reply()
+        if ai_reply:
+            await send_text_message(
+                chat_id,
+                ai_reply,
+                reply_to_msg_id=msg_id,
+                quoted_participant=participant,
+            )
+            # Process bursts sequentially if > 1
+            for _ in range(1, burst_count):
+                burst_reply = await engine.generate_delayed_reply(is_burst=True)
+                if burst_reply:
+                    await send_text_message(
+                        chat_id,
+                        burst_reply,
+                        reply_to_msg_id=msg_id,
+                        quoted_participant=participant,
+                    )
+    except asyncio.CancelledError:
+        # Task was cancelled (debounced) by a newer message
+        pass
+    except Exception as e:
+        logger.error(f"Error in delayed chatty reply task: {e}")
+    finally:
+        # Clean up the task from pending dict if it's still this one
+        if pending_chatty_tasks.get(chat_id) == asyncio.current_task():
+            del pending_chatty_tasks[chat_id]
 
 async def process_message(
     payload: WhatsAppWebhookPayload, db: Session
@@ -176,27 +213,30 @@ async def process_message(
                 engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
 
                 # We must ALWAYS process the message so it's added to RAG context
-                # However, we only trigger the LLM to generate a reply if `trigger` is True
-                ai_reply = await engine.process_message(text, media_path, generate_reply=trigger)
+                # Pass generate_reply=False so it only appends to history and doesn't call LLM instantly
+                await engine.process_message(text, media_path, generate_reply=False)
 
-                if trigger and ai_reply:
-                    await send_text_message(
-                        chat_id,
-                        ai_reply,
-                        reply_to_msg_id=msg_key.id,
-                        quoted_participant=msg_key.participant,
-                    )
-                    # Process bursts sequentially if > 1
-                    for _ in range(1, burst_count):
-                        burst_reply = await engine.process_message(text, media_path, is_burst=True, generate_reply=True)
-                        if burst_reply:
-                            await send_text_message(
-                                chat_id,
-                                burst_reply,
-                                reply_to_msg_id=msg_key.id,
-                                quoted_participant=msg_key.participant,
-                            )
                 if trigger:
+                    bot_id = settings.BOT_NUMBER
+                    is_mentioned = (bot_id and (bot_id in text or f"@{bot_id}" in text)) or "@bot" in text.lower()
+                    
+                    if is_mentioned:
+                        # Immediate reply bypasses delay
+                        delay = 0.0
+                    else:
+                        d_min = updated_profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
+                        d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
+                        delay = random.uniform(d_min, d_max)
+
+                    # Debounce: Cancel existing task if any
+                    if chat_id in pending_chatty_tasks:
+                        pending_chatty_tasks[chat_id].cancel()
+                        
+                    # Start new delayed task
+                    task = asyncio.create_task(_delayed_chatty_reply(
+                        chat_id, msg_key.id, msg_key.participant, engine, delay, burst_count
+                    ))
+                    pending_chatty_tasks[chat_id] = task
                     return
             except Exception as e:
                 logger.error(f"AI Memory Engine Error: {e}")

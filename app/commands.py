@@ -69,6 +69,7 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
             "└ `!chatty on|off` - Toggle continuous AI conversation",
             "├ `!chatty_freq <val>` - Set frequency",
             "├ `!chatty_burst <val>` - Set burst count",
+            "├ `!chatty_delay <min> <max>` - Set human-like delay",
             "├ `!chatty_status` - View current settings",
             "├ `!lang set <code>` - DM Only: Set preferred language",
             "└ `!lang reset` - DM Only: Revert language\n"
@@ -1035,6 +1036,31 @@ async def handle_command(  # Issue 13: added return type
 
             await send_text_message(chat_id, f"✅ Chatty burst set to {burst} messages.")
 
+        elif command == "!chatty_delay":
+            if not is_group_admin and not is_owner and is_group_chat:
+                await send_text_message(chat_id, "❌ Access Denied: You must be a group admin or bot owner to change Chatty delay.")
+                return
+
+            if len(args) != 2:
+                await send_text_message(chat_id, "Usage: !chatty_delay <min> <max>")
+                return
+
+            try:
+                delay_min = int(args[0])
+                delay_max = int(args[1])
+                if delay_min < 0 or delay_max < delay_min:
+                    raise ValueError
+            except ValueError:
+                await send_text_message(chat_id, "❌ Minimum and maximum must be valid positive numbers, and max must be >= min.")
+                return
+
+            profile = read_profile(chat_id)
+            profile["chatty_delay_min"] = delay_min
+            profile["chatty_delay_max"] = delay_max
+            write_profile(chat_id, profile)
+
+            await send_text_message(chat_id, f"✅ Chatty delay set to {delay_min}-{delay_max} seconds.")
+
         elif command == "!chatty_status":
             profile = read_profile(chat_id)
 
@@ -1042,10 +1068,12 @@ async def handle_command(  # Issue 13: added return type
             status = profile.get("chatty_status", default_status)
             freq = profile.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY)
             burst = profile.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
+            d_min = profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
+            d_max = profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
             counter = profile.get("message_counter", 0)
             lang = profile.get("preferred_language", "Auto")
 
-            msg = f"🧠 *Chatty Status*\n\nStatus: {'ON' if status else 'OFF'}\nFrequency: {freq}\nBurst: {burst}\nCounter: {counter}/{freq}\nPreferred Lang: {lang}"
+            msg = f"🧠 *Chatty Status*\n\nStatus: {'ON' if status else 'OFF'}\nFrequency: {freq}\nBurst: {burst}\nDelay: {d_min}-{d_max}s\nCounter: {counter}/{freq}\nPreferred Lang: {lang}"
             await send_text_message(chat_id, msg)
 
         elif command == "!lang":
