@@ -30,6 +30,9 @@ Privacy and context separation are fundamental. All user data is stringently iso
 - `VISION_ENABLED` (bool): Process media via vision LLMs.
 - `CHATTY_DEFAULT_FREQUENCY` (int): Standard unprompted response trigger threshold (default: 10 messages).
 - `CHATTY_DEFAULT_BURST` (int): Responses yielded per threshold activation (default: 1).
+- `CHATTY_DELAY_MIN` (int): Minimum seconds to simulate typing/reading before a reply.
+- `CHATTY_DELAY_MAX` (int): Maximum seconds to simulate typing/reading before a reply.
+- `CHATTY_DELAY_MODE` (str): 'debounce' (resets timer if user keeps typing) or 'throttle' (strict wait).
 - `DEFAULT_GROUP_LANGUAGE` (str): Backup resolution if detection fails (default: 'en').
 - `DEFAULT_DM_LANGUAGE` (str): Backup resolution for DMs.
 
@@ -50,7 +53,9 @@ Users and Admins interact with the Chatty memory engine using the `!chatty` comm
 | `!chatty on\|off` | Public (DM), Admin/Owner (Group) | Enables Chatty mode for the current chat window. |
 | `!chatty_freq <val>` | Admin/Owner (Group) | Sets the frequency trigger interval (10-1000). |
 | `!chatty_burst <val>` | Admin/Owner (Group) | Modifies the burst response count per trigger (1-5). |
-| `!chatty_status` | Public (DM), Admin/Owner (Group) | Lists current frequency and counter stats. |
+| `!chatty_delay <min> <max>` | Admin/Owner (Group) | Configures the simulated human delay. |
+| `!chatty_mode <debounce\|throttle>` | Admin/Owner (Group) | Sets the timer strategy for rapid messages. |
+| `!chatty_status` | Public (DM), Admin/Owner (Group) | Lists current frequency, delay, and counter stats. |
 | `!lang set <code>` | Public (DM) | Sets a strict language preference. |
 | `!lang reset` | Public (DM) | Reverts DM into automatic `langdetect` logic. |
 
