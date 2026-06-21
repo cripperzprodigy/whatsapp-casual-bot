@@ -65,10 +65,6 @@ def is_bot_mentioned(text: str, bot_number: str | None, is_group: bool) -> bool:
 
 async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, engine: AIMemoryEngine, delay: float, burst_count: int):
     try:
-        is_group = chat_id.endswith("@g.us")
-        target_msg_id = msg_id if is_group else None
-        target_participant = participant if is_group else None
-
         if delay > 0:
             await asyncio.sleep(delay)
             
@@ -77,8 +73,8 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
             await send_text_message(
                 chat_id,
                 ai_reply,
-                reply_to_msg_id=target_msg_id,
-                quoted_participant=target_participant,
+                reply_to_msg_id=None,
+                quoted_participant=None,
             )
             # Process bursts sequentially if > 1
             for _ in range(1, burst_count):
@@ -87,8 +83,8 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
                     await send_text_message(
                         chat_id,
                         burst_reply,
-                        reply_to_msg_id=target_msg_id,
-                        quoted_participant=target_participant,
+                        reply_to_msg_id=None,
+                        quoted_participant=None,
                     )
     except asyncio.CancelledError:
         # Task was cancelled (debounced) by a newer message
