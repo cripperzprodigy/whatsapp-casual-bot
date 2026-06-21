@@ -1,4 +1,4 @@
-from app.ai_client import ask_llm
+from app.ai_client import ask_llm, TokenExhaustedError, TranslationError
 from langdetect import detect, detect_langs, DetectorFactory
 DetectorFactory.seed = 0
 from langdetect.lang_detect_exception import LangDetectException
@@ -119,31 +119,44 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
         logger.debug(f"Skipping translation: Source language '{source_lang}' is explicitly ignored")
         return text
 
-    source_hint = f"from the language represented by the ISO 639-1 code '{source_lang}' "
+    # Guard Rails: Truncate input > 2000 characters
+    if len(text) > 2000:
+        logger.warning(f"Truncating text from {len(text)} to 2000 characters before translation")
+        text_to_translate = text[:2000]
+    else:
+        text_to_translate = text
 
     prompt = (
-        f"Translate the following text {source_hint}to the language represented "
-        f"by the ISO 639-1 code '{target_language}'.\n"
-        "Rules:\n"
-        "1. Preserve the exact original tone and formatting "
-        "(formal/casual, emojis, line breaks).\n"
-        "2. DO NOT add any conversational filler, introductions, or "
-        "explanations like 'Here is the translation' or "
-        "'Sure, here it is'.\n"
-        "3. Output ONLY the translated text and nothing else.\n"
-        "4. If it is a short message, you may optionally prefix it "
-        "with the original language name in brackets, like "
-        "'[Spanish] Translated text here'.\n\n"
-        f"Text to translate:\n{text}"
+        "You are a precise translation engine.\n"
+        f"Translate the input text to {target_language}. Automatically detect the actual source language (ignore any provided ISO codes if they conflict). Output ONLY the translated text.\n"
+        "NO explanations. NO prefixes like 'Here is the translation'. NO meta-commentary. Preserve all emojis, slang, and formatting exactly.\n\n"
+        f"Text to translate:\n{text_to_translate}"
     )
 
-    try:
-        result = await ask_llm(prompt, task_type="translation")
-        if not result or result.startswith("Error:"):
-            logger.error(f"Translation failed silently or returned error. chat_id={chat_id}, msg_id={msg_id}, response={result}")
+    max_retries = 1
+    current_multiplier = 1.0
+    
+    for attempt in range(max_retries + 1):
+        try:
+            max_tokens = int(settings.LLM_MAX_TOKENS * current_multiplier)
+            response_content = await ask_llm(prompt, task_type="translation", max_tokens_override=max_tokens)
+            return f"[{source_lang.upper()}] {response_content}"
+            
+        except TokenExhaustedError:
+            if attempt < max_retries:
+                logger.warning(f"Translation hit token limit (attempt {attempt + 1}). Retrying with 50% more tokens.")
+                current_multiplier = 1.5
+                continue
+            else:
+                logger.error("Translation failed after 1 retry due to token exhaustion.")
+                return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
+                
+        except TranslationError as e:
+            logger.error(f"Translation failed silently or returned error. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")
             return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
-
-        return f"[{source_lang.upper()}] {result}"
-    except Exception as e:
-        logger.error(f"Critical error during translation API call. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")
-        return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
+            
+        except Exception as e:
+            logger.error(f"Critical error during translation API call. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")
+            return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
+            
+    return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"

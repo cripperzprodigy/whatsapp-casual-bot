@@ -1,9 +1,16 @@
-from typing import Literal
+from typing import Literal, Optional
+from dataclasses import dataclass
 from openai import AsyncOpenAI
 from app.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
+
+class TokenExhaustedError(Exception):
+    pass
+
+class TranslationError(Exception):
+    pass
 
 # Issue 14: named constants instead of inline magic numbers
 _TEMP_PRECISE = 0.3   # translation / language detection tasks
@@ -32,7 +39,8 @@ async def ask_llm(
         "json"
     ] = "generic",
     system_override: Optional[str] = None,
-    image_path: Optional[str] = None
+    image_path: Optional[str] = None,
+    max_tokens_override: Optional[int] = None
 ) -> str:
     """
     Unified interface to call the LLM based on task type and
@@ -80,7 +88,7 @@ async def ask_llm(
             "model": settings.DEFAULT_MODEL_NAME,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": settings.LLM_MAX_TOKENS,
+            "max_tokens": max_tokens_override or settings.LLM_MAX_TOKENS,
         }
 
         # Support JSON mode if requested
@@ -93,17 +101,34 @@ async def ask_llm(
         if not hasattr(response, 'choices') or not response.choices:
             raw_resp = response.model_dump_json() if hasattr(response, 'model_dump_json') else str(response)
             logger.error(f"LLM returned no choices. Raw response: {raw_resp}")
-            return "Error: LLM returned no choices."
+            raise TranslationError("LLM returned no choices.")
             
-        content = response.choices[0].message.content
+        choice = response.choices[0]
+        content = choice.message.content
+        finish_reason = getattr(choice, 'finish_reason', None)
         
+        # Logic Update based on finish_reason
+        if finish_reason == "length":
+            logger.warning("Token limit hit during translation")
+            raise TokenExhaustedError("Token limit hit.")
+            
         # Handle Refusals / Empty Content
         if not content or content.strip() == "":
-            raw_resp = response.model_dump_json() if hasattr(response, 'model_dump_json') else str(response)
-            logger.error(f"LLM returned empty content or refused translation. Raw response: {raw_resp}")
-            return "Error: LLM returned empty content."
+            if finish_reason != "stop":
+                raw_resp = response.model_dump_json() if hasattr(response, 'model_dump_json') else str(response)
+                logger.error(f"LLM returned empty content. Raw response: {raw_resp}")
+                raise TranslationError("LLM returned empty content.")
+            else:
+                return ""
+            
+        if finish_reason == "stop" or finish_reason is None:
+            return content.strip()
             
         return content.strip()
+    except TokenExhaustedError:
+        raise
+    except TranslationError:
+        raise
     except Exception as exc:
         # Fallback: Extract raw response if it's an API error
         raw_body = ""
@@ -114,4 +139,4 @@ async def ask_llm(
                 pass
         
         logger.error(f"Error calling LLM: {exc}.{raw_body}")
-        return "Error: Could not process request with AI."
+        raise TranslationError(f"Could not process request with AI: {exc}")

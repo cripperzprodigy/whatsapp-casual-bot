@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     #  Issue 14: Named constants replacing magic numbers
     # ------------------------------------------------------------------ #
     SUMMARY_MESSAGE_LIMIT: int = 500
-    LLM_MAX_TOKENS: int = 1024
+    LLM_MAX_TOKENS: int = 8192
     ROSTER_EXPORT_THROTTLE_SECONDS: int = 60
 
     # ------------------------------------------------------------------ #
@@ -124,6 +124,18 @@ class Settings(BaseSettings):
             except (ValueError, TypeError):
                 # Fall back to default silently if invalid
                 data.pop("SUMMARY_MESSAGE_LIMIT", None)
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_llm_tokens(cls, data: dict) -> dict:
+        limit_val = data.get("LLM_MAX_TOKENS")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["LLM_MAX_TOKENS"] = max(512, min(32768, val))
+            except (ValueError, TypeError):
+                data.pop("LLM_MAX_TOKENS", None)
         return data
 
     # Issue 5: warn on missing critical fields at startup

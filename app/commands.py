@@ -261,9 +261,19 @@ async def handle_command(  # Issue 13: added return type
                         )
 
         elif command == "!t":
-            if len(args) >= 2:
-                target_lang = args[0]
-                text_to_translate = " ".join(args[1:])
+            if len(args) >= 1:
+                from app.translation import FULL_NAME_TO_CODE
+                target_lang = "auto"
+                text_to_translate = ""
+                
+                if len(args) >= 2 and args[0] == "auto":
+                    text_to_translate = " ".join(args[1:])
+                elif len(args) >= 2 and (len(args[0]) == 2 or args[0].lower() in FULL_NAME_TO_CODE):
+                    target_lang = args[0]
+                    text_to_translate = " ".join(args[1:])
+                else:
+                    text_to_translate = " ".join(args)
+
                 if target_lang == "auto":
                     # Cascade: Chat Setting -> Global -> Default 'en'
                     target_lang = (
@@ -271,10 +281,11 @@ async def handle_command(  # Issue 13: added return type
                         if settings.default_target_language is not None
                         else (app_settings.GLOBAL_TARGET_LANGUAGE or "en")
                     )
-                translated = await translate_text(
-                    text_to_translate, target_lang
-                )
-                await send_text_message(chat_id, translated)
+                if text_to_translate.strip():
+                    translated = await translate_text(
+                        text_to_translate, target_lang
+                    )
+                    await send_text_message(chat_id, translated)
 
         elif command == "!summary":
             mode = args[0] if len(args) > 0 else "full"

@@ -118,7 +118,7 @@ class AIMemoryEngine:
             # this will require updating ai_client.py. For now, we will add a vision flag.
             try:
                 description = await ask_llm(
-                    "Describe this image in detail.",
+                    prompt="Describe this image in detail.",
                     task_type="vision",
                     image_path=media_path
                 )
