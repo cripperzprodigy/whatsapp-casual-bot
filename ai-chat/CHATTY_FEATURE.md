@@ -61,6 +61,62 @@ Users and Admins interact with the Chatty memory engine using the `!chatty` comm
 
 ---
 
+## ⏱️ Human Simulation & Trigger Logic
+
+The bot mimics human interaction by utilizing a combination of frequency counters, implicit DM tagging, and delayed background tasks.
+
+### Mention & Trigger Flow
+
+```text
+          [ Incoming Message ]
+                   │
+         Is this a Direct Message?
+          /                  \
+      [YES]                  [NO (Group)]
+        │                      │
+  (Implicit Mention)    Is @bot or @1234 explicitly tagged?
+        │                /                 \
+        │             [YES]                [NO]
+        │               │                   │
+        ▼               ▼                   ▼
+    [ TRIGGER ]    [ TRIGGER ]       Increment Message Counter
+                                            │
+                                      Counter >= Frequency?
+                                      /              \
+                                   [YES]            [NO]
+                                     │               │
+                                 [ TRIGGER ]      [ IGNORE ]
+```
+
+### Task Delay Strategy (Debounce vs Throttle)
+
+When `TRIGGER` is reached, the bot checks `CHATTY_DELAY_MODE` before responding.
+
+```text
+Mode: DEBOUNCE (Default)
+Objective: Wait until the user finishes typing multiple rapid messages.
+[Msg 1] ---> (Start 5s Timer)
+[Msg 2] ---> (Cancel previous, Start NEW 5s Timer)
+             ... 5s elapses ...
+             => [ SEND REPLY ]
+
+Mode: THROTTLE
+Objective: Strict wait from the first message, collecting subsequent context.
+[Msg 1] ---> (Start 5s Timer)
+[Msg 2] ---> (Append to context, let timer run)
+             ... 5s elapses ...
+             => [ SEND REPLY ]
+
+Mode: EXPLICIT MENTION BYPASS
+Objective: Instant response to direct queries.
+[Msg w/ @bot] ---> (Cancel existing timers, SEND REPLY IMMEDIATELY)
+```
+
+### 🚫 Natural Quoting
+To maintain conversational realism, the `send_text_message` function is invoked with `reply_to_msg_id=None` during Chatty mode. The bot will interject naturally into the chat stream without using the WhatsApp 'reply' quote feature, identically to a human participant.
+
+---
+
 ## 🔁 RAG Context Pipeline (Flow Diagram)
 
 ```text
