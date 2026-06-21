@@ -1,5 +1,7 @@
 from app.router_webhook import is_bot_mentioned, is_explicitly_tagged
 
+# ── Test Suite: Mention Detection ──
+
 def test_dm_implicit_trigger():
     # DM Implicit Trigger: Input "Hello", Bot "123", Is_Group=False -> Expect True
     assert is_bot_mentioned("Hello", "123", is_group=False) is True
@@ -9,7 +11,7 @@ def test_group_tag_variations():
     assert is_bot_mentioned("@1234567890@c.us hello", "1234567890", is_group=True) is True
     # Input "@1234567890 hello", Bot "1234567890" -> Expect True
     assert is_bot_mentioned("@1234567890 hello", "1234567890", is_group=True) is True
-    
+
 def test_false_positive_prevention():
     # Input "Call 12345", Bot "123" -> Expect False
     assert is_bot_mentioned("Call 12345", "123", is_group=True) is False
@@ -29,3 +31,40 @@ def test_is_bot_mentioned_empty_bot_number():
     assert is_bot_mentioned("hello @bot", None, is_group=True) is True
     assert is_bot_mentioned("hello", None, is_group=True) is False
     assert is_bot_mentioned("hello", None, is_group=False) is True
+
+# ── Test Suite: Dual-Path Architecture ──
+
+def test_explicit_mention_bypasses_delay():
+    """
+    Verify that an explicit @bot tag results in is_explicitly_tagged = True,
+    which means Path A (immediate inline reply) is selected, NOT Path B
+    (delayed background task).
+    """
+    bot_number = "1234567890"
+    text_with_mention = "hey @1234567890 what's the weather?"
+    text_without_mention = "what's the weather?"
+
+    # Path A: explicit tag detected -> immediate reply path
+    assert is_explicitly_tagged(text_with_mention, bot_number) is True
+
+    # Path B: no explicit tag -> frequency/delayed path
+    assert is_explicitly_tagged(text_without_mention, bot_number) is False
+
+def test_explicit_mention_immediate_response():
+    """
+    Validates the core acceptance criterion:
+    When @bot is detected, is_explicitly_tagged returns True, which means
+    the router will call process_message(generate_reply=True) inline
+    instead of deferring to a background task.
+    """
+    # Group chat with @bot mention
+    assert is_explicitly_tagged("@bot tell me a joke", "999") is True
+    assert is_bot_mentioned("@bot tell me a joke", "999", is_group=True) is True
+
+    # Group chat without mention — should NOT trigger explicit path
+    assert is_explicitly_tagged("tell me a joke", "999") is False
+    assert is_bot_mentioned("tell me a joke", "999", is_group=True) is False
+
+    # DM — always triggers via is_bot_mentioned but is_explicitly_tagged can be False
+    assert is_bot_mentioned("tell me a joke", "999", is_group=False) is True
+    assert is_explicitly_tagged("tell me a joke", "999") is False

@@ -63,7 +63,7 @@ Users and Admins interact with the Chatty memory engine using the `!chatty` comm
 
 ## ⏱️ Human Simulation & Trigger Logic
 
-The bot mimics human interaction by utilizing a combination of frequency counters, implicit DM tagging, and delayed background tasks.
+The bot mimics human interaction by utilizing a combination of frequency counters, implicit DM tagging, and delayed background tasks. A **dual-path architecture** ensures explicit mentions get immediate responses while unprompted conversations use natural human-like delays.
 
 ### Mention & Trigger Flow
 
@@ -88,9 +88,50 @@ The bot mimics human interaction by utilizing a combination of frequency counter
                                  [ TRIGGER ]      [ IGNORE ]
 ```
 
+### Dual-Path Response Architecture
+
+Once `TRIGGER` is set, the system selects one of two execution paths based on how the trigger was activated:
+
+```text
+              [ TRIGGER ACTIVATED ]
+                       │
+         Was it from an explicit @bot tag?
+              /                  \
+           [YES]                [NO]
+             │                    │
+     ┌───────┴────────┐  ┌───────┴────────┐
+     │    PATH A      │  │    PATH B      │
+     │   (Immediate)  │  │   (Delayed)    │
+     ├────────────────┤  ├────────────────┤
+     │ Cancel pending │  │ Save to RAG   │
+     │ background     │  │ context first │
+     │ tasks          │  │ (no LLM call) │
+     │                │  │               │
+     │ Call LLM       │  │ Check delay   │
+     │ INLINE with    │  │ mode config   │
+     │ generate_reply │  │               │
+     │ =True          │  │ Debounce:     │
+     │                │  │  Cancel old   │
+     │ AWAIT reply    │  │  task, start  │
+     │ in same        │  │  new timer    │
+     │ request cycle  │  │               │
+     │                │  │ Throttle:     │
+     │ Send message   │  │  Keep old     │
+     │ immediately    │  │  task running │
+     └────────────────┘  │               │
+                         │ Start async   │
+                         │ background    │
+                         │ task w/ delay │
+                         └────────────────┘
+```
+
+**Path A (Explicit Mention):** The reply is generated and sent **within the same HTTP request cycle**. No background task is created. This guarantees sub-2-second response times and eliminates the race condition where a fire-and-forget `asyncio.create_task` could silently fail.
+
+**Path B (Frequency-Based):** The message is first saved to RAG context (with `generate_reply=False`), then a background `asyncio.Task` is created with a randomized human-like delay. The task gathers all pending user messages from history and generates a single consolidated reply.
+
 ### Task Delay Strategy (Debounce vs Throttle)
 
-When `TRIGGER` is reached, the bot checks `CHATTY_DELAY_MODE` before responding.
+Path B's delay behavior depends on `CHATTY_DELAY_MODE`:
 
 ```text
 Mode: DEBOUNCE (Default)
@@ -106,14 +147,12 @@ Objective: Strict wait from the first message, collecting subsequent context.
 [Msg 2] ---> (Append to context, let timer run)
              ... 5s elapses ...
              => [ SEND REPLY ]
-
-Mode: EXPLICIT MENTION BYPASS
-Objective: Instant response to direct queries.
-[Msg w/ @bot] ---> (Cancel existing timers, SEND REPLY IMMEDIATELY)
 ```
 
+**Note:** An explicit `@bot` mention always selects Path A regardless of debounce/throttle settings. Any existing pending background task is cancelled when a mention is detected.
+
 ### 🚫 Natural Quoting
-To maintain conversational realism, the `send_text_message` function is invoked with `reply_to_msg_id=None` during Chatty mode. The bot will interject naturally into the chat stream without using the WhatsApp 'reply' quote feature, identically to a human participant.
+To maintain conversational realism, the `send_text_message` function is invoked with `reply_to_msg_id=None` during Chatty mode on both paths. The bot will interject naturally into the chat stream without using the WhatsApp 'reply' quote feature, identically to a human participant.
 
 ---
 

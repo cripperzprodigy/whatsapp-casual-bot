@@ -12,3 +12,4 @@
 - Fixed bug where !chatty_status crashed due to shadowing of global settings by local ChatSettings models.
 - Fixed bug where Chatty webhook trigger incorrectly defaulted to False instead of respecting the global CHATTY_DEFAULT setting for DMs.
 - Fixed Chatty trigger: enabled implicit DM mentions, normalized group tags, prevented partial number false positives.
+- **Chatty Dual-Path Architecture**: Fixed @bot mention not replying immediately. Explicit mentions now bypass the background task system entirely — the LLM reply is generated and sent inline within the same HTTP request cycle (Path A). Frequency-based triggers continue using the delayed background task system (Path B).

@@ -8,3 +8,4 @@
 - [CLOSED] Chatty Status Crash: Fixed shadowing bug in commands.py where local settings overrode global app.config settings causing AttributeError.
 - [CLOSED] Chatty Default Bypass: Fixed router_webhook.py where missing profile entries incorrectly fell back to False instead of respecting CHATTY_DEFAULT for DMs.
 - [CLOSED] Chatty DM/Group failures: Replaced greedy substring match with robust regex boundaries and implicit DM tagging.
+- [CLOSED] @bot Mention Immediate Response Failure: Explicit @bot mentions in groups were dispatched as fire-and-forget asyncio background tasks (even with delay=0.0), causing race conditions and silent failures. Fixed by implementing a dual-path architecture where Path A (explicit mentions) awaits the LLM reply inline within the same request cycle, while Path B (frequency triggers) continues using the delayed background task system.

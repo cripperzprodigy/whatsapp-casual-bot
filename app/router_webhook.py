@@ -235,41 +235,54 @@ async def process_message(
 
                 engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
 
-                # We must ALWAYS process the message so it's added to RAG context
-                # Pass generate_reply=False so it only appends to history and doesn't call LLM instantly
-                await engine.process_message(text, media_path, generate_reply=False)
-
                 if trigger:
                     bot_id = settings.BOT_NUMBER
                     explicit_tag = is_explicitly_tagged(text, bot_id)
-                    
+
                     if explicit_tag:
-                        # Immediate reply bypasses delay
-                        delay = 0.0
+                        # ── Path A: Explicit Mention ── Immediate inline reply ──
+                        # Cancel any pending background tasks for this chat
+                        if chat_id in pending_chatty_tasks:
+                            pending_chatty_tasks[chat_id].cancel()
+                            del pending_chatty_tasks[chat_id]
+
+                        # Process message WITH reply generation in the same request cycle
+                        ai_reply = await engine.process_message(text, media_path, generate_reply=True)
+                        if ai_reply:
+                            await send_text_message(
+                                chat_id,
+                                ai_reply,
+                                reply_to_msg_id=None,
+                                quoted_participant=None,
+                            )
+                        return
                     else:
+                        # ── Path B: Frequency-Based ── Delayed background task ──
+                        # Save to RAG context first without generating a reply
+                        await engine.process_message(text, media_path, generate_reply=False)
+
                         d_min = updated_profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
                         d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
                         delay = random.uniform(d_min, d_max)
+                        d_mode = updated_profile.get("chatty_delay_mode", settings.CHATTY_DELAY_MODE)
 
-                    d_mode = updated_profile.get("chatty_delay_mode", settings.CHATTY_DELAY_MODE)
+                        # Handle existing tasks based on mode
+                        if chat_id in pending_chatty_tasks:
+                            if d_mode == "debounce":
+                                pending_chatty_tasks[chat_id].cancel()
+                            elif d_mode == "throttle":
+                                # Do not reset timer, let the existing one finish
+                                return
 
-                    # Handle existing tasks based on mode
-                    if chat_id in pending_chatty_tasks:
-                        if d_mode == "debounce" and not explicit_tag:
-                            pending_chatty_tasks[chat_id].cancel()
-                        elif d_mode == "throttle" and not explicit_tag:
-                            # Do not reset timer, let the existing one finish
-                            return
-                        else:
-                            # Mention overrides throttle/debounce, cancels current wait
-                            pending_chatty_tasks[chat_id].cancel()
-                            
-                    # Start new delayed task
-                    task = asyncio.create_task(_delayed_chatty_reply(
-                        chat_id, msg_key.id, msg_key.participant, engine, delay, burst_count
-                    ))
-                    pending_chatty_tasks[chat_id] = task
-                    return
+                        # Start new delayed task
+                        task = asyncio.create_task(_delayed_chatty_reply(
+                            chat_id, msg_key.id, msg_key.participant, engine, delay, burst_count
+                        ))
+                        pending_chatty_tasks[chat_id] = task
+                        return
+                else:
+                    # No trigger — still save to RAG context for future retrieval
+                    await engine.process_message(text, media_path, generate_reply=False)
             except Exception as e:
                 logger.error(f"AI Memory Engine Error: {e}")
 
