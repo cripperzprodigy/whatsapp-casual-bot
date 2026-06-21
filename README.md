@@ -305,3 +305,16 @@ python3 backup_restore.py --mode restore --file <your_backup_file>.zip
 This bot strictly requires **Python 3.12**, which is the current stable LTS for AI/ML dependencies like PyTorch CPU.
 
 If your system runs newer versions (e.g., Python 3.13 or 3.14), do not worry! The `start.sh` script is designed to safely handle side-by-side installations. It will automatically detect if `python3.12` is missing and provide installation instructions, and it will safely isolate the bot's virtual environment (`venv/`) strictly to 3.12 without disrupting your default system Python binaries.
+
+---
+
+## 🤖 Smart Chatty Control & Frequency
+By default, enabling `!chatty` does not mean the bot will reply to every single message in a group (which creates spam). It natively integrates a **Frequency Counter** and **Mention Detection**.
+
+- **Mentions:** If you tag the bot using `@` in a group chat, it will respond instantaneously, bypassing all frequency delays and appending context into RAG.
+- **Frequency:** If unprompted, it silently listens, stores memory, and automatically generates a response every X messages (Default: 10). Group Admins can live-tune this using `!chatty_freq 20` or adjust sequential replies using `!chatty_burst`.
+
+## 🌐 Dynamic Summaries & Language
+The `!summary` feature is fully capable of dynamically processing vast contexts. Modify the `SUMMARY_MESSAGE_LIMIT` inside `.env` to analyze between 10 and 2000 recent messages at once depending on the capacities of your chosen LLM.
+
+For Private DM users, the bot supports completely freezing linguistic outputs to your preference without triggering costly auto-detection algorithms on subsequent messages. Just send `!lang set fr` to lock your profile to French.

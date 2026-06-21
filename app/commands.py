@@ -65,7 +65,7 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
 
     if role in {ADMIN_ROLE, OWNER_ROLE} or not is_group_chat:
         lines.extend([
-                        "🧠 *AI Memory & RAG*",
+            "🧠 *AI Memory & RAG*",
             "└ `!chatty on|off` - Toggle continuous AI conversation",
             "├ `!chatty_freq <val>` - Set frequency",
             "├ `!chatty_burst <val>` - Set burst count",
@@ -935,7 +935,13 @@ async def handle_command(  # Issue 13: added return type
             if len(args) == 1 and args[0] in ["on", "off"]:
                 status = args[0] == "on"
                 if is_group_chat:
-                    if not await is_admin(db, sender_id):
+                    user_ledger = db.query(GroupContactLedger).filter(
+                        GroupContactLedger.chat_id == chat_id,
+                        GroupContactLedger.jid == sender_id
+                    ).first()
+                    is_group_admin = user_ledger and user_ledger.is_admin
+                    is_bot_owner = await is_owner(db, sender_id)
+                    if not is_group_admin and not is_bot_owner:
                         await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner to toggle Chatty in a group.")
                         return
 
@@ -951,7 +957,13 @@ async def handle_command(  # Issue 13: added return type
             if not is_group_chat:
                 await send_text_message(chat_id, "This command is only available in groups.")
                 return
-            if not await is_admin(db, sender_id):
+            user_ledger = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                GroupContactLedger.jid == sender_id
+            ).first()
+            is_group_admin = user_ledger and user_ledger.is_admin
+            is_bot_owner = await is_owner(db, sender_id)
+            if not is_group_admin and not is_bot_owner:
                 await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner.")
                 return
             if len(args) != 1:
@@ -975,7 +987,13 @@ async def handle_command(  # Issue 13: added return type
             if not is_group_chat:
                 await send_text_message(chat_id, "This command is only available in groups.")
                 return
-            if not await is_admin(db, sender_id):
+            user_ledger = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                GroupContactLedger.jid == sender_id
+            ).first()
+            is_group_admin = user_ledger and user_ledger.is_admin
+            is_bot_owner = await is_owner(db, sender_id)
+            if not is_group_admin and not is_bot_owner:
                 await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner.")
                 return
             if len(args) != 1:

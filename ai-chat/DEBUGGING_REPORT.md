@@ -42,3 +42,12 @@ This document records the recent post-deployment optimization passes performed o
 - Organized type hints inside `app/translation.py` definitions.
 
 *Note: Global Vector DB models (`SentenceTransformer` & `PersistentClient`) were also moved to cached global lifecycle references, entirely resolving the heavy FastAPI startup blocks initially caused by the AIMemoryEngine.*
+
+## 4. Feature Upgrades (Frequency, Burst & Dynamic Depth)
+**Problem:** The `!chatty` feature originally responded to *every* incoming message unconditionally, creating spam loops. The `!summary` command had a hardcoded lookback slice, limiting contextual intelligence.
+**Fix:**
+- Added a `message_counter` integer increment tracking system locally to each `profile.json`.
+- Injected `CHATTY_DEFAULT_FREQUENCY` & `CHATTY_DEFAULT_BURST` configurations to `app/config.py` handling global settings.
+- Enabled instantaneous LLM inference routing if the message explicitly tags the bot via `@mention` triggers.
+- Deployed a completely dynamic configuration via `.env` parameter `SUMMARY_MESSAGE_LIMIT` using Pydantic `model_validators` for strict 10-2000 clamping on depths to prevent context overflows natively.
+- Added `!lang set <code>` functionality strictly for Private DMs, bypassing automatic linguistic checks for performance and reliability across users preferring static dialects.

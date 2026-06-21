@@ -28,11 +28,17 @@ Privacy and context separation are fundamental. All user data is stringently iso
 - `DYNAMIC_SYSTEM_PROMPT` (bool): Enable LLM rolling summaries (true).
 - `RAG_EMBEDDING_MODEL` (str): Local model for vector DB (default: `all-MiniLM-L6-v2`).
 - `VISION_ENABLED` (bool): Process media via vision LLMs.
+- `CHATTY_DEFAULT_FREQUENCY` (int): Standard unprompted response trigger threshold (default: 10 messages).
+- `CHATTY_DEFAULT_BURST` (int): Responses yielded per threshold activation (default: 1).
+- `DEFAULT_GROUP_LANGUAGE` (str): Backup resolution if detection fails (default: 'en').
+- `DEFAULT_DM_LANGUAGE` (str): Backup resolution for DMs.
 
 ### Local Contact Profile (`profile.json`)
-- `chatty_status`: Can override the `.env` default on a per-chat basis.
+- `chatty_status`: Overrides the `.env` default on a per-chat basis.
 - `lang_pref`: The `langdetect` ISO string to force the LLM to output that language.
+- `preferred_language`: Hardcoded ISO string explicit to a DM user (skips autodetection).
 - `conversation_summary`: A condensed JSON state of the chat updated every 5 messages.
+- `message_counter`, `chatty_frequency`, `chatty_burst`: Real-time analytics determining unprompted activation.
 
 ---
 
@@ -41,8 +47,12 @@ Users and Admins interact with the Chatty memory engine using the `!chatty` comm
 
 | Command | Permission | Description |
 |---|---|---|
-| `!chatty on` | Public (DM), Admin/Owner (Group) | Enables Chatty mode for the current chat window. |
-| `!chatty off` | Public (DM), Admin/Owner (Group) | Disables Chatty mode for the current chat window. |
+| `!chatty on\|off` | Public (DM), Admin/Owner (Group) | Enables Chatty mode for the current chat window. |
+| `!chatty_freq <val>` | Admin/Owner (Group) | Sets the frequency trigger interval (10-1000). |
+| `!chatty_burst <val>` | Admin/Owner (Group) | Modifies the burst response count per trigger (1-5). |
+| `!chatty_status` | Public (DM), Admin/Owner (Group) | Lists current frequency and counter stats. |
+| `!lang set <code>` | Public (DM) | Sets a strict language preference. |
+| `!lang reset` | Public (DM) | Reverts DM into automatic `langdetect` logic. |
 
 ---
 
