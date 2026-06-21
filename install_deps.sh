@@ -220,7 +220,7 @@ fi
 echo -e "\n========================================="
 if [ ${#MISSING_PKGS[@]} -eq 0 ]; then
     echo -e "${GREEN}✅ All dependencies installed successfully!${NC}"
-    exit 1
+    exit 0
 else
     echo -e "${RED}❌ Missing or failed dependencies:${NC}"
     for missing in "${MISSING_PKGS[@]}"; do

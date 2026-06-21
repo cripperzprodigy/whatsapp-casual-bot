@@ -80,6 +80,7 @@ if ! command -v $PYTHON_BIN &> /dev/null; then
 
                 if [ -x "$PYTHON_BIN" ]; then
                     echo "✅ Python 3.12 compiled and installed successfully!"
+                    export PATH="$HOME/.local/bin:$PATH"
                 else
                     echo "❌ Critical Error: Python source compilation failed."
                     exit 1
@@ -242,6 +243,7 @@ if [ "$NEEDS_INSTALL" = true ]; then
         cd ..
 
         # Create virtual environment
+        echo "DEBUG: PYTHON_BIN is set to: $PYTHON_BIN"
         echo "-> Creating Python virtual environment..."
         $PYTHON_BIN -m venv venv
 
