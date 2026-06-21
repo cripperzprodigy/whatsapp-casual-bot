@@ -99,3 +99,25 @@ def test_normal_messages_still_translate():
     assert is_explicitly_tagged("Buenos días a todos", bot_number) is False
     assert is_explicitly_tagged("Guten Morgen!", bot_number) is False
     assert is_explicitly_tagged("Hello 12345", bot_number) is False
+
+# ── Test Suite: Native WhatsApp Mentions ──
+
+def test_native_whatsapp_mention():
+    """
+    When a user natively tags the bot using the @ dropdown, the webhook
+    payload contains the bot's JID in extendedTextMessage.contextInfo.mentionedJid.
+    The text might just say @ContactName without the bot's number.
+    """
+    bot_number = "1234567890"
+    bot_jid = f"{bot_number}@s.whatsapp.net"
+    other_jid = "9999999999@s.whatsapp.net"
+
+    # Case A: Text doesn't contain the number, but native JID is present -> True
+    assert is_explicitly_tagged("@BotName hello", bot_number, mentioned_jids=[bot_jid]) is True
+
+    # Case B: Text doesn't contain the number, other JID is present -> False
+    assert is_explicitly_tagged("@SomeoneElse hello", bot_number, mentioned_jids=[other_jid]) is False
+
+    # Case C: Multiple JIDs including the bot -> True
+    assert is_explicitly_tagged("@Everyone hello", bot_number, mentioned_jids=[other_jid, bot_jid]) is True
+

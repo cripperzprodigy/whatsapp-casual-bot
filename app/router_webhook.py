@@ -43,8 +43,8 @@ import re
 
 pending_chatty_tasks: Dict[str, asyncio.Task] = {}
 
-def is_explicitly_tagged(text: str, bot_number: str | None) -> bool:
-    """Checks if the bot is explicitly tagged via @bot or its phone number."""
+def is_explicitly_tagged(text: str, bot_number: str | None, mentioned_jids: list[str] = None) -> bool:
+    """Checks if the bot is explicitly tagged via @bot, its phone number, or native WhatsApp mentions."""
     if re.search(r'(?i)(?<!\w)@bot(?!\w)', text):
         return True
     if bot_number:
@@ -52,16 +52,21 @@ def is_explicitly_tagged(text: str, bot_number: str | None) -> bool:
         pattern = r'(?<!\d)@?' + re.escape(bot_number) + r'(?!\d)'
         if re.search(pattern, text):
             return True
+        # Check native WhatsApp mentions
+        if mentioned_jids:
+            bot_jid = f"{bot_number}@s.whatsapp.net"
+            if bot_jid in mentioned_jids:
+                return True
     return False
 
-def is_bot_mentioned(text: str, bot_number: str | None, is_group: bool) -> bool:
+def is_bot_mentioned(text: str, bot_number: str | None, is_group: bool, mentioned_jids: list[str] = None) -> bool:
     """
     Robust helper to determine if Chatty should be triggered implicitly or explicitly.
     DMs are always considered 'mentioned' (implicitly). Groups require an explicit tag.
     """
     if not is_group:
         return True
-    return is_explicitly_tagged(text, bot_number)
+    return is_explicitly_tagged(text, bot_number, mentioned_jids)
 
 async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, engine: AIMemoryEngine, delay: float, burst_count: int):
     try:
@@ -158,13 +163,14 @@ async def process_message(
 
         content_obj = data.message
         text = None
+        mentioned_jids = []
         if content_obj.conversation:
             text = content_obj.conversation
-        elif (
-            content_obj.extendedTextMessage
-            and "text" in content_obj.extendedTextMessage
-        ):
-            text = content_obj.extendedTextMessage["text"]
+        elif content_obj.extendedTextMessage:
+            if "text" in content_obj.extendedTextMessage:
+                text = content_obj.extendedTextMessage["text"]
+            if "contextInfo" in content_obj.extendedTextMessage:
+                mentioned_jids = content_obj.extendedTextMessage["contextInfo"].get("mentionedJid", [])
 
         if not text:
             return
@@ -220,7 +226,7 @@ async def process_message(
                     bot_id = settings.BOT_NUMBER
                     is_group = chat_id.endswith("@g.us")
                     
-                    if is_bot_mentioned(text, bot_id, is_group):
+                    if is_bot_mentioned(text, bot_id, is_group, mentioned_jids):
                         trigger = True
                         p["message_counter"] = 0
                     else:
@@ -237,7 +243,7 @@ async def process_message(
 
                 if trigger:
                     bot_id = settings.BOT_NUMBER
-                    explicit_tag = is_explicitly_tagged(text, bot_id)
+                    explicit_tag = is_explicitly_tagged(text, bot_id, mentioned_jids)
 
                     if explicit_tag:
                         # ── Path A: Explicit Mention ── Immediate inline reply ──
@@ -291,7 +297,7 @@ async def process_message(
         # These are conversational commands, not content requiring translation.
         # This also acts as defense-in-depth if the chatty try/except leaks.
         bot_id = settings.BOT_NUMBER
-        if is_explicitly_tagged(text, bot_id):
+        if is_explicitly_tagged(text, bot_id, mentioned_jids):
             logger.debug(f"Skipping auto-translation: message is an explicit bot mention.")
             return
 
