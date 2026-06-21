@@ -9,7 +9,8 @@ from filelock import FileLock
 import httpx
 
 
-from langdetect import detect
+from langdetect import detect, DetectorFactory
+DetectorFactory.seed = 0
 from langdetect.lang_detect_exception import LangDetectException
 import chromadb
 from chromadb.config import Settings as ChromaSettings

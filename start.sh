@@ -9,67 +9,22 @@ echo "=========================================="
 echo ""
 
 # OS-Level Dependency Checks
-# Function to automate Python 3.12 installation from source
-install_python_3_12_from_source() {
-    echo "⚠️  Python 3.12 is required but not found on the system."
-
-    if [ ! -x "$(command -v apt-get)" ]; then
-        echo "❌ Automated installation is only supported on Debian/Ubuntu systems with apt-get."
-        echo "Please install Python 3.12 manually for your operating system."
+# Run Pre-Flight Dependency Checker
+if [ -f "./install_deps.sh" ]; then
+    echo "🔍 Running pre-flight dependency checks..."
+    ./install_deps.sh
+    if [ $? -ne 0 ]; then
+        echo "❌ Pre-flight checks failed. Please resolve the missing dependencies manually."
         kill -INT $$
     fi
-
-    read -p "Would you like to automatically compile Python 3.12 from source? (y/n) " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "❌ Cannot proceed without Python 3.12. Exiting."
-        kill -INT $$
-    fi
-
-    echo "⏳ Installing build dependencies (headers for sqlite3, ssl, etc.)..."
-    sudo apt update
-    sudo apt install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev \
-        libnss3-dev libssl-dev libreadline-dev libffi-dev wget \
-        libsqlite3-dev libbz2-dev liblzma-dev tk-dev
-
-    TEMP_DIR=$(mktemp -d)
-    echo "⏳ Downloading Python 3.12 source to $TEMP_DIR..."
-    cd $TEMP_DIR
-    wget https://www.python.org/ftp/python/3.12.0/Python-3.12.0.tgz
-    tar -xvf Python-3.12.0.tgz
-    cd Python-3.12.0
-
-    echo "⏳ Configuring build..."
-    ./configure --enable-optimizations
-
-    echo "⏳ Compiling Python (this may take several minutes)..."
-    make -j $(nproc)
-
-    echo "⏳ Installing Python 3.12..."
-    sudo make altinstall
-
-    cd - > /dev/null
-    rm -rf $TEMP_DIR
-
-    if ! command -v python3.12 &> /dev/null; then
-        echo "❌ Compilation failed. python3.12 is still not found."
-        kill -INT $$
-    fi
-
-    echo "⏳ Verifying sqlite3 module compilation..."
-    if ! python3.12 -c "import sqlite3; print('SQLite version:', sqlite3.version)" &> /dev/null; then
-        echo "❌ Critical Error: Python compiled successfully, but the sqlite3 module failed to load."
-        kill -INT $$
-    fi
-
-    echo "✅ Python 3.12 compiled and installed successfully!"
-}
+else
+    echo "⚠️  install_deps.sh not found, skipping pre-flight checks."
+fi
 
 TARGET_PYTHON="python3.12"
-
-# 1. Check existence of Python 3.12
 if ! command -v $TARGET_PYTHON &> /dev/null; then
-    install_python_3_12_from_source
+    echo "❌ ERROR: Python 3.12 is required but not found after pre-flight checks."
+    kill -INT $$
 fi
 
 # Function to ask and install OS packages if on apt-based Linux

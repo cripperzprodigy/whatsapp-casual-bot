@@ -1,5 +1,6 @@
 from app.ai_client import ask_llm
-from langdetect import detect
+from langdetect import detect, DetectorFactory
+DetectorFactory.seed = 0
 from langdetect.lang_detect_exception import LangDetectException
 
 # Issue 3: fallback map for LLMs that return full language names
