@@ -15,3 +15,6 @@ Strict adherence to the project's architecture is required.
 ## Testing & Deployment
 - **Unit Testing:** Agents must write unit tests for any new logic introduced.
 - **Validation:** Code must be verified (e.g., tests pass, linter passes) prior to committing code.
+
+## 4.2 Shell Scripting & Idempotent Installation
+- **Safe Cleanup:** Cleanup traps must explicitly preserve persistent state markers (e.g., .bot_ready_state) and only remove runtime artifacts.
