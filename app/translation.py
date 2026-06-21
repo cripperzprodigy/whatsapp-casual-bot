@@ -1,7 +1,9 @@
 from app.ai_client import ask_llm
-from langdetect import detect, DetectorFactory
+from langdetect import detect, detect_langs, DetectorFactory
 DetectorFactory.seed = 0
 from langdetect.lang_detect_exception import LangDetectException
+import re
+from app.config import settings
 
 # Issue 3: fallback map for LLMs that return full language names
 # instead of ISO 639-1 codes (e.g. "English" -> "en").
@@ -29,37 +31,65 @@ FULL_NAME_TO_CODE: dict[str, str] = {
 }
 
 
+def should_translate(text: str, target_lang: str) -> tuple[bool, str]:
+    """
+    Determines if text should be translated based on length, emojis, 
+    and probabilistic language detection.
+    Returns (should_translate, original_text).
+    """
+    # 1. Length Guard
+    if len(text.strip()) < settings.TRANSLATION_MIN_LENGTH:
+        return False, text
+        
+    # 2. Emoji/Pattern Guard (Skip if >80% non-alphanumeric)
+    alphanumeric_count = sum(c.isalnum() for c in text)
+    if alphanumeric_count / max(len(text), 1) < 0.2:
+        return False, text
+
+    # 3. Detection with Confidence
+    try:
+        langs = detect_langs(text)
+        if not langs:
+            return False, text
+            
+        detected = langs[0]
+        conf = detected.prob
+        
+        # 4. Confidence Guard
+        if conf < settings.TRANSLATION_CONFIDENCE_THRESHOLD:
+            return False, text
+            
+        det_code = detected.lang
+        
+        # 5. ID/MS Equivalence
+        equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
+        if det_code in equivalent_langs and target_lang in equivalent_langs:
+            return False, text
+            
+        # 6. Exact Match
+        if det_code == target_lang:
+            return False, text
+            
+        # 7. Mismatch confirmed
+        return True, text
+        
+    except LangDetectException:
+        # Fail safe: Do not translate if detection fails
+        return False, text
+    except Exception as e:
+        logger.error(f"Error in should_translate: {e}")
+        return False, text
+
 async def detect_language(text: str) -> str:
     """
     Detects the primary language of the given text using langdetect.
-    Falls back to LLM if langdetect fails.
-    Returns the ISO 639-1 two-letter lowercase language code
-    (e.g. 'en', 'id', 'es'). Returns 'unknown' if detection fails.
+    Returns the ISO 639-1 two-letter lowercase language code.
+    Returns 'unknown' if detection fails.
+    (LLM fallback removed for performance and reliability).
     """
     try:
-        # Fast path
         return detect(text)
     except LangDetectException:
-        # Slow path fallback
-        prompt = (
-            "Detect the primary language of the following text. "
-            "Respond ONLY with the ISO 639-1 two-letter lowercase language "
-            "code (e.g. 'en', 'es', 'id'). "
-            "If you are unsure, respond with 'unknown'.\n\n"
-            f"Text: {text}"
-        )
-        result = await ask_llm(prompt, task_type="language_detection")
-
-        # Issue 3: strip whitespace FIRST, then lower, so " En " -> "en"
-        code = result.strip().lower()
-
-        if len(code) == 2 or code == "unknown":
-            return code
-
-        # Issue 3: fallback — LLM returned a full name like "english"
-        if code in FULL_NAME_TO_CODE:
-            return FULL_NAME_TO_CODE[code]
-
         return "unknown"
 
 

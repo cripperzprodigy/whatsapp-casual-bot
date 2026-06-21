@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     GLOBAL_TARGET_LANGUAGE: str = "en"
     # Comma-separated list of language codes to ignore globally
     GLOBAL_IGNORED_LANGUAGES: str = ""
+    
+    # Auto-Translation Sensitivity
+    TRANSLATION_MIN_LENGTH: int = 4
+    TRANSLATION_CONFIDENCE_THRESHOLD: float = 0.70
+    TRANSLATION_EQUIVALENT_LANGS: str = "id,ms"
 
     # ------------------------------------------------------------------ #
     #  Issue 8: Rate Limiting
