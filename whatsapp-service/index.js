@@ -89,7 +89,13 @@ function initClient() {
                         participant: chat.isGroup ? msg.author : null
                     },
                     message: {
-                        conversation: msg.body
+                        conversation: msg.body,
+                        extendedTextMessage: {
+                            text: msg.body,
+                            contextInfo: {
+                                mentionedJid: msg.mentionedIds || []
+                            }
+                        }
                     },
                     pushName: contact.pushname || contact.name || "Unknown",
                     media_data: mediaData

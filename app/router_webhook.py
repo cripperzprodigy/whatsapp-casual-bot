@@ -214,8 +214,11 @@ async def process_message(
             return
 
 
-        # Trigger Chatty RAG response if enabled
-        if chatty_status:
+        bot_id = settings.BOT_NUMBER
+        is_explicit_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
+
+        # Trigger Chatty RAG response if explicitly mentioned OR chatty is enabled
+        if is_explicit_mention or chatty_status:
             try:
                 trigger = False
                 burst_count = 1
@@ -229,7 +232,7 @@ async def process_message(
                     if is_bot_mentioned(text, bot_id, is_group, mentioned_jids):
                         trigger = True
                         p["message_counter"] = 0
-                    else:
+                    elif chatty_status:
                         p["message_counter"] = p.get("message_counter", 0) + 1
                         if p["message_counter"] >= p.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY):
                             trigger = True
@@ -242,8 +245,7 @@ async def process_message(
                 engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
 
                 if trigger:
-                    bot_id = settings.BOT_NUMBER
-                    explicit_tag = is_explicitly_tagged(text, bot_id, mentioned_jids)
+                    explicit_tag = is_explicit_mention
 
                     if explicit_tag:
                         # ── Path A: Explicit Mention ── Immediate inline reply ──
