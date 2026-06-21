@@ -53,3 +53,70 @@ Users can override global settings locally within any chat using:
 - `!target <code>|global`
 - `!ignore add|remove|list|global <code>`
 - `!t <code> <text>` (Manual translation override)
+
+## 7. Architecture & Logic Flow Diagram
+
+Below is the logical execution flow of a message as it hits the Auto-Translation pipeline.
+
+```mermaid
+flowchart TD
+    A[Incoming WhatsApp Message] --> B{Is Auto-Translate ON?}
+    B -- No --> Z[End: No Action]
+    B -- Yes --> C{Length < 4 chars?}
+    
+    C -- Yes --> Z
+    C -- No --> D{Emoji/Symbol Density > 80%?}
+    
+    D -- Yes --> Z
+    D -- No --> E[langdetect.detect_langs]
+    
+    E --> F{Confidence < 70%?}
+    F -- Yes --> Z
+    F -- No --> G{Detected == Target?}
+    
+    G -- Yes --> Z
+    G -- No --> H{Detected & Target in ID/MS Set?}
+    
+    H -- Yes --> Z
+    H -- No --> I{Detected Code in Ignore List?}
+    
+    I -- Yes --> Z
+    I -- No --> J[LLM: Translate to Target Lang]
+    
+    J --> K[Gateway: Send Quoted Reply]
+    K --> Y[End: Translated]
+```
+
+### ASCII Flow Representation
+
+```text
+[ Incoming Message ]
+         |
+         v
+[ router_webhook.py ] --> (Check Chat/Global Settings)
+         |
+         v
+[ should_translate() Guard ]
+         |--- (Fail: Length < 4) ---------------------> [ SKIP ]
+         |--- (Fail: Mostly Emojis/Links) ------------> [ SKIP ]
+         |
+         v
+[ langdetect.detect_langs() ]
+         |
+         |--- (Fail: Confidence < 70%) ---------------> [ SKIP ]
+         |--- (Fail: Target == Detected) -------------> [ SKIP ]
+         |--- (Fail: Both in ID/MS Equivalence Set) --> [ SKIP ]
+         |
+         v
+[ Ignore List Check ]
+         |--- (Fail: Detected lang in Ignore List) ---> [ SKIP ]
+         |
+         v
+[ LLM Translation Call ]
+         |--- Prompt: Strict tone, no filler, exact ISO 639-1
+         v
+[ WhatsApp WebJS Gateway ]
+         |--- Payload: Quoted reply with [CODE] prefix
+         v
+[ User Sees Translated Reply ]
+```
