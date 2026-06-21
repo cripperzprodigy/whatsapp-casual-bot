@@ -4,7 +4,10 @@ DetectorFactory.seed = 0
 from langdetect.lang_detect_exception import LangDetectException
 import re
 from typing import Optional
+import logging
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Issue 3: fallback map for LLMs that return full language names
 # instead of ISO 639-1 codes (e.g. "English" -> "en").
@@ -39,17 +42,20 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
     """
     # 1. Length Guard
     if len(text.strip()) < settings.TRANSLATION_MIN_LENGTH:
+        logger.debug(f"Skipping translation: Length < {settings.TRANSLATION_MIN_LENGTH}")
         return None
         
     # 2. Emoji/Pattern Guard (Skip if >80% non-alphanumeric)
     alphanumeric_count = sum(c.isalnum() for c in text)
     if alphanumeric_count / max(len(text), 1) < 0.2:
+        logger.debug("Skipping translation: High non-alphanumeric density")
         return None
 
     # 3. Detection with Confidence
     try:
         langs = detect_langs(text)
         if not langs:
+            logger.debug("Skipping translation: No language detected")
             return None
             
         detected = langs[0]
@@ -57,6 +63,7 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         
         # 4. Confidence Guard
         if conf < settings.TRANSLATION_CONFIDENCE_THRESHOLD:
+            logger.debug(f"Skipping translation: Low confidence ({conf:.2f})")
             return None
             
         code = detected.lang
@@ -64,10 +71,12 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         # 5. ID/MS Equivalence
         equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
         if code in equivalent_langs and target_lang in equivalent_langs:
+            logger.debug(f"Skipping translation: Equivalent languages ({code} -> {target_lang})")
             return None
             
         # 6. Exact Match
         if code == target_lang:
+            logger.debug(f"Skipping translation: Exact match ({code})")
             return None
             
         # 7. Confirmed Mismatch
@@ -75,6 +84,7 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         
     except LangDetectException:
         # Safe Fail: Do not translate if detection fails
+        logger.debug("Skipping translation: LangDetectException")
         return None
     except Exception as e:
         logger.error(f"Error in detect_language_safe: {e}")
@@ -93,9 +103,7 @@ async def detect_language(text: str) -> str:
         return "unknown"
 
 
-import logging
 
-logger = logging.getLogger(__name__)
 
 async def translate_text(text: str, target_language: str, ignore_list: list = None, chat_id: str = None, msg_id: str = None) -> str:
     """
@@ -108,6 +116,7 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
         return text
         
     if ignore_list and source_lang in ignore_list:
+        logger.debug(f"Skipping translation: Source language '{source_lang}' is explicitly ignored")
         return text
 
     source_hint = f"from the language represented by the ISO 639-1 code '{source_lang}' "
