@@ -74,7 +74,7 @@ The bot mimics human interaction by utilizing a combination of frequency counter
           /                  \
       [YES]                  [NO (Group)]
         │                      │
-  (Implicit Mention)    Is @bot or @1234 explicitly tagged?
+  (Implicit Mention)    Is @bot, @1234, or Native UI Tag explicitly present?
         │                /                 \
         │             [YES]                [NO]
         │               │                   │
@@ -149,7 +149,7 @@ Objective: Strict wait from the first message, collecting subsequent context.
              => [ SEND REPLY ]
 ```
 
-**Note:** An explicit `@bot` mention always selects Path A regardless of debounce/throttle settings. Any existing pending background task is cancelled when a mention is detected.
+**Note:** An explicit mention (text or native `@` UI tag) **always** selects Path A and overrides negative group chatty defaults. If a group has chatty disabled, the bot will still respond immediately to a direct tag. Any existing pending background task is also cancelled when a mention is detected.
 
 ### 🚫 Natural Quoting
 To maintain conversational realism, the `send_text_message` function is invoked with `reply_to_msg_id=None` during Chatty mode on both paths. The bot will interject naturally into the chat stream without using the WhatsApp 'reply' quote feature, identically to a human participant.
