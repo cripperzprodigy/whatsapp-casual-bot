@@ -4,7 +4,7 @@ This document summarizes the end-to-end behavior of the WhatsApp Casual Bot's au
 
 ## 1. Triggering Translation (The Fast-Path Guards)
 
-When a message is received, the `app/router_webhook.py` processes it and checks if auto-translation is enabled for the chat (falling back to global defaults if unconfigured). Before querying any expensive detection APIs or translation LLMs, the message must pass through `should_translate(text, target_lang)` inside `app/translation.py`.
+When a message is received, the `app/router_webhook.py` processes it and checks if auto-translation is enabled for the chat. It then passes the message to `translate_text()` inside `app/translation.py`, which delegates the gatekeeping logic to `detect_language_safe(text, target_lang)`.
 
 The fast-path sequentially checks:
 1. **Length**: Is the message shorter than `TRANSLATION_MIN_LENGTH` (default: 4 chars)? If yes, skip translation. (Fixes false positives on words like "Hi", "Ok").
@@ -14,12 +14,12 @@ The fast-path sequentially checks:
 5. **Lexical Equivalence**: Does the detected language and target language both belong to `TRANSLATION_EQUIVALENT_LANGS` (default: `id,ms`)? If yes, treat as a match and skip.
 6. **Exact Match**: Is the detected language identical to the target language? If yes, skip.
 
-Only if ALL guards are passed does `should_translate` return `True`.
+Only if ALL guards are passed does `detect_language_safe` return the detected language code. If it returns `None`, `translate_text` safely exits and returns the original text.
 
 ## 2. Ignore List Filtering
 
-If `should_translate` returns `True`, the router checks the chat's explicitly ignored languages (configured via `!ignore add <code>`). 
-- If the detected language matches a code on the ignore list, the translation is silently aborted.
+If `detect_language_safe` returns a valid code, `translate_text` then checks the chat's explicitly ignored languages (configured via `!ignore add <code>`). 
+- If the detected language matches a code on the ignore list, the translation is silently aborted and the original text is returned.
 
 ## 3. The LLM Translation Call
 
@@ -96,7 +96,10 @@ flowchart TD
 [ router_webhook.py ] --> (Check Chat/Global Settings)
          |
          v
-[ should_translate() Guard ]
+[ translate_text() ]
+         |
+         v
+[ detect_language_safe() Guard ]
          |--- (Fail: Length < 4) ---------------------> [ SKIP ]
          |--- (Fail: Mostly Emojis/Links) ------------> [ SKIP ]
          |

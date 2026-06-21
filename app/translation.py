@@ -3,6 +3,7 @@ from langdetect import detect, detect_langs, DetectorFactory
 DetectorFactory.seed = 0
 from langdetect.lang_detect_exception import LangDetectException
 import re
+from typing import Optional
 from app.config import settings
 
 # Issue 3: fallback map for LLMs that return full language names
@@ -31,54 +32,53 @@ FULL_NAME_TO_CODE: dict[str, str] = {
 }
 
 
-def should_translate(text: str, target_lang: str) -> tuple[bool, str]:
+def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
     """
     Determines if text should be translated based on length, emojis, 
-    and probabilistic language detection.
-    Returns (should_translate, original_text).
+    and probabilistic language detection. Returns detected code or None if skipped.
     """
     # 1. Length Guard
     if len(text.strip()) < settings.TRANSLATION_MIN_LENGTH:
-        return False, text
+        return None
         
     # 2. Emoji/Pattern Guard (Skip if >80% non-alphanumeric)
     alphanumeric_count = sum(c.isalnum() for c in text)
     if alphanumeric_count / max(len(text), 1) < 0.2:
-        return False, text
+        return None
 
     # 3. Detection with Confidence
     try:
         langs = detect_langs(text)
         if not langs:
-            return False, text
+            return None
             
         detected = langs[0]
         conf = detected.prob
         
         # 4. Confidence Guard
         if conf < settings.TRANSLATION_CONFIDENCE_THRESHOLD:
-            return False, text
+            return None
             
-        det_code = detected.lang
+        code = detected.lang
         
         # 5. ID/MS Equivalence
         equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
-        if det_code in equivalent_langs and target_lang in equivalent_langs:
-            return False, text
+        if code in equivalent_langs and target_lang in equivalent_langs:
+            return None
             
         # 6. Exact Match
-        if det_code == target_lang:
-            return False, text
+        if code == target_lang:
+            return None
             
-        # 7. Mismatch confirmed
-        return True, text
+        # 7. Confirmed Mismatch
+        return code
         
     except LangDetectException:
-        # Fail safe: Do not translate if detection fails
-        return False, text
+        # Safe Fail: Do not translate if detection fails
+        return None
     except Exception as e:
-        logger.error(f"Error in should_translate: {e}")
-        return False, text
+        logger.error(f"Error in detect_language_safe: {e}")
+        return None
 
 async def detect_language(text: str) -> str:
     """
@@ -97,14 +97,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def translate_text(text: str, target_language: str, source_lang: str = None, chat_id: str = None, msg_id: str = None) -> str:
+async def translate_text(text: str, target_language: str, ignore_list: list = None, chat_id: str = None, msg_id: str = None) -> str:
     """
     Translates text to the target language using the LLM.
-    Optionally accepts a source_lang to improve accuracy and reduce guessing.
+    Returns the original text immediately if safe language detection fails or matches target.
     """
-    source_hint = ""
-    if source_lang and source_lang != "unknown":
-        source_hint = f"from the language represented by the ISO 639-1 code '{source_lang}' "
+    source_lang = detect_language_safe(text, target_language)
+    
+    if source_lang is None:
+        return text
+        
+    if ignore_list and source_lang in ignore_list:
+        return text
+
+    source_hint = f"from the language represented by the ISO 639-1 code '{source_lang}' "
 
     prompt = (
         f"Translate the following text {source_hint}to the language represented "
@@ -122,13 +128,13 @@ async def translate_text(text: str, target_language: str, source_lang: str = Non
         f"Text to translate:\n{text}"
     )
 
-    from app.config import settings
     try:
         result = await ask_llm(prompt, task_type="translation")
         if not result or result.startswith("Error:"):
             logger.error(f"Translation failed silently or returned error. chat_id={chat_id}, msg_id={msg_id}, response={result}")
             return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
-        return result
+            
+        return f"[{source_lang.upper()}] {result}"
     except Exception as e:
         logger.error(f"Critical error during translation API call. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")
         return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"

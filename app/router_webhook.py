@@ -22,7 +22,7 @@ from app.whatsapp_gateway import (
 )
 from app.state import get_db, add_message_to_buffer, get_chat_settings
 from app.commands import handle_command
-from app.translation import detect_language, translate_text, should_translate
+from app.translation import detect_language, translate_text
 from app.config import settings
 from app.contact_sync import (
     update_contact,
@@ -222,21 +222,14 @@ async def process_message(
             ]
 
         if is_auto_enabled and target_lang:
-            do_translate, _ = should_translate(text, target_lang)
-            if do_translate:
-                lang = await detect_language(text)
-                if (
-                    lang != "unknown"
-                    and lang not in ignore_list
-                ):
-                    translated = await translate_text(text, target_lang, source_lang=lang, chat_id=chat_id, msg_id=msg_key.id)
-                    reply_text = f"[{lang.upper()}] {translated}"
-                    await send_text_message(
-                        chat_id,
-                        reply_text,
-                        reply_to_msg_id=msg_key.id,
-                        quoted_participant=msg_key.participant,
-                    )
+            translated = await translate_text(text, target_lang, ignore_list=ignore_list, chat_id=chat_id, msg_id=msg_key.id)
+            if translated != text:
+                await send_text_message(
+                    chat_id,
+                    translated,
+                    reply_to_msg_id=msg_key.id,
+                    quoted_participant=msg_key.participant,
+                )
     except sqlalchemy.exc.SQLAlchemyError as exc:
         logger.error(
             "Database error while processing message: %s", exc
