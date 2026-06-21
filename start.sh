@@ -228,7 +228,6 @@ create_venv_and_deps() {
         pip install -q --upgrade pip
         pip install -q --upgrade-strategy only-if-needed -r requirements.txt
         echo "✅ Python dependencies installed."
-        touch "$MARKER_FILE"
     else
         echo "✅ Python dependencies already present."
     fi
@@ -240,16 +239,40 @@ create_venv_and_deps() {
         npm install
         cd ..
     fi
+
+    echo "✅ Environment ready. Saving state marker..."
+
+    # 1. Resolve absolute path to the Python binary
+    ABS_PYTHON_PATH=$(command -v "$PYTHON_BIN" || realpath "$PYTHON_BIN")
+
+    # 2. Write to marker file (Atomic write using temp file + mv)
+    MARKER_FILE=".bot_ready_state"
+    TEMP_MARKER=".bot_ready_state.tmp"
+
+    echo "${ABS_PYTHON_PATH}|3.12" > "$TEMP_MARKER"
+    mv "$TEMP_MARKER" "$MARKER_FILE"
+
+    # 3. Verify write success
+    if [ -f "$MARKER_FILE" ]; then
+        echo "✅ State marker saved to $(pwd)/$MARKER_FILE"
+    else
+        echo "❌ CRITICAL: Failed to write state marker. Installation may repeat."
+        exit 1
+    fi
 }
 
 # --- 5. Start Services ---
+cleanup() {
+    echo "🛑 Stopping services and cleaning up runtime artifacts..."
+    # DO NOT DELETE .bot_ready_state - required for idempotent restarts.
+    kill $NODE_PID 2>/dev/null || true
+    rm -f .*.tmp
+}
+
 start_services() {
     echo "=========================================="
     echo "🚀 Starting Services..."
     echo "=========================================="
-
-    # Write marker safely
-    echo "$PYTHON_BIN|3.12" > "$MARKER_FILE"
 
     echo "-> Starting Node.js WhatsApp Gateway (background)..."
     cd whatsapp-service
@@ -257,7 +280,7 @@ start_services() {
     NODE_PID=$!
     cd ..
 
-    trap "echo '🛑 Stopping services...'; kill $NODE_PID; exit" INT TERM EXIT
+    trap cleanup INT TERM EXIT
 
     echo "-> Starting Python FastAPI server..."
     echo "-> Once started, visit http://localhost:8000/whatsapp/qr to link your device."
