@@ -167,3 +167,8 @@ Applied a set of stability and UX fixes for the WhatsApp bot.
 - Added support for passing the group participant ID into the internal reply quoting path so quoted replies work more reliably in groups.
 - Hardened the `!search` command prompt in `app/commands.py` to avoid misleading live-search claims and to show a clear fallback message when live search is unavailable.
 - Documented the latest fixes across `ai-chat/README.md`, `ARCHITECTURE.md`, and `PROJECT_HISTORY.md`.
+
+### [Antigravity] - [2026-06-21 14:18 UTC]
+- Fixed a false-negative Python installation verification bug in `install_deps.sh` where `MISSING_PKGS` was not cleared after a successful source compilation.
+- Refactored the verification block in `start.sh` to dynamically use `$PYTHON_BIN` and functionally test binary execution, `sys.version_info` matching 3.12, `import sqlite3`, and `import venv`.
+- Standardized the source compilation target prefix in `start.sh` to `$HOME/.local` so the binary aligns exactly with `$HOME/.local/bin/python3.12`.

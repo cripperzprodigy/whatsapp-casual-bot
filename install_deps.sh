@@ -150,6 +150,14 @@ install_python312() {
 
             if command -v python3.12 &> /dev/null; then
                 echo -e "${GREEN}✅ Python 3.12 compiled and installed successfully!${NC}"
+                # Remove python apt packages from MISSING_PKGS because we used source
+                local NEW_MISSING=()
+                for p in "${MISSING_PKGS[@]}"; do
+                    if [[ ! " ${PY_PKGS[@]} " =~ " ${p} " ]]; then
+                        NEW_MISSING+=("$p")
+                    fi
+                done
+                MISSING_PKGS=("${NEW_MISSING[@]}")
                 return 0
             else
                 echo -e "${RED}❌ Critical: Python source compilation failed.${NC}"

@@ -28,4 +28,6 @@
   - Added contact export enhancements: Updated `GroupContactLedger` to use a `jid` composite primary key, added `db_migration.py` for SQLite table migrations, sanitized export folder names, included extra fields in CSV exports, and implemented role-restricted `!contacts list` and `!contacts global` admin commands.
   - Implemented asynchronous batch PM system (`!pm`) with dynamic flood control configurations (overriding `.env` via `GlobalSettings`). Added user targeting, group-wide targeting, and global targeting logic strictly mapped to Admin and Owner privileges.
   - Updated `ai-chat` documentation and agent registry to log the active fix.
-
+- **2026-06-21:** Fixed false-negative Python installation verification bugs in deployment scripts.
+  - Addressed a bug in `install_deps.sh` where successfully compiled Python binaries from source were still flagged as missing dependencies.
+  - Rewrote the verification block in `start.sh` to properly perform functional checks instead of relying on package manager states.

@@ -52,7 +52,7 @@ if ! command -v $PYTHON_BIN &> /dev/null; then
                  liblzma-dev libgdbm-dev libdb-dev uuid-dev libffi-dev wget tar
 
             PYTHON_VERSION="3.12.9"
-            PREFIX_DIR="$HOME/.local/python3.12"
+            PREFIX_DIR="$HOME/.local"
             export PYTHON_BIN="$PREFIX_DIR/bin/python3.12"
 
             if [ -x "$PYTHON_BIN" ]; then
@@ -89,12 +89,34 @@ if ! command -v $PYTHON_BIN &> /dev/null; then
     fi
 fi
 
-# Verify Python Binary works
-if ! $PYTHON_BIN -c "import sqlite3" &> /dev/null; then
-    echo "❌ Critical Error: Selected Python binary ($PYTHON_BIN) cannot import sqlite3. Compilation or installation is broken."
+# Verify Python Binary works (Functional Tests)
+echo "⏳ Running functional tests on Python binary..."
+if ! command -v "$PYTHON_BIN" &> /dev/null; then
+    echo "❌ Error: Python binary not found at $PYTHON_BIN"
     exit 1
 fi
-echo "✅ Validated Python binary: $($PYTHON_BIN --version)"
+
+VERSION=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+if [ "$VERSION" != "3.12" ]; then
+    echo "❌ Error: Found Python $VERSION, but 3.12 is required."
+    exit 1
+fi
+
+if ! "$PYTHON_BIN" -c "import sqlite3" &> /dev/null; then
+    echo "❌ Error: Python 3.12 is missing sqlite3 support. SQLite headers may be missing."
+    exit 1
+fi
+
+if ! "$PYTHON_BIN" -c "import venv" &> /dev/null; then
+    echo "❌ Error: Python 3.12 is missing venv support. python3.12-venv may be missing."
+    exit 1
+fi
+
+INSTALL_METHOD="APT/System"
+if [[ "$PYTHON_BIN" == *".local"* ]]; then
+    INSTALL_METHOD="Source"
+fi
+echo "✅ Python 3.12 verified and ready (Method: $INSTALL_METHOD)"
 
 
 # Function to ask and install OS packages if on apt-based Linux
@@ -176,10 +198,6 @@ if [ "$(uname)" = "Linux" ]; then
     fi
 fi
 
-# Check if python3-venv is available (often missing on clean Ubuntu)
-if ! $PYTHON_BIN -c "import venv" &> /dev/null; then
-    install_os_pkg "python3-venv python3-dev"
-fi
 
 # Ensure Puppeteer dependencies are present
 install_puppeteer_deps
