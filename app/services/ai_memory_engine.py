@@ -20,6 +20,7 @@ import pdfplumber
 from app.config import settings
 
 # Since AIMemoryEngine interacts with ai_client.py, we might have to import it
+from app.services.profile_service import read_profile, write_profile
 from app.ai_client import ask_llm
 
 logger = logging.getLogger(__name__)
@@ -68,26 +69,28 @@ class AIMemoryEngine:
 
 
     def _load_profile(self) -> Dict[str, Any]:
-        lock_path = str(self.profile_path) + ".lock"
-        with FileLock(lock_path):
-            if self.profile_path.exists():
-                with open(self.profile_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        return {
-            "name": self.sender_name,
-            "lang_pref": None,
-            "system_prompt": None,
-            "conversation_summary": None,
-            "chatty_status": settings.CHATTY_GROUP_DEFAULT if "@g.us" in self.chat_id else settings.CHATTY_DEFAULT
-        }
+        profile = read_profile(self.chat_id)
+        if profile.get("name") != self.sender_name:
+            profile["name"] = self.sender_name
+        return profile
 
     def _save_profile(self):
-        lock_path = str(self.profile_path) + ".lock"
-        with FileLock(lock_path):
-            with open(self.profile_path, "w", encoding="utf-8") as f:
-                json.dump(self.profile, f, indent=2)
+        write_profile(self.chat_id, self.profile)
 
     async def _detect_language(self, text: str) -> str:
+        # Group Check
+        if "@g.us" in self.chat_id:
+            from app.state import get_chat_settings
+            from app.state import SessionLocal
+            with SessionLocal() as db:
+                chat_settings = get_chat_settings(db, self.chat_id)
+                target_lang = chat_settings.default_target_language if chat_settings.default_target_language else getattr(settings, 'DEFAULT_GROUP_LANGUAGE', 'en')
+            return target_lang
+
+        # Private DM Check
+        if self.profile.get("preferred_language"):
+            return self.profile["preferred_language"]
+
         try:
             lang = detect(text)
             self.profile["lang_pref"] = lang
@@ -102,7 +105,7 @@ class AIMemoryEngine:
             except (Exception) as inner_e:
                 # Swallowing here is necessary for language fallback reliability
                 logger.warning(f"Langdetect and LLM fallback both failed: {inner_e}")
-                return getattr(settings, 'GLOBAL_TARGET_LANGUAGE', 'en')
+                return getattr(settings, 'DEFAULT_DM_LANGUAGE', 'en')
 
     async def _process_media(self, media_path: str) -> Optional[str]:
         if not settings.VISION_ENABLED or not media_path:
@@ -197,7 +200,7 @@ Output ONLY valid JSON."""
         except Exception as e:
             logger.error(f"Failed to update summary: {e}")
 
-    async def process_message(self, text: str, media_path: Optional[str] = None) -> Optional[str]:
+    async def process_message(self, text: str, media_path: Optional[str] = None, is_burst: bool = False, generate_reply: bool = True) -> Optional[str]:
         # 1. Process Language
         lang = await self._detect_language(text)
 
@@ -208,7 +211,11 @@ Output ONLY valid JSON."""
             full_text += f"\n\n{media_desc}"
 
         # 3. Save to history & RAG
-        self._append_history("user", full_text)
+        if not is_burst:
+            self._append_history("user", full_text)
+
+        if not generate_reply:
+            return None
 
         # 4. Retrieve RAG Context
         retrieved_context = ""

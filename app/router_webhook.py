@@ -6,6 +6,7 @@ import time
 import json
 from pathlib import Path
 from filelock import FileLock
+from app.services.profile_service import read_profile, write_profile
 from app.services.ai_memory_engine import AIMemoryEngine
 
 import httpx
@@ -138,27 +139,8 @@ async def process_message(
                 logger.error(f"Failed to save media: {e}")
 
         # Ensure user profile and Chatty Status is initialized
-        safe_id = chat_id.replace('@', '_').replace('.', '_')
-        contact_dir = Path(f"./data/contacts/{safe_id}")
-        contact_dir.mkdir(parents=True, exist_ok=True)
-        profile_path = contact_dir / "profile.json"
-        lock_path = str(profile_path) + ".lock"
-
-        chatty_status = settings.CHATTY_GROUP_DEFAULT if "@g.us" in chat_id else settings.CHATTY_DEFAULT
-        profile = {}
-        with FileLock(lock_path):
-            if profile_path.exists():
-                try:
-                    with open(profile_path, "r") as f:
-                        profile = json.load(f)
-                        if "chatty_status" in profile:
-                            chatty_status = profile["chatty_status"]
-                except Exception:
-                    pass
-            else:
-                profile = {"chatty_status": chatty_status}
-                with open(profile_path, "w") as f:
-                    json.dump(profile, f)
+        profile = read_profile(chat_id)
+        chatty_status = profile.get("chatty_status", False)
 
         # Handle Commands
         if text.startswith("!"):
@@ -170,14 +152,44 @@ async def process_message(
         if chatty_status:
             try:
                 engine = AIMemoryEngine(chat_id, sender_name, profile=profile)
-                ai_reply = await engine.process_message(text, media_path)
-                if ai_reply:
+
+                trigger = False
+                # Mention Logic
+                bot_id = settings.BOT_NUMBER
+                if bot_id in text or f"@{bot_id}" in text or "@bot" in text.lower():
+                    trigger = True
+                    engine.profile["message_counter"] = 0
+                else:
+                    engine.profile["message_counter"] = engine.profile.get("message_counter", 0) + 1
+                    if engine.profile["message_counter"] >= engine.profile.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY):
+                        trigger = True
+                        engine.profile["message_counter"] = 0
+
+                engine._save_profile()
+
+                # We must ALWAYS process the message so it's added to RAG context
+                # However, we only trigger the LLM to generate a reply if `trigger` is True
+                ai_reply = await engine.process_message(text, media_path, generate_reply=trigger)
+                burst_count = engine.profile.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
+
+                if trigger and ai_reply:
                     await send_text_message(
                         chat_id,
                         ai_reply,
                         reply_to_msg_id=msg_key.id,
                         quoted_participant=msg_key.participant,
                     )
+                    # Process bursts sequentially if > 1
+                    for _ in range(1, burst_count):
+                        burst_reply = await engine.process_message(text, media_path, is_burst=True, generate_reply=True)
+                        if burst_reply:
+                            await send_text_message(
+                                chat_id,
+                                burst_reply,
+                                reply_to_msg_id=msg_key.id,
+                                quoted_participant=msg_key.participant,
+                            )
+                if trigger:
                     return
             except Exception as e:
                 logger.error(f"AI Memory Engine Error: {e}")

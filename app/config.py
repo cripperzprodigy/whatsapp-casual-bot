@@ -92,6 +92,13 @@ class Settings(BaseSettings):
     RAG_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     VISION_ENABLED: bool = True
 
+    # Chatty Frequency Control Defaults
+    CHATTY_DEFAULT_FREQUENCY: int = 10
+    CHATTY_DEFAULT_BURST: int = 1
+    CHATTY_ENABLED_LANGUAGES: str = "en,id,ms"
+    DEFAULT_GROUP_LANGUAGE: str = "en"
+    DEFAULT_DM_LANGUAGE: str = "en"
+
     # ------------------------------------------------------------------ #
     #  User Facing Strings
     # ------------------------------------------------------------------ #

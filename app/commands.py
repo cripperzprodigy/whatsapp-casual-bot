@@ -13,6 +13,7 @@ from app.state import (
     get_global_setting,
     set_global_setting,
 )
+from app.services.profile_service import read_profile, write_profile
 from app.translation import translate_text, detect_language
 from app.pm_service import start_batched_pm_task
 from app.whatsapp_gateway import send_text_message
@@ -64,8 +65,13 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
 
     if role in {ADMIN_ROLE, OWNER_ROLE} or not is_group_chat:
         lines.extend([
-            "🧠 *AI Memory & RAG*",
-            "└ `!chatty on|off` - Toggle continuous AI conversation\n"
+                        "🧠 *AI Memory & RAG*",
+            "└ `!chatty on|off` - Toggle continuous AI conversation",
+            "├ `!chatty_freq <val>` - Set frequency",
+            "├ `!chatty_burst <val>` - Set burst count",
+            "├ `!chatty_status` - View current settings",
+            "├ `!lang set <code>` - DM Only: Set preferred language",
+            "└ `!lang reset` - DM Only: Revert language\n"
         ])
 
     if role in {ADMIN_ROLE, OWNER_ROLE}:
@@ -928,45 +934,101 @@ async def handle_command(  # Issue 13: added return type
         elif command == "!chatty":
             if len(args) == 1 and args[0] in ["on", "off"]:
                 status = args[0] == "on"
-
-                # Check permissions for groups
-                if "@g.us" in chat_id:
-                    user_ledger = db.query(GroupContactLedger).filter(
-                        GroupContactLedger.chat_id == chat_id,
-                        GroupContactLedger.jid == sender_id
-                    ).first()
-                    is_group_admin = user_ledger and user_ledger.is_admin
-                    is_bot_owner = await is_owner(db, sender_id)
-                    if not is_group_admin and not is_bot_owner:
+                if is_group_chat:
+                    if not await is_admin(db, sender_id):
                         await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner to toggle Chatty in a group.")
                         return
 
-                import json
-                from pathlib import Path
-                from filelock import FileLock
-                safe_id = chat_id.replace('@', '_').replace('.', '_')
-                contact_dir = Path(f"./data/contacts/{safe_id}")
-                contact_dir.mkdir(parents=True, exist_ok=True)
-                profile_path = contact_dir / "profile.json"
-                lock_path = str(profile_path) + ".lock"
-
-                profile = {}
-                with FileLock(lock_path):
-                    if profile_path.exists():
-                        try:
-                            with open(profile_path, "r", encoding="utf-8") as f:
-                                profile = json.load(f)
-                        except Exception:
-                            pass
-
-                    profile["chatty_status"] = status
-
-                    with open(profile_path, "w", encoding="utf-8") as f:
-                        json.dump(profile, f)
+                profile = read_profile(chat_id)
+                profile["chatty_status"] = status
+                write_profile(chat_id, profile)
 
                 await send_text_message(chat_id, f"✅ Chatty mode turned {'ON' if status else 'OFF'}.")
             else:
                 await send_text_message(chat_id, "Usage: !chatty on | !chatty off")
+
+        elif command == "!chatty_freq":
+            if not is_group_chat:
+                await send_text_message(chat_id, "This command is only available in groups.")
+                return
+            if not await is_admin(db, sender_id):
+                await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner.")
+                return
+            if len(args) != 1:
+                await send_text_message(chat_id, "Usage: !chatty_freq <number>")
+                return
+            try:
+                freq = int(args[0])
+                if not 10 <= freq <= 1000:
+                    raise ValueError
+            except ValueError:
+                await send_text_message(chat_id, "Frequency must be an integer between 10 and 1000.")
+                return
+
+            profile = read_profile(chat_id)
+            profile["chatty_frequency"] = freq
+            write_profile(chat_id, profile)
+
+            await send_text_message(chat_id, f"✅ Chatty frequency set to {freq} messages.")
+
+        elif command == "!chatty_burst":
+            if not is_group_chat:
+                await send_text_message(chat_id, "This command is only available in groups.")
+                return
+            if not await is_admin(db, sender_id):
+                await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner.")
+                return
+            if len(args) != 1:
+                await send_text_message(chat_id, "Usage: !chatty_burst <number>")
+                return
+            try:
+                burst = int(args[0])
+                if not 1 <= burst <= 5:
+                    raise ValueError
+            except ValueError:
+                await send_text_message(chat_id, "Burst count must be an integer between 1 and 5.")
+                return
+
+            profile = read_profile(chat_id)
+            profile["chatty_burst"] = burst
+            write_profile(chat_id, profile)
+
+            await send_text_message(chat_id, f"✅ Chatty burst set to {burst} messages.")
+
+        elif command == "!chatty_status":
+            profile = read_profile(chat_id)
+
+            status = profile.get("chatty_status", False)
+            freq = profile.get("chatty_frequency", 10)
+            burst = profile.get("chatty_burst", 1)
+            counter = profile.get("message_counter", 0)
+            lang = profile.get("preferred_language", "Auto")
+
+            msg = f"🧠 *Chatty Status*\n\nStatus: {'ON' if status else 'OFF'}\nFrequency: {freq}\nBurst: {burst}\nCounter: {counter}/{freq}\nPreferred Lang: {lang}"
+            await send_text_message(chat_id, msg)
+
+        elif command == "!lang":
+            if is_group_chat:
+                await send_text_message(chat_id, "This command is only available in DMs. Use !target for groups.")
+                return
+            if len(args) == 0:
+                await send_text_message(chat_id, "Usage: !lang set <code> | !lang reset")
+                return
+
+            subcmd = args[0]
+            profile = read_profile(chat_id)
+
+            if subcmd == "reset":
+                profile["preferred_language"] = None
+                write_profile(chat_id, profile)
+                await send_text_message(chat_id, "✅ Preferred language reset to auto-detect.")
+            elif subcmd == "set" and len(args) == 2:
+                code = args[1].lower().split('-')[0]
+                profile["preferred_language"] = code
+                write_profile(chat_id, profile)
+                await send_text_message(chat_id, f"✅ Preferred language set to {code}.")
+            else:
+                await send_text_message(chat_id, "Usage: !lang set <code> | !lang reset")
 
         elif command == "!a":
             if len(args) > 0:
