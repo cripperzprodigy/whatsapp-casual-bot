@@ -166,11 +166,12 @@ async def process_message(
         mentioned_jids = []
         if content_obj.conversation:
             text = content_obj.conversation
-        elif content_obj.extendedTextMessage:
-            if "text" in content_obj.extendedTextMessage:
-                text = content_obj.extendedTextMessage["text"]
-            if "contextInfo" in content_obj.extendedTextMessage:
-                mentioned_jids = content_obj.extendedTextMessage["contextInfo"].get("mentionedJid", [])
+        elif content_obj.extendedTextMessage and "text" in content_obj.extendedTextMessage:
+            text = content_obj.extendedTextMessage["text"]
+
+        # Extract mentions even if text was pulled from conversation
+        if content_obj.extendedTextMessage and "contextInfo" in content_obj.extendedTextMessage:
+            mentioned_jids = content_obj.extendedTextMessage["contextInfo"].get("mentionedJid", [])
 
         if not text:
             return
