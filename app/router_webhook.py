@@ -112,6 +112,13 @@ async def process_message(
         sender_id = msg_key.participant or msg_key.remoteJid
         sender_name = data.pushName or "Unknown"
 
+        # System Domain Guard Rail
+        # Ignore non-conversational domains to prevent the bot from attempting 
+        # to chat with Status updates, Channels, or Linked Devices.
+        if chat_id == "status@broadcast" or chat_id.endswith("@broadcast") or chat_id.endswith("@newsletter") or chat_id.endswith("@lid"):
+            logger.debug(f"Ignoring non-conversational system domain: {chat_id}")
+            return
+
         # Security: Check Whitelist
         if settings.WHITELISTED_CHATS:
             allowed = [
