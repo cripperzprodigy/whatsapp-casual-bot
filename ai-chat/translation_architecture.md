@@ -25,8 +25,9 @@ If `detect_language_safe` returns a valid code, `translate_text` then checks the
 
 If the message requires translation, `app/translation.py:translate_text` invokes the primary Unified AI Client via `ask_llm`.
 - The prompt instructs the LLM to translate strictly to the ISO 639-1 `target_lang`, preserving tone, formatting, and emojis.
-- The prompt also aggressively forbids conversational filler (e.g., "Here is the translation:").
-- A fallback error (`MSG_TRANSLATION_ERROR`) is returned if the LLM fails or is unavailable.
+- The prompt is highly concise: "Translate to {target_lang}. Auto-detect source language. Output ONLY translation with no explanations."
+- **Token Exhaustion & Retries**: `ask_llm` returns a structured `LLMResponse` containing the `finish_reason`. If a high-context reasoning model exhausts the `LLM_MAX_TOKENS` limit (e.g., `finish_reason == "length"`), the system multiplies the `max_tokens_override` by 1.5x and retries the translation up to 2 times to ensure it successfully generates the output.
+- A fallback error (`MSG_TRANSLATION_ERROR`) is returned if the LLM fails or is unavailable after all retries.
 
 ## 4. Delivery
 
@@ -83,8 +84,11 @@ flowchart TD
     I -- Yes --> Z
     I -- No --> J[LLM: Translate to Target Lang]
 
-    J --> K[Gateway: Send Quoted Reply]
-    K --> Y[End: Translated]
+    J --> K{Hit Token Limit?}
+    K -- Yes --> L[Multiply Tokens 1.5x & Retry]
+    L --> J
+    K -- No --> M[Gateway: Send Quoted Reply]
+    M --> Y[End: Translated]
 ```
 
 ### ASCII Flow Representation
@@ -115,8 +119,12 @@ flowchart TD
          |--- (Fail: Detected lang in Ignore List) ---> [ SKIP ]
          |
          v
-[ LLM Translation Call ]
-         |--- Prompt: Strict tone, no filler, exact ISO 639-1
+[ LLM Translation Call ] <-----------------------------+
+         |--- Prompt: Strict tone, no filler         |
+         v                                             |
+[ Token Exhaustion Check ]                             |
+         |--- (Fail: finish_reason == "length") ---- [ Retry with 1.5x Tokens ]
+         |
          v
 [ WhatsApp WebJS Gateway ]
          |--- Payload: Quoted reply with [CODE] prefix
