@@ -15,17 +15,87 @@ if [ -f "./install_deps.sh" ]; then
     ./install_deps.sh
     if [ $? -ne 0 ]; then
         echo "❌ Pre-flight checks failed. Please resolve the missing dependencies manually."
-        kill -INT $$
+        exit 1
     fi
 else
     echo "⚠️  install_deps.sh not found, skipping pre-flight checks."
 fi
 
-TARGET_PYTHON="python3.12"
-if ! command -v $TARGET_PYTHON &> /dev/null; then
-    echo "❌ ERROR: Python 3.12 is required but not found after pre-flight checks."
-    kill -INT $$
+# Dynamic Python 3.12 Resolution & Fallback Ladder
+export PYTHON_BIN="python3.12"
+
+if ! command -v $PYTHON_BIN &> /dev/null; then
+    echo "⚠️  System python3.12 not found. Initializing Python 3.12 Fallback Ladder..."
+
+    # Step 1: Attempt Standard APT Install
+    echo "⏳ Step 1: Attempting standard APT installation..."
+    if sudo apt-get update && sudo apt-get install -y python3.12 python3.12-venv python3.12-dev; then
+        echo "✅ Installed python3.12 via APT."
+    else
+        echo "⚠️  APT failed. Proceeding to Step 2..."
+
+        # Step 2: Attempt PPA Installation
+        echo "⏳ Step 2: Attempting PPA installation (deadsnakes)..."
+        if sudo apt-get install -y software-properties-common && \
+           sudo add-apt-repository ppa:deadsnakes/ppa -y && \
+           sudo apt-get update && \
+           sudo apt-get install -y python3.12 python3.12-venv python3.12-dev; then
+            echo "✅ Installed python3.12 via PPA."
+        else
+            echo "⚠️  PPA failed. Proceeding to Step 3..."
+
+            # Step 3: Autonomous Source Compilation
+            echo "⏳ Step 3: Compiling Python 3.12 from source..."
+            echo "Checking prerequisites..."
+            sudo apt-get install -y build-essential libssl-dev zlib1g-dev \
+                 libncurses-dev libreadline-dev libsqlite3-dev libbz2-dev \
+                 liblzma-dev libgdbm-dev libdb-dev uuid-dev libffi-dev wget tar
+
+            PYTHON_VERSION="3.12.9"
+            PREFIX_DIR="$HOME/.local/python3.12"
+            export PYTHON_BIN="$PREFIX_DIR/bin/python3.12"
+
+            if [ -x "$PYTHON_BIN" ]; then
+                echo "✅ Python 3.12 is already compiled at $PYTHON_BIN"
+            else
+                TEMP_DIR=$(mktemp -d)
+                cd "$TEMP_DIR"
+
+                echo "⏳ Downloading Python ${PYTHON_VERSION}..."
+                wget -q --show-progress "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"
+                tar -xzf "Python-${PYTHON_VERSION}.tgz"
+                cd "Python-${PYTHON_VERSION}"
+
+                echo "⏳ Configuring build..."
+                ./configure --enable-optimizations --with-ensurepip=install --prefix="$PREFIX_DIR" >/dev/null
+
+                echo "⏳ Compiling Python (this may take 5-10 minutes)..."
+                make -j $(nproc) >/dev/null
+
+                echo "⏳ Installing Python to $PREFIX_DIR..."
+                make install >/dev/null
+
+                cd - >/dev/null
+                rm -rf "$TEMP_DIR"
+
+                if [ -x "$PYTHON_BIN" ]; then
+                    echo "✅ Python 3.12 compiled and installed successfully!"
+                else
+                    echo "❌ Critical Error: Python source compilation failed."
+                    exit 1
+                fi
+            fi
+        fi
+    fi
 fi
+
+# Verify Python Binary works
+if ! $PYTHON_BIN -c "import sqlite3" &> /dev/null; then
+    echo "❌ Critical Error: Selected Python binary ($PYTHON_BIN) cannot import sqlite3. Compilation or installation is broken."
+    exit 1
+fi
+echo "✅ Validated Python binary: $($PYTHON_BIN --version)"
+
 
 # Function to ask and install OS packages if on apt-based Linux
 install_os_pkg() {
@@ -107,7 +177,7 @@ if [ "$(uname)" = "Linux" ]; then
 fi
 
 # Check if python3-venv is available (often missing on clean Ubuntu)
-if ! $TARGET_PYTHON -c "import venv" &> /dev/null; then
+if ! $PYTHON_BIN -c "import venv" &> /dev/null; then
     install_os_pkg "python3-venv python3-dev"
 fi
 
@@ -155,7 +225,7 @@ if [ "$NEEDS_INSTALL" = true ]; then
 
         # Create virtual environment
         echo "-> Creating Python virtual environment..."
-        $TARGET_PYTHON -m venv venv
+        $PYTHON_BIN -m venv venv
 
         # Activate virtual environment and install python dependencies
         echo "-> Installing Python dependencies..."

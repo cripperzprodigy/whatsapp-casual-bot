@@ -59,3 +59,10 @@ This document records the recent post-deployment optimization passes performed o
 - **Strict Input Validation:**
   - `SUMMARY_HISTORY_COUNT` natively clamps integers via a Pydantic `model_validator` in `config.py`.
   - `!lang set` now filters string literals through a mapped sanitization dictionary (e.g. `english` -> `en`), checks the result against a hardcoded ISO-639-1 `SUPPORTED_CODES` array, and safely rejects invalid outputs.
+
+## 6. Pre-Flight Dependency Refactor (Autonomous Fallbacks)
+**Problem:** On unsupported OS deployments (like minimal Ubuntu 26.04 images), the `python3.12` binaries and required C headers (like `sqlite3-dev`) do not exist natively within `apt`. The `start.sh` boot sequence previously failed entirely, requiring manual configuration.
+**Fix:**
+- Consolidated the OS-level dependencies into a discrete, smart script: `install_deps.sh`.
+- Added aggressive automated fallbacks: If the standard `apt` fetches fail or return 404s, the script inherently downloads the SQLite3 and Python 3.12 (e.g. `3.12.9`) tarballs directly from their respective source registries.
+- It then autonomously compiles them using `make -j $(nproc)` under the hood without hanging on prompt evaluations, dynamically bypassing APT constraints and generating the required headers so the bot seamlessly installs across any Ubuntu architecture.

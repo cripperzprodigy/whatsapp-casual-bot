@@ -125,8 +125,44 @@ install_python312() {
     if [ "$success" = true ]; then
         return 0
     else
-        echo -e "${RED}❌ Failed to install Python 3.12 packages via apt.${NC}"
-        return 1
+        echo -e "${YELLOW}⚠️  Failed to install Python 3.12 packages via apt. Attempting source compilation...${NC}"
+
+        local PYTHON_VERSION="3.12.9"
+        local TEMP_DIR=$(mktemp -d)
+        cd "$TEMP_DIR"
+
+        echo -e "⏳ Downloading Python ${PYTHON_VERSION} source..."
+        if wget -q --show-progress "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"; then
+            tar -xzf "Python-${PYTHON_VERSION}.tgz"
+            cd "Python-${PYTHON_VERSION}"
+
+            echo -e "⏳ Configuring build..."
+            ./configure --enable-optimizations >/dev/null
+
+            echo -e "⏳ Compiling Python from source (this may take 5-10 minutes)..."
+            make -j $(nproc) >/dev/null
+
+            echo -e "⏳ Installing Python ${PYTHON_VERSION}..."
+            make altinstall >/dev/null
+
+            cd - >/dev/null
+            rm -rf "$TEMP_DIR"
+
+            if command -v python3.12 &> /dev/null; then
+                echo -e "${GREEN}✅ Python 3.12 compiled and installed successfully!${NC}"
+                return 0
+            else
+                echo -e "${RED}❌ Critical: Python source compilation failed.${NC}"
+                MISSING_PKGS+=("python3.12")
+                return 1
+            fi
+        else
+            echo -e "${RED}❌ Critical: Could not download Python source. Manual compilation failed.${NC}"
+            cd - >/dev/null
+            rm -rf "$TEMP_DIR"
+            MISSING_PKGS+=("python3.12")
+            return 1
+        fi
     fi
 }
 
