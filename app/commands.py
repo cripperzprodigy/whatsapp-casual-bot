@@ -261,18 +261,29 @@ async def handle_command(  # Issue 13: added return type
                         )
 
         elif command == "!t":
-            if len(args) >= 1:
-                from app.translation import FULL_NAME_TO_CODE
-                target_lang = "auto"
-                text_to_translate = ""
+            if not args:
+                await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
+                continue
                 
-                if len(args) >= 2 and args[0] == "auto":
-                    text_to_translate = " ".join(args[1:])
-                elif len(args) >= 2 and (len(args[0]) == 2 or args[0].lower() in FULL_NAME_TO_CODE):
-                    target_lang = args[0]
-                    text_to_translate = " ".join(args[1:])
-                else:
-                    text_to_translate = " ".join(args)
+            from app.translation import FULL_NAME_TO_CODE, is_valid_language_code
+            first_word = args[0].lower()
+            
+            if first_word == "auto" and len(args) > 1:
+                target_lang = "auto"
+                text_to_translate = " ".join(args[1:])
+            elif first_word in FULL_NAME_TO_CODE and len(args) > 1:
+                target_lang = FULL_NAME_TO_CODE[first_word]
+                text_to_translate = " ".join(args[1:])
+            elif is_valid_language_code(first_word) and len(args) > 1:
+                target_lang = first_word
+                text_to_translate = " ".join(args[1:])
+            else:
+                target_lang = "auto"
+                text_to_translate = " ".join(args)
+                
+            if not text_to_translate.strip():
+                await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
+                continue
 
                 if target_lang == "auto":
                     # Cascade: Chat Setting -> Global -> Default 'en'

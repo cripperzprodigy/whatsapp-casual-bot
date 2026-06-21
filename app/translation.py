@@ -34,6 +34,14 @@ FULL_NAME_TO_CODE: dict[str, str] = {
     "swedish": "sv",
 }
 
+VALID_TARGET_LANGUAGES = set(FULL_NAME_TO_CODE.values())
+
+def is_valid_language_code(code: str) -> bool:
+    """Check if the provided language code is explicitly supported."""
+    if not code:
+        return False
+    return code.lower() in VALID_TARGET_LANGUAGES
+
 
 def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
     """
@@ -110,6 +118,14 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
     Translates text to the target language using the LLM.
     Returns the original text immediately if safe language detection fails or matches target.
     """
+    if not text.strip():
+        logger.warning("translate_text called with empty text.")
+        return text
+
+    if target_language != "auto" and not is_valid_language_code(target_language):
+        logger.warning(f"Invalid target language '{target_language}'. Falling back to default.")
+        target_language = settings.GLOBAL_TARGET_LANGUAGE or "en"
+        
     source_lang = detect_language_safe(text, target_language)
 
     if source_lang is None:
@@ -127,9 +143,7 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
         text_to_translate = text
 
     prompt = (
-        "You are a precise translation engine.\n"
-        f"Translate the input text to {target_language}. Automatically detect the actual source language (ignore any provided ISO codes if they conflict). Output ONLY the translated text.\n"
-        "NO explanations. NO prefixes like 'Here is the translation'. NO meta-commentary. Preserve all emojis, slang, and formatting exactly.\n\n"
+        f"Translate to {target_language}. Auto-detect source. Output ONLY translation.\n\n"
         f"Text to translate:\n{text_to_translate}"
     )
 
