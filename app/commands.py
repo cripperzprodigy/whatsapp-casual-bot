@@ -1038,9 +1038,10 @@ async def handle_command(  # Issue 13: added return type
         elif command == "!chatty_status":
             profile = read_profile(chat_id)
 
-            status = profile.get("chatty_status", False)
-            freq = profile.get("chatty_frequency", 10)
-            burst = profile.get("chatty_burst", 1)
+            default_status = settings.CHATTY_GROUP_DEFAULT if chat_id.endswith("@g.us") else settings.CHATTY_DEFAULT
+            status = profile.get("chatty_status", default_status)
+            freq = profile.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY)
+            burst = profile.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
             counter = profile.get("message_counter", 0)
             lang = profile.get("preferred_language", "Auto")
 
