@@ -158,7 +158,9 @@ async def process_message(
                     nonlocal trigger
                     nonlocal burst_count
                     bot_id = settings.BOT_NUMBER
-                    if bot_id in text or f"@{bot_id}" in text or "@bot" in text.lower():
+                    is_mentioned = (bot_id and (bot_id in text or f"@{bot_id}" in text)) or "@bot" in text.lower()
+                    
+                    if is_mentioned:
                         trigger = True
                         p["message_counter"] = 0
                     else:

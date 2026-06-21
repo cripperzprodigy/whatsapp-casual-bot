@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     #  Internal Bot config
     # ------------------------------------------------------------------ #
     # Issue 5: BOT_NUMBER used to prevent self-loops — warn if empty
-    BOT_NUMBER: str = ""
+    BOT_NUMBER: Optional[str] = None
     # Bootstrap Owner configured via .env
     BOT_OWNER_ID: Optional[str] = None
     # Issue 2: buffer size, now referenced as a named config value
@@ -156,6 +156,10 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def _parse_and_clamp_translation_chunks(cls, data: dict) -> dict:
+        bn = data.get("BOT_NUMBER")
+        if bn == "":
+            data["BOT_NUMBER"] = None
+
         limit_val = data.get("TRANSLATION_CHUNK_SIZE")
         if limit_val is not None:
             try:
