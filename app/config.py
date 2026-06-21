@@ -77,7 +77,8 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 8192
     ROSTER_EXPORT_THROTTLE_SECONDS: int = 60
     MAX_CONTEXT_MESSAGES: int = 50
-    MAX_INPUT_LENGTH_CHARS: int = 4000
+    TRANSLATION_CHUNK_SIZE: int = 2000
+    TRANSLATION_MAX_CHUNKS: int = 5
 
     # ------------------------------------------------------------------ #
     #  Issue 16: Logging
@@ -154,14 +155,22 @@ class Settings(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def _parse_and_clamp_input_length(cls, data: dict) -> dict:
-        limit_val = data.get("MAX_INPUT_LENGTH_CHARS")
+    def _parse_and_clamp_translation_chunks(cls, data: dict) -> dict:
+        limit_val = data.get("TRANSLATION_CHUNK_SIZE")
         if limit_val is not None:
             try:
                 val = int(limit_val)
-                data["MAX_INPUT_LENGTH_CHARS"] = max(500, min(100000, val))
+                data["TRANSLATION_CHUNK_SIZE"] = max(500, min(4000, val))
             except (ValueError, TypeError):
-                data.pop("MAX_INPUT_LENGTH_CHARS", None)
+                data.pop("TRANSLATION_CHUNK_SIZE", None)
+                
+        chunks_val = data.get("TRANSLATION_MAX_CHUNKS")
+        if chunks_val is not None:
+            try:
+                val = int(chunks_val)
+                data["TRANSLATION_MAX_CHUNKS"] = max(1, min(20, val))
+            except (ValueError, TypeError):
+                data.pop("TRANSLATION_MAX_CHUNKS", None)
         return data
 
     # Issue 5: warn on missing critical fields at startup

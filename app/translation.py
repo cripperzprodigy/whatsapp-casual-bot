@@ -43,6 +43,44 @@ def is_valid_language_code(code: str) -> bool:
     return code.lower() in VALID_TARGET_LANGUAGES
 
 
+def split_text_smart(text: str, max_chars: int) -> list[str]:
+    """Splits text intelligently by paragraphs, then lines, then sentences, then characters."""
+    def split_by(text_to_split: str, delimiters: list) -> list[str]:
+        if len(text_to_split) <= max_chars or not delimiters:
+            return [text_to_split[i:i+max_chars] for i in range(0, len(text_to_split), max_chars)]
+            
+        delimiter = delimiters[0]
+        if isinstance(delimiter, str):
+            parts = text_to_split.split(delimiter)
+            parts = [p + delimiter for p in parts[:-1]] + [parts[-1]] if len(parts) > 1 else parts
+        else:
+            parts = [p + " " for p in delimiter.split(text_to_split) if p]
+            if parts:
+                parts[-1] = parts[-1].rstrip() # remove trailing space from last part
+            
+        result = []
+        current_chunk = ""
+        for part in parts:
+            if not part:
+                continue
+            if len(current_chunk) + len(part) <= max_chars:
+                current_chunk += part
+            else:
+                if current_chunk:
+                    result.append(current_chunk)
+                if len(part) > max_chars:
+                    result.extend(split_by(part, delimiters[1:]))
+                    current_chunk = ""
+                else:
+                    current_chunk = part
+        if current_chunk:
+            result.append(current_chunk)
+        return result
+
+    delimiters = ["\n\n", "\n", re.compile(r'(?<=[.!?])\s+')]
+    return split_by(text, delimiters)
+
+
 def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
     """
     Determines if text should be translated based on length, emojis,
@@ -135,42 +173,67 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
         logger.debug(f"Skipping translation: Source language '{source_lang}' is explicitly ignored")
         return text
 
-    # Guard Rails: Truncate input > MAX_INPUT_LENGTH_CHARS
-    if len(text) > settings.MAX_INPUT_LENGTH_CHARS:
-        logger.warning(f"Truncating text from {len(text)} to {settings.MAX_INPUT_LENGTH_CHARS} characters before translation")
-        text_to_translate = text[:settings.MAX_INPUT_LENGTH_CHARS]
-    else:
-        text_to_translate = text
+    # Chunking Guard Rails
+    chunks = split_text_smart(text, settings.TRANSLATION_CHUNK_SIZE)
+    if len(chunks) > settings.TRANSLATION_MAX_CHUNKS:
+        logger.warning(f"Message requires {len(chunks)} chunks, exceeding max of {settings.TRANSLATION_MAX_CHUNKS}.")
+        return f"{text}\n\n[⚠️ Message too long for translation service]"
 
-    prompt = (
-        f"Translate to {target_language}. Auto-detect source. Output ONLY translation.\n\n"
-        f"Text to translate:\n{text_to_translate}"
-    )
+    translated_parts = []
+    last_sentence = ""
 
-    max_retries = 1
-    current_multiplier = 1.0
-    
-    for attempt in range(max_retries + 1):
-        try:
-            max_tokens = int(settings.LLM_MAX_TOKENS * current_multiplier)
-            response_content = await ask_llm(prompt, task_type="translation", max_tokens_override=max_tokens)
-            return f"[{source_lang.upper()}] {response_content}"
-            
-        except TokenExhaustedError:
-            if attempt < max_retries:
-                logger.warning(f"Translation hit token limit (attempt {attempt + 1}). Retrying with 50% more tokens.")
-                current_multiplier = 1.5
-                continue
-            else:
-                logger.error("Translation failed after 1 retry due to token exhaustion.")
-                return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
+    for i, chunk in enumerate(chunks):
+        if i == 0:
+            prompt = (
+                f"Translate to {target_language}. Auto-detect source. Output ONLY translation.\n\n"
+                f"Text to translate:\n{chunk}"
+            )
+        else:
+            prompt = (
+                f"Translate to {target_language}. Context: Previous chunk ended with '{last_sentence}'. "
+                f"Ensure continuity in tone, pronouns, and style. Output ONLY translation.\n\n"
+                f"Text to translate:\n{chunk}"
+            )
+
+        max_retries = 1
+        current_multiplier = 1.0
+        success = False
+        
+        for attempt in range(max_retries + 1):
+            try:
+                max_tokens = int(settings.LLM_MAX_TOKENS * current_multiplier)
+                response_content = await ask_llm(prompt, task_type="translation", max_tokens_override=max_tokens)
+                translated_parts.append(response_content.strip())
                 
-        except TranslationError as e:
-            logger.error(f"Translation failed silently or returned error. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")
-            return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
-            
-        except Exception as e:
-            logger.error(f"Critical error during translation API call. chat_id={chat_id}, msg_id={msg_id}, error={str(e)}")
-            return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
-            
-    return f"{text}\n\n{settings.MSG_TRANSLATION_ERROR}"
+                # Extract the last sentence for the next chunk's context
+                last_sentence_match = re.search(r'([^.!?]+[.!?]+)\s*$', response_content.strip())
+                if last_sentence_match:
+                    last_sentence = last_sentence_match.group(1).strip()
+                else:
+                    last_sentence = response_content.strip()[-100:] # fallback to last 100 chars
+                    
+                success = True
+                break
+                
+            except TokenExhaustedError:
+                if attempt < max_retries:
+                    logger.warning(f"Translation hit token limit on chunk {i+1} (attempt {attempt + 1}). Retrying.")
+                    current_multiplier = 1.5
+                    continue
+                else:
+                    logger.error(f"Translation failed on chunk {i+1} due to token exhaustion.")
+                    return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
+                    
+            except TranslationError as e:
+                logger.error(f"Translation failed silently on chunk {i+1}. error={str(e)}")
+                return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
+                
+            except Exception as e:
+                logger.error(f"Critical error during translation API call on chunk {i+1}. error={str(e)}")
+                return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
+                
+        if not success:
+            return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
+
+    final_translation = " ".join(translated_parts)
+    return f"[{source_lang.upper()}] {final_translation}"
