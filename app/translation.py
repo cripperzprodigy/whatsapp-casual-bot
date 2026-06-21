@@ -135,10 +135,10 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
         logger.debug(f"Skipping translation: Source language '{source_lang}' is explicitly ignored")
         return text
 
-    # Guard Rails: Truncate input > 2000 characters
-    if len(text) > 2000:
-        logger.warning(f"Truncating text from {len(text)} to 2000 characters before translation")
-        text_to_translate = text[:2000]
+    # Guard Rails: Truncate input > MAX_INPUT_LENGTH_CHARS
+    if len(text) > settings.MAX_INPUT_LENGTH_CHARS:
+        logger.warning(f"Truncating text from {len(text)} to {settings.MAX_INPUT_LENGTH_CHARS} characters before translation")
+        text_to_translate = text[:settings.MAX_INPUT_LENGTH_CHARS]
     else:
         text_to_translate = text
 

@@ -177,7 +177,7 @@ class AIMemoryEngine:
             return
 
         # Get last 10 messages
-        recent = "".join([json.loads(line)["role"] + ": " + json.loads(line)["content"] + "\n" for line in lines[-10:]])
+        recent = "".join([json.loads(line)["role"] + ": " + json.loads(line)["content"] + "\n" for line in lines[-settings.MAX_CONTEXT_MESSAGES:]])
 
         summary_prompt = f"""You are an expert conversation analyst. Analyze the provided chat history between a user and an assistant.
 Generate a concise "Memory State" JSON object containing:

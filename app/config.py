@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     SUMMARY_MESSAGE_LIMIT: int = 500
     LLM_MAX_TOKENS: int = 8192
     ROSTER_EXPORT_THROTTLE_SECONDS: int = 60
+    MAX_CONTEXT_MESSAGES: int = 50
+    MAX_INPUT_LENGTH_CHARS: int = 4000
 
     # ------------------------------------------------------------------ #
     #  Issue 16: Logging
@@ -133,9 +135,33 @@ class Settings(BaseSettings):
         if limit_val is not None:
             try:
                 val = int(limit_val)
-                data["LLM_MAX_TOKENS"] = max(512, min(32768, val))
+                data["LLM_MAX_TOKENS"] = max(512, min(131072, val))
             except (ValueError, TypeError):
                 data.pop("LLM_MAX_TOKENS", None)
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_context_messages(cls, data: dict) -> dict:
+        limit_val = data.get("MAX_CONTEXT_MESSAGES")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["MAX_CONTEXT_MESSAGES"] = max(5, min(1000, val))
+            except (ValueError, TypeError):
+                data.pop("MAX_CONTEXT_MESSAGES", None)
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_input_length(cls, data: dict) -> dict:
+        limit_val = data.get("MAX_INPUT_LENGTH_CHARS")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["MAX_INPUT_LENGTH_CHARS"] = max(500, min(100000, val))
+            except (ValueError, TypeError):
+                data.pop("MAX_INPUT_LENGTH_CHARS", None)
         return data
 
     # Issue 5: warn on missing critical fields at startup
