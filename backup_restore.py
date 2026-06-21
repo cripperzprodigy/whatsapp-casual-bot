@@ -9,7 +9,7 @@ from pathlib import Path
 
 # Common names for critical files/folders
 CRITICAL_PATHS = {
-    "session_folders": [".wwebjs_auth", "baileys_auth", "session", ".wwebjs_cache"],
+    "session_folders": [".wwebjs_auth", "baileys_auth", "session", ".wwebjs_cache", "wwebjs_session"],
     "env_files": [".env"],
     "state_files": ["bot.db", "bot.sqlite", "bot.sqlite3"],
     "data_folders": ["data"]
@@ -28,15 +28,36 @@ def is_excluded(path: Path) -> bool:
             return True
     return False
 
+def find_session_dirs(root_dir: Path) -> list:
+    """Recursively searches for WhatsApp session directories."""
+    found_sessions = []
+    session_names = set(CRITICAL_PATHS["session_folders"])
+
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        # Prune excluded directories to avoid scanning node_modules, venv, etc.
+        dirnames[:] = [d for d in dirnames if not is_excluded(Path(dirpath) / d)]
+
+        current_path = Path(dirpath)
+
+        # Check if the current directory matches a known session folder name
+        if current_path.name in session_names:
+            found_sessions.append(current_path)
+            continue
+
+        # Check if the current directory contains a 'default-session.json' file
+        if 'default-session.json' in filenames:
+            found_sessions.append(current_path)
+
+    # Deduplicate in case a folder matches both criteria
+    unique_sessions = {p.resolve(): p for p in found_sessions}.values()
+    return list(unique_sessions)
+
 def detect_paths(root_dir: Path) -> list:
     """Scans the root directory to find existing critical paths."""
     found_paths = []
 
-    # 1. Sessions
-    for session_name in CRITICAL_PATHS["session_folders"]:
-        p = root_dir / session_name
-        if p.exists() and p.is_dir():
-            found_paths.append(p)
+    # 1. Sessions (Recursive discovery)
+    found_paths.extend(find_session_dirs(root_dir))
 
     # 2. Env
     for env_name in CRITICAL_PATHS["env_files"]:
@@ -96,7 +117,7 @@ def backup_mode(root_dir: Path, output_file: str = None):
     print(f"\n✅ Backup completed successfully: {out_path.absolute()}")
 
     # Check if session was found
-    session_found = any(p.name in CRITICAL_PATHS["session_folders"] for p in paths_to_backup)
+    session_found = len(find_session_dirs(root_dir)) > 0
     if not session_found:
         print("⚠️  Warning: WhatsApp session folder not detected. You may need to re-scan the QR code if restoring from this backup.")
 
@@ -110,11 +131,7 @@ def restore_mode(root_dir: Path, backup_file: str, auto_confirm: bool = False):
     print(f"Preparing to restore from {backup_path}...")
 
     # Safety Check: Does session already exist?
-    existing_sessions = []
-    for session_name in CRITICAL_PATHS["session_folders"]:
-        p = root_dir / session_name
-        if p.exists():
-            existing_sessions.append(p)
+    existing_sessions = find_session_dirs(root_dir)
 
     if existing_sessions:
         print("\n⚠️  Safety Check: Existing WhatsApp session(s) detected in current directory:")
