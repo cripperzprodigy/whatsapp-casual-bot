@@ -54,8 +54,9 @@ def is_explicitly_tagged(text: str, bot_number: str | None, mentioned_jids: list
             return True
         # Check native WhatsApp mentions
         if mentioned_jids:
-            bot_jid = f"{bot_number}@s.whatsapp.net"
-            if bot_jid in mentioned_jids:
+            bot_jid_baileys = f"{bot_number}@s.whatsapp.net"
+            bot_jid_wwebjs = f"{bot_number}@c.us"
+            if bot_jid_baileys in mentioned_jids or bot_jid_wwebjs in mentioned_jids:
                 return True
     return False
 

@@ -121,3 +121,7 @@ def test_native_whatsapp_mention():
     # Case C: Multiple JIDs including the bot -> True
     assert is_explicitly_tagged("@Everyone hello", bot_number, mentioned_jids=[other_jid, bot_jid]) is True
 
+    # Case D: whatsapp-web.js format (@c.us)
+    wwebjs_jid = f"{bot_number}@c.us"
+    assert is_explicitly_tagged("@Bot hello", bot_number, mentioned_jids=[wwebjs_jid]) is True
+
