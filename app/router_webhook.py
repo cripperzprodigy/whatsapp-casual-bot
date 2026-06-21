@@ -39,7 +39,29 @@ router = APIRouter()
 # Issue 8: limiter instance — shared state injected from main.py
 limiter = Limiter(key_func=get_remote_address)
 
+import re
+
 pending_chatty_tasks: Dict[str, asyncio.Task] = {}
+
+def is_explicitly_tagged(text: str, bot_number: str | None) -> bool:
+    """Checks if the bot is explicitly tagged via @bot or its phone number."""
+    if re.search(r'(?i)(?<!\w)@bot(?!\w)', text):
+        return True
+    if bot_number:
+        # Match bot_number with optional @ prefix, ensuring it's not part of a larger number
+        pattern = r'(?<!\d)@?' + re.escape(bot_number) + r'(?!\d)'
+        if re.search(pattern, text):
+            return True
+    return False
+
+def is_bot_mentioned(text: str, bot_number: str | None, is_group: bool) -> bool:
+    """
+    Robust helper to determine if Chatty should be triggered implicitly or explicitly.
+    DMs are always considered 'mentioned' (implicitly). Groups require an explicit tag.
+    """
+    if not is_group:
+        return True
+    return is_explicitly_tagged(text, bot_number)
 
 async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, engine: AIMemoryEngine, delay: float, burst_count: int):
     try:
@@ -196,9 +218,9 @@ async def process_message(
                     nonlocal trigger
                     nonlocal burst_count
                     bot_id = settings.BOT_NUMBER
-                    is_mentioned = (bot_id and (bot_id in text or f"@{bot_id}" in text)) or "@bot" in text.lower()
+                    is_group = chat_id.endswith("@g.us")
                     
-                    if is_mentioned:
+                    if is_bot_mentioned(text, bot_id, is_group):
                         trigger = True
                         p["message_counter"] = 0
                     else:
@@ -219,9 +241,9 @@ async def process_message(
 
                 if trigger:
                     bot_id = settings.BOT_NUMBER
-                    is_mentioned = (bot_id and (bot_id in text or f"@{bot_id}" in text)) or "@bot" in text.lower()
+                    explicit_tag = is_explicitly_tagged(text, bot_id)
                     
-                    if is_mentioned:
+                    if explicit_tag:
                         # Immediate reply bypasses delay
                         delay = 0.0
                     else:
@@ -233,9 +255,9 @@ async def process_message(
 
                     # Handle existing tasks based on mode
                     if chat_id in pending_chatty_tasks:
-                        if d_mode == "debounce" and not is_mentioned:
+                        if d_mode == "debounce" and not explicit_tag:
                             pending_chatty_tasks[chat_id].cancel()
-                        elif d_mode == "throttle" and not is_mentioned:
+                        elif d_mode == "throttle" and not explicit_tag:
                             # Do not reset timer, let the existing one finish
                             return
                         else:

@@ -11,3 +11,4 @@
 - **Chatty Config Overhaul**: Fully externalized frequency, burst, delay limits, and delay modes to .env. Added commands '!chatty_delay' and '!chatty_mode' for granular per-chat control.
 - Fixed bug where !chatty_status crashed due to shadowing of global settings by local ChatSettings models.
 - Fixed bug where Chatty webhook trigger incorrectly defaulted to False instead of respecting the global CHATTY_DEFAULT setting for DMs.
+- Fixed Chatty trigger: enabled implicit DM mentions, normalized group tags, prevented partial number false positives.

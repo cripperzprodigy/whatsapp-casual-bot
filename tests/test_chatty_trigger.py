@@ -1,49 +1,31 @@
-import pytest
+from app.router_webhook import is_bot_mentioned, is_explicitly_tagged
 
-def mock_update_counter(p, text, bot_id, default_freq):
-    trigger = False
-    is_mentioned = (bot_id and (bot_id in text or f"@{bot_id}" in text)) or "@bot" in text.lower()
-    
-    if is_mentioned:
-        trigger = True
-        p["message_counter"] = 0
-    else:
-        p["message_counter"] = p.get("message_counter", 0) + 1
-        if p["message_counter"] >= p.get("chatty_frequency", default_freq):
-            trigger = True
-            p["message_counter"] = 0
-    return trigger, p
+def test_dm_implicit_trigger():
+    # DM Implicit Trigger: Input "Hello", Bot "123", Is_Group=False -> Expect True
+    assert is_bot_mentioned("Hello", "123", is_group=False) is True
 
-def test_chatty_trigger_no_mention_empty_bot_number():
-    p = {}
-    bot_id = None # Simulating BOT_NUMBER = None after the pydantic validator
-    default_freq = 5
+def test_group_tag_variations():
+    # Input "@1234567890@c.us hello", Bot "1234567890" -> Expect True
+    assert is_bot_mentioned("@1234567890@c.us hello", "1234567890", is_group=True) is True
+    # Input "@1234567890 hello", Bot "1234567890" -> Expect True
+    assert is_bot_mentioned("@1234567890 hello", "1234567890", is_group=True) is True
     
-    # 5 consecutive messages without mentions
-    for i in range(1, 5):
-        trigger, p = mock_update_counter(p, "hello", bot_id, default_freq)
-        assert trigger is False
-        assert p["message_counter"] == i
-        
-    # 5th message should trigger
-    trigger, p = mock_update_counter(p, "hello 5", bot_id, default_freq)
-    assert trigger is True
-    assert p["message_counter"] == 0
+def test_false_positive_prevention():
+    # Input "Call 12345", Bot "123" -> Expect False
+    assert is_bot_mentioned("Call 12345", "123", is_group=True) is False
+    # Input "Room 101", Bot "10" -> Expect False
+    assert is_bot_mentioned("Room 101", "10", is_group=True) is False
 
-def test_chatty_trigger_with_mention():
-    p = {"message_counter": 3}
-    bot_id = "12345"
-    default_freq = 5
-    
-    trigger, p = mock_update_counter(p, "hey @12345 what's up", bot_id, default_freq)
-    assert trigger is True
-    assert p["message_counter"] == 0
-    
-def test_chatty_trigger_with_generic_bot_mention():
-    p = {"message_counter": 2}
-    bot_id = None
-    default_freq = 5
-    
-    trigger, p = mock_update_counter(p, "hey @bot", bot_id, default_freq)
-    assert trigger is True
-    assert p["message_counter"] == 0
+def test_explicitly_tagged_bot_keyword():
+    # Should match "@bot" case-insensitive with word boundaries
+    assert is_explicitly_tagged("hey @bot how are you", "123") is True
+    assert is_explicitly_tagged("@Bot", "123") is True
+    assert is_explicitly_tagged("what is up @bOT", "123") is True
+    # Should NOT match partials
+    assert is_explicitly_tagged("hey @bottle", "123") is False
+    assert is_explicitly_tagged("robot", "123") is False
+
+def test_is_bot_mentioned_empty_bot_number():
+    assert is_bot_mentioned("hello @bot", None, is_group=True) is True
+    assert is_bot_mentioned("hello", None, is_group=True) is False
+    assert is_bot_mentioned("hello", None, is_group=False) is True

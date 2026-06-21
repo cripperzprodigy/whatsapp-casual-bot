@@ -7,3 +7,4 @@
 - [CLOSED] Chatty Feature Failure: Empty String Match logic fixed in config and webhook
 - [CLOSED] Chatty Status Crash: Fixed shadowing bug in commands.py where local settings overrode global app.config settings causing AttributeError.
 - [CLOSED] Chatty Default Bypass: Fixed router_webhook.py where missing profile entries incorrectly fell back to False instead of respecting CHATTY_DEFAULT for DMs.
+- [CLOSED] Chatty DM/Group failures: Replaced greedy substring match with robust regex boundaries and implicit DM tagging.
