@@ -45,7 +45,12 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         logger.debug(f"Skipping translation: Length < {settings.TRANSLATION_MIN_LENGTH}")
         return None
         
-    # 2. Emoji/Pattern Guard (Skip if >80% non-alphanumeric)
+    # 2. Word Count Guard
+    if len(text.split()) < settings.TRANSLATION_MIN_WORDS:
+        logger.debug(f"Skipping translation: Words < {settings.TRANSLATION_MIN_WORDS}")
+        return None
+        
+    # 3. Emoji/Pattern Guard (Skip if >80% non-alphanumeric)
     alphanumeric_count = sum(c.isalnum() for c in text)
     if alphanumeric_count / max(len(text), 1) < 0.2:
         logger.debug("Skipping translation: High non-alphanumeric density")

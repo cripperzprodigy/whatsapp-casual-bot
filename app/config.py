@@ -55,7 +55,8 @@ class Settings(BaseSettings):
     GLOBAL_IGNORED_LANGUAGES: str = ""
     
     # Auto-Translation Sensitivity
-    TRANSLATION_MIN_LENGTH: int = 4
+    TRANSLATION_MIN_LENGTH: int = 10
+    TRANSLATION_MIN_WORDS: int = 3
     TRANSLATION_CONFIDENCE_THRESHOLD: float = 0.70
     TRANSLATION_EQUIVALENT_LANGS: str = "id,ms"
 
