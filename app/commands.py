@@ -291,8 +291,9 @@ async def handle_command(  # Issue 13: added return type
             convo = "\n".join(
                 [f"{m.sender_name}: {m.content}" for m in recent_msgs]
             )
+            actual_count = len(recent_msgs)
             prompt = (
-                f"Summarize the following conversation. Mode: {mode}. "
+                f"Summarize the following conversation spanning the last {actual_count} messages. Mode: {mode}. "
                 "For 'short', use bullet points. For 'full', include "
                 "key points, decisions, and open questions.\n\n"
                 f"{convo}"

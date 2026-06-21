@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     #  Issue 14: Named constants replacing magic numbers
     # ------------------------------------------------------------------ #
-    SUMMARY_MESSAGE_LIMIT: int = 30
+    SUMMARY_MESSAGE_LIMIT: int = 500
     LLM_MAX_TOKENS: int = 1024
     ROSTER_EXPORT_THROTTLE_SECONDS: int = 60
 
@@ -100,6 +100,19 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_summary_limit(cls, data: dict) -> dict:
+        limit_val = data.get("SUMMARY_MESSAGE_LIMIT")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["SUMMARY_MESSAGE_LIMIT"] = max(10, min(2000, val))
+            except (ValueError, TypeError):
+                # Fall back to default silently if invalid
+                data.pop("SUMMARY_MESSAGE_LIMIT", None)
+        return data
 
     # Issue 5: warn on missing critical fields at startup
     @model_validator(mode="after")
