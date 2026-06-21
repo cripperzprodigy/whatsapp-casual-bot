@@ -228,10 +228,19 @@ async def process_message(
                         d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
                         delay = random.uniform(d_min, d_max)
 
-                    # Debounce: Cancel existing task if any
+                    d_mode = updated_profile.get("chatty_delay_mode", settings.CHATTY_DELAY_MODE)
+
+                    # Handle existing tasks based on mode
                     if chat_id in pending_chatty_tasks:
-                        pending_chatty_tasks[chat_id].cancel()
-                        
+                        if d_mode == "debounce" and not is_mentioned:
+                            pending_chatty_tasks[chat_id].cancel()
+                        elif d_mode == "throttle" and not is_mentioned:
+                            # Do not reset timer, let the existing one finish
+                            return
+                        else:
+                            # Mention overrides throttle/debounce, cancels current wait
+                            pending_chatty_tasks[chat_id].cancel()
+                            
                     # Start new delayed task
                     task = asyncio.create_task(_delayed_chatty_reply(
                         chat_id, msg_key.id, msg_key.participant, engine, delay, burst_count
