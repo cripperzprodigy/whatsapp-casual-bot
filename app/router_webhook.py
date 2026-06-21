@@ -151,26 +151,31 @@ async def process_message(
         # Trigger Chatty RAG response if enabled
         if chatty_status:
             try:
-                engine = AIMemoryEngine(chat_id, sender_name, profile=profile)
-
                 trigger = False
-                # Mention Logic
-                bot_id = settings.BOT_NUMBER
-                if bot_id in text or f"@{bot_id}" in text or "@bot" in text.lower():
-                    trigger = True
-                    engine.profile["message_counter"] = 0
-                else:
-                    engine.profile["message_counter"] = engine.profile.get("message_counter", 0) + 1
-                    if engine.profile["message_counter"] >= engine.profile.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY):
-                        trigger = True
-                        engine.profile["message_counter"] = 0
+                burst_count = 1
 
-                engine._save_profile()
+                def update_counter(p):
+                    nonlocal trigger
+                    nonlocal burst_count
+                    bot_id = settings.BOT_NUMBER
+                    if bot_id in text or f"@{bot_id}" in text or "@bot" in text.lower():
+                        trigger = True
+                        p["message_counter"] = 0
+                    else:
+                        p["message_counter"] = p.get("message_counter", 0) + 1
+                        if p["message_counter"] >= p.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY):
+                            trigger = True
+                            p["message_counter"] = 0
+                    burst_count = p.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
+
+                from app.services.profile_service import update_profile_atomic
+                updated_profile = update_profile_atomic(chat_id, update_counter)
+
+                engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
 
                 # We must ALWAYS process the message so it's added to RAG context
                 # However, we only trigger the LLM to generate a reply if `trigger` is True
                 ai_reply = await engine.process_message(text, media_path, generate_reply=trigger)
-                burst_count = engine.profile.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
 
                 if trigger and ai_reply:
                     await send_text_message(

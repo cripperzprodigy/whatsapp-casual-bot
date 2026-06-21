@@ -1041,7 +1041,22 @@ async def handle_command(  # Issue 13: added return type
                 write_profile(chat_id, profile)
                 await send_text_message(chat_id, "✅ Preferred language reset to auto-detect.")
             elif subcmd == "set" and len(args) == 2:
-                code = args[1].lower().split('-')[0]
+                # Issue: Language Code Sanitization
+                SUPPORTED_CODES = ['en', 'id', 'ms', 'zh', 'ja', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'ar']
+                LANG_MAP = {
+                    'english': 'en', 'indonesian': 'id', 'malay': 'ms',
+                    'chinese': 'zh', 'japanese': 'ja', 'korean': 'ko',
+                    'french': 'fr', 'german': 'de', 'spanish': 'es',
+                    'portuguese': 'pt', 'russian': 'ru', 'arabic': 'ar'
+                }
+
+                raw_input = args[1].lower().strip()
+                code = LANG_MAP.get(raw_input, raw_input.split('-')[0])
+
+                if code not in SUPPORTED_CODES:
+                    await send_text_message(chat_id, f"Invalid language. Please use codes like 'en', 'id', 'ms'. Supported: {', '.join(SUPPORTED_CODES)}")
+                    return
+
                 profile["preferred_language"] = code
                 write_profile(chat_id, profile)
                 await send_text_message(chat_id, f"✅ Preferred language set to {code}.")

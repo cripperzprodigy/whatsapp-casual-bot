@@ -51,3 +51,11 @@ This document records the recent post-deployment optimization passes performed o
 - Enabled instantaneous LLM inference routing if the message explicitly tags the bot via `@mention` triggers.
 - Deployed a completely dynamic configuration via `.env` parameter `SUMMARY_MESSAGE_LIMIT` using Pydantic `model_validators` for strict 10-2000 clamping on depths to prevent context overflows natively.
 - Added `!lang set <code>` functionality strictly for Private DMs, bypassing automatic linguistic checks for performance and reliability across users preferring static dialects.
+
+## 5. Critical Stability Fixes (Race Conditions & Validation)
+**Problem:** High traffic group chats were susceptible to race conditions corrupting `profile.json` due to non-atomic read/writes on the `message_counter`. Additionally, `SUMMARY_HISTORY_COUNT` could be deliberately set to cause OOM errors, and users could type invalid string literals in `!lang set`, crashing the translation pipeline.
+**Fix:**
+- **Atomic Operations:** Centralized profile state reads and writes strictly through `app/services/profile_service.py` using `FileLock(lock_path)`. This guarantees atomic transaction updates, preventing two concurrent webhooks from overwriting each other's increments.
+- **Strict Input Validation:**
+  - `SUMMARY_HISTORY_COUNT` natively clamps integers via a Pydantic `model_validator` in `config.py`.
+  - `!lang set` now filters string literals through a mapped sanitization dictionary (e.g. `english` -> `en`), checks the result against a hardcoded ISO-639-1 `SUPPORTED_CODES` array, and safely rejects invalid outputs.
