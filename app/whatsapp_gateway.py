@@ -20,6 +20,7 @@ class WebhookMessage(BaseModel):
 class WebhookMessageContent(BaseModel):
     conversation: Optional[str] = None
     extendedTextMessage: Optional[Dict[str, Any]] = None
+    contextInfo: Optional[Dict[str, Any]] = None
 
 class WebhookData(BaseModel):
     message: WebhookMessageContent

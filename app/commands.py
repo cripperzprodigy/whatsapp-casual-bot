@@ -1145,6 +1145,12 @@ async def handle_command(  # Issue 13: added return type
                     "Usage: !a <text> - Ask the AI any general question or request.",
                 )
 
+        else:
+            await send_text_message(
+                chat_id,
+                "Unknown command. Type !help for available commands."
+            )
+
     except Exception as exc:
         logger.error(
             "Error handling command %s: %s", command, exc

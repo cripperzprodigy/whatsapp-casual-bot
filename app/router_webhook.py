@@ -73,6 +73,10 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
         if delay > 0:
             await asyncio.sleep(delay)
             
+        # Check if this task was replaced by a newer message during the sleep
+        if pending_chatty_tasks.get(chat_id) != asyncio.current_task():
+            return
+
         ai_reply = await engine.generate_delayed_reply()
         if ai_reply:
             await send_text_message(
@@ -120,14 +124,14 @@ async def process_message(
             return
 
         # Security: Check Whitelist
-        if settings.WHITELISTED_CHATS:
+        if settings.ENFORCE_WHITELIST and settings.WHITELISTED_CHATS:
             allowed = [
                 c.strip()
                 for c in settings.WHITELISTED_CHATS.split(",")
                 if c.strip()
             ]
             if allowed and chat_id not in allowed:
-                # Ignore messages from un-whitelisted chats
+                logger.debug(f"Message from {chat_id} dropped: not in WHITELISTED_CHATS")
                 return
 
         # Self-awareness & Contact Syncing
@@ -143,13 +147,14 @@ async def process_message(
                 # Determine if bot is admin
                 bot_number = settings.BOT_NUMBER
                 participants = group_info.get("participants", [])
-                for p in participants:
-                    pid = p.get("id", "")
-                    if (
-                        pid == bot_number
-                        or pid == f"{bot_number}@s.whatsapp.net"
-                    ):
-                        chat_settings.bot_is_admin = p.get(
+                if bot_number:
+                    for p in participants:
+                        pid = p.get("id", "")
+                        if (
+                            pid == bot_number
+                            or pid == f"{bot_number}@s.whatsapp.net"
+                        ):
+                            chat_settings.bot_is_admin = p.get(
                             "admin"
                         ) in ["admin", "superadmin"]
                 db.commit()
@@ -165,7 +170,7 @@ async def process_message(
             export_group_contacts(db, chat_id)
 
         # Don't process our own messages to avoid loops
-        if msg_key.fromMe or sender_id == settings.BOT_NUMBER:
+        if msg_key.fromMe or (settings.BOT_NUMBER and sender_id and sender_id.startswith(settings.BOT_NUMBER)):
             return
 
         content_obj = data.message
@@ -179,6 +184,10 @@ async def process_message(
         # Extract mentions even if text was pulled from conversation
         if content_obj.extendedTextMessage and "contextInfo" in content_obj.extendedTextMessage:
             mentioned_jids = content_obj.extendedTextMessage["contextInfo"].get("mentionedJid", [])
+
+        # Fallback to root contextInfo if it exists
+        if not mentioned_jids and getattr(content_obj, "contextInfo", None):
+            mentioned_jids = content_obj.contextInfo.get("mentionedJid", [])
 
         if not text:
             return

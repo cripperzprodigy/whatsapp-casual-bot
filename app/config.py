@@ -10,12 +10,13 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     #  Internal WhatsApp Gateway config (Node.js microservice)
     # ------------------------------------------------------------------ #
-    WHATSAPP_GATEWAY_URL: str = "http://localhost:3000"
+    WHATSAPP_GATEWAY_URL: str = "http://whatsapp-gateway:3000"
 
     # ------------------------------------------------------------------ #
     #  Security Whitelist (Comma-separated chat IDs)
     #  Leave empty to allow all chats, e.g. "123@g.us,456@c.us"
     # ------------------------------------------------------------------ #
+    ENFORCE_WHITELIST: bool = False
     WHITELISTED_CHATS: str = ""
 
     # ------------------------------------------------------------------ #
