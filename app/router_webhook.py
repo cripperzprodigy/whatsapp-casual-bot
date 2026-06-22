@@ -300,6 +300,8 @@ async def process_message(
         # System Domain Guard Rail
         # Ignore non-conversational domains to prevent the bot from attempting
         # to chat with Status updates, Channels, or Linked Devices.
+        # NOTE: The Node.js gateway normalizes @lid → @s.whatsapp.net for legitimate user/group JIDs.
+        # Any @lid suffix that reaches Python after normalization is a true system domain (e.g., system notifications).
         if chat_id == "status@broadcast" or chat_id.endswith("@broadcast") or chat_id.endswith("@newsletter") or chat_id.endswith("@lid"):
             logger.debug(f"Ignoring non-conversational system domain: {chat_id}")
             return

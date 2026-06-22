@@ -81,19 +81,23 @@ function initClient() {
             const payload = {
                 event: 'messages.upsert',
                 instance: 'whatsapp-web-js', // Issue 1: populate instance for Python schema
+                // JID Normalization: Convert @c.us (unofficial web.js suffix) and @lid (linked device suffix)
+                // to the official @s.whatsapp.net. This ensures the Python backend sees standardized JIDs.
+                // Linked device messages (from connected devices, not system messages) are legitimate user communications
+                // and must be normalized so the Python guard rail can distinguish them from true @lid system domains.
                 data: {
                     key: {
-                        remoteJid: msg.from.replace('@c.us', '@s.whatsapp.net'),
+                        remoteJid: msg.from.replace(/@c\.us$/, '@s.whatsapp.net').replace(/@lid$/, '@s.whatsapp.net'),
                         fromMe: msg.fromMe,
                         id: msg.id.id,
-                        participant: (chat.isGroup && msg.author) ? msg.author.replace('@c.us', '@s.whatsapp.net') : null
+                        participant: (chat.isGroup && msg.author) ? msg.author.replace(/@c\.us$/, '@s.whatsapp.net').replace(/@lid$/, '@s.whatsapp.net') : null
                     },
                     message: {
                         conversation: msg.body,
                         extendedTextMessage: {
                             text: msg.body,
                             contextInfo: {
-                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace('@c.us', '@s.whatsapp.net')) : []
+                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net').replace(/@lid$/, '@s.whatsapp.net')) : []
                             }
                         }
                     },

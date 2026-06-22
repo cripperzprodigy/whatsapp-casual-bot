@@ -1,4 +1,5 @@
 # Changelog
+- **Linked Device (@lid) JID Normalization**: Extended the Node.js gateway's JID normalization to handle `@lid` suffixes (linked device messages) in addition to `@c.us` suffixes. Legitimate messages from secondary devices connected to the primary WhatsApp account are now normalized to `@s.whatsapp.net`, preventing them from being incorrectly blocked by the Python system domain guard rail. Ensures mention detection works correctly for `@` tags from linked devices by normalizing the `mentionedJid` array.
 - Refactor: Implemented Strict Message Domain Separation (Decision #7). Split router logic into `_handle_dm_message` and `_handle_group_message`. Enforced strict `BOT_NUMBER` validation on startup.
 - start.sh: added cleanup trap to safely preserve .bot_ready_state on SIGINT
 - app/ai_client.py: Enhanced LLM parsing robustness to log raw local model responses on empty content/missing choices.
