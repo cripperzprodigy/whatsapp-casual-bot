@@ -24,8 +24,11 @@ services:
       - "3000:3000"
     volumes:
       - ./whatsapp-service:/app
-      - ./.wwebjs_auth:/app/.wwebjs_auth
+      - whatsapp_session:/app/.wwebjs_auth
     environment:
       - PYTHON_WEBHOOK_URL=http://bot:8000/webhook/whatsapp
       - WHATSAPP_SESSION_PATH=./.wwebjs_auth
     restart: unless-stopped
+
+volumes:
+  whatsapp_session:

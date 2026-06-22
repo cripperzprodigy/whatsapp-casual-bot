@@ -10,6 +10,7 @@ from app.router_system import router as system_router
 from app.state import init_db, SessionLocal
 from app.config import settings
 from app.permissions import bootstrap_owner
+from app.whatsapp_gateway import check_gateway_health
 
 # Issue 16: structured production logging with timestamp + module name
 logging.config.dictConfig({
@@ -71,6 +72,14 @@ async def startup_event() -> None:
     except Exception as exc:
         logger.error("Error bootstrapping owner: %s", exc)
         raise
+
+    try:
+        health_status = await check_gateway_health()
+        if health_status.get("requires_qr", False) or not health_status.get("isConnected", True):
+            logger.warning("WhatsApp Gateway reports it is not connected or requires a QR scan. Please check http://localhost:8000/whatsapp/qr")
+    except Exception as exc:
+        logger.warning(f"Could not reach WhatsApp gateway during startup: {exc}")
+
 
 
 @app.get("/")

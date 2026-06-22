@@ -1,4 +1,5 @@
 # Issues
+- [CLOSED] Gateway Session Fails to Persist: Resolved bug where manual QR scans were required on every restart despite LocalAuth configured. Fixed by making `SESSION_PATH` absolute, updating docker-compose with a named volume, and restricting Tier 3 aggressive session purges.
 - [CLOSED] State Marker Disappearing: fixed by fixing realpath logic and introducing cleanup function
 - [CLOSED] Silent LLM Translation Failure: fixed by adding robust checks for empty choices/content and detailed logging in ai_client.py
 - [CLOSED] Translation Token Issues: Token limit was too low for reasoning models and caused failures. Resolved by increasing limits and implementing intelligent retries on length exhaustions.

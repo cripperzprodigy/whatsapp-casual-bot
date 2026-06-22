@@ -10,7 +10,8 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const PORT = process.env.PORT || 3000;
 const PYTHON_WEBHOOK_URL = process.env.PYTHON_WEBHOOK_URL || 'http://localhost:8000/webhook/whatsapp';
-const SESSION_PATH = process.env.WHATSAPP_SESSION_PATH || './.wwebjs_auth';
+const path = require('path');
+const SESSION_PATH = process.env.WHATSAPP_SESSION_PATH || path.resolve(__dirname, '.wwebjs_auth');
 
 let qrCodeData = null;
 let isConnected = false;
@@ -24,10 +25,23 @@ let consecutiveFailures = 0;
 // Initialize WhatsApp Client with local session persistence
 let client;
 
+function getSessionState() {
+    const sessionExists = fs.existsSync(SESSION_PATH);
+    const hasSessionFiles = sessionExists && fs.readdirSync(SESSION_PATH).length > 0;
+    return { sessionExists, hasSessionFiles };
+}
+
 // Message Queue for Recovering State
 let recoveryMessageQueue = [];
 
 function initClient() {
+    const { sessionExists, hasSessionFiles } = getSessionState();
+    if (!hasSessionFiles) {
+        console.log('No session found - QR scan required');
+    } else {
+        console.log('Session found - attempting to restore');
+    }
+
     client = new Client({
         authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
         puppeteer: { 
@@ -50,11 +64,13 @@ function initClient() {
 
     client.on('authenticated', () => {
         console.log('WhatsApp Authenticated');
+        console.log('Session restored successfully');
         isConnected = true;
     });
 
     client.on('auth_failure', msg => {
         console.error('AUTHENTICATION FAILURE', msg);
+        console.log('Session corrupt - will require QR scan');
         console.log(`Connection state changed to disconnected (isConnected=false). Reason: AUTH_FAILURE`);
         isConnected = false;
         qrCodeData = null;
@@ -178,8 +194,9 @@ app.get('/whatsapp/status', (req, res) => {
 
 // 2b. Connection Info
 app.get('/whatsapp/connection-info', (req, res) => {
-    const sessionExists = fs.existsSync(SESSION_PATH);
+    const { sessionExists, hasSessionFiles } = getSessionState();
     res.json({
+        hasSessionFiles: hasSessionFiles,
         isConnected: isConnected,
         totalMessagesSent: totalMessagesSent,
         lastSuccessfulSend: lastSuccessfulSend,
@@ -206,6 +223,9 @@ app.post('/whatsapp/reset-session', async (req, res) => {
 
 // Recovery tiers: 1=Restart Puppeteer, 2=Reinitialize Client, 3=Delete Session (last resort)
 let recoveryTier = 0;
+let sessionLastValidated = Date.now();
+let deletionCountPerHour = 0;
+let lastDeletionHour = Math.floor(Date.now() / 3600000);
 function isSessionCorruptionError(errMessage) {
     return errMessage && (
         errMessage.includes('No LID') ||
@@ -252,17 +272,43 @@ async function attemptGracefulRecovery() {
     
     if (recoveryTier >= 3) {
         // Tier 3: Nuclear option - delete session and force QR scan
-        console.log('Recovery Tier 3: Deleting session (last resort)...');
-        try {
-            await client.destroy();
-            fs.rmSync(SESSION_PATH, { recursive: true, force: true });
-            recoveryTier = 0; // Reset for fresh start
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            initClient();
-            return false; // Requires QR scan
-        } catch (tier3Err) {
-            console.error('Tier 3 recovery failed:', tier3Err.message);
-            return false;
+        console.log('Recovery Tier 3: Checking if deletion is safe and necessary...');
+
+        const currentHour = Math.floor(Date.now() / 3600000);
+        if (currentHour > lastDeletionHour) {
+            deletionCountPerHour = 0;
+            lastDeletionHour = currentHour;
+        }
+
+        const { hasSessionFiles } = getSessionState();
+
+        // Wait 30 seconds before deletion to allow transient errors to resolve
+        console.log('Waiting 30 seconds before proceeding with deletion...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+
+        if (hasSessionFiles && deletionCountPerHour < 3) {
+             console.log('Deleting session (last resort)...');
+             try {
+                await client.destroy();
+                fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+                deletionCountPerHour++;
+                recoveryTier = 0; // Reset for fresh start
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                initClient();
+                return false; // Requires QR scan
+             } catch (tier3Err) {
+                console.error('Tier 3 recovery failed:', tier3Err.message);
+                return false;
+             }
+        } else if (deletionCountPerHour >= 3) {
+             console.log('Too many deletions in the last hour. Skipping deletion to prevent cascading failures.');
+             recoveryTier = 0;
+             return false;
+        } else {
+             console.log('No session files found. Initializing client...');
+             recoveryTier = 0;
+             initClient();
+             return false;
         }
     }
 }
@@ -289,6 +335,9 @@ async function processMessageQueue() {
 app.post('/message/sendText', async (req, res) => {
     // validateSession() pre-flight check
     const isSessionValid = client && client.info && client.info.wid && client.pupPage && !client.pupPage.isClosed();
+    if (isSessionValid) {
+        sessionLastValidated = Date.now();
+    }
 
     if (!isSessionValid) {
         console.error('validateSession() pre-flight check failed. Session state is invalid.');
