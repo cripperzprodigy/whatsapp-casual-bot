@@ -14,3 +14,4 @@
   - **Decision:** DMs and Groups are treated as mutually exclusive domains with completely separate handlers from the moment the message is received. `router_webhook.py` is split into `_handle_dm_message()` and `_handle_group_message()`.
   - **Consequences:** Auto-translation is permanently disabled for DMs. DMs always interact with the Chatty RAG memory engine. Commands are evaluated prior to the split.
   - **Status:** Accepted.
+- **Auto-Recovery Strategy for WhatsApp Gateway**: We implemented an auto-recovery mechanism in the Node.js service. If sending fails due to `!isConnected` or after 3 consecutive errors, the client is destroyed, the corrupted `.wwebjs_auth` session directory is forcefully removed (wrapped in a try-catch to prevent file lock crashes), and `initClient()` is called again after a short delay. A 503 response is returned prompting for a QR rescan, ensuring self-healing when session data expires or becomes corrupted.

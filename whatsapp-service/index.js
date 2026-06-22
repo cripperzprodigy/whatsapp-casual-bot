@@ -15,6 +15,12 @@ const SESSION_PATH = process.env.WHATSAPP_SESSION_PATH || './.wwebjs_auth';
 let qrCodeData = null;
 let isConnected = false;
 
+// Connection Metrics
+let totalMessagesSent = 0;
+let lastErrorMessage = null;
+let lastSuccessfulSend = null;
+let consecutiveFailures = 0;
+
 // Initialize WhatsApp Client with local session persistence
 let client;
 
@@ -46,12 +52,14 @@ function initClient() {
 
     client.on('auth_failure', msg => {
         console.error('AUTHENTICATION FAILURE', msg);
+        console.log(`Connection state changed to disconnected (isConnected=false). Reason: AUTH_FAILURE`);
         isConnected = false;
         qrCodeData = null;
     });
 
     client.on('disconnected', (reason) => {
         console.log('WhatsApp was disconnected:', reason);
+        console.log(`Connection state changed to disconnected (isConnected=false). Reason: ${reason}`);
         isConnected = false;
         qrCodeData = null;
     });
@@ -113,7 +121,11 @@ function initClient() {
         }
     });
 
-    client.initialize();
+    try {
+        client.initialize();
+    } catch (err) {
+        console.error("Failed to initialize WhatsApp client:", err);
+    }
 }
 
 initClient();
@@ -156,6 +168,19 @@ app.get('/whatsapp/status', (req, res) => {
     });
 });
 
+// 2b. Connection Info
+app.get('/whatsapp/connection-info', (req, res) => {
+    const sessionExists = fs.existsSync(SESSION_PATH);
+    res.json({
+        isConnected: isConnected,
+        totalMessagesSent: totalMessagesSent,
+        lastSuccessfulSend: lastSuccessfulSend,
+        lastErrorMessage: lastErrorMessage,
+        consecutiveFailures: consecutiveFailures,
+        sessionDirectoryExists: sessionExists
+    });
+});
+
 // 3. Reset Session
 app.post('/whatsapp/reset-session', async (req, res) => {
     console.log('Resetting WhatsApp session...');
@@ -173,13 +198,34 @@ app.post('/whatsapp/reset-session', async (req, res) => {
 
 // 4. Send Message (Internal API for Python)
 app.post('/message/sendText', async (req, res) => {
-    if (!isConnected) {
-        return res.status(503).json({ error: 'WhatsApp client not connected' });
+    if (!isConnected || consecutiveFailures >= 3) {
+        console.error('Send attempt failed: WhatsApp not connected or consecutive failures. Attempting auto-recovery...');
+        try {
+            await client.destroy();
+        } catch (destroyErr) {
+            console.error('Error destroying client during auto-recovery:', destroyErr.message);
+        }
+
+        try {
+            fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+        } catch (rmErr) {
+            console.error('Error removing session directory during auto-recovery:', rmErr.message);
+        }
+
+        setTimeout(() => {
+            console.log('Re-initializing client after cleanup...');
+            initClient();
+        }, 1000);
+
+        return res.status(503).json({
+            error: 'WhatsApp disconnected or session corrupted. Auto-recovery initiated. Please scan QR code.',
+            requires_qr: true
+        });
     }
     
     const { number, textMessage, options } = req.body;
-    if (!number || !textMessage || !textMessage.text) {
-        return res.status(400).json({ error: 'Missing number or text' });
+    if (!number || !textMessage || typeof textMessage.text !== 'string' || textMessage.text.trim() === '') {
+        return res.status(400).json({ error: 'Missing number or valid text' });
     }
 
     try {
@@ -192,13 +238,77 @@ app.post('/message/sendText', async (req, res) => {
             sendOptions.quotedMessageId = options.quoted;
         }
 
-        // The Python backend works with @s.whatsapp.net, but whatsapp-web.js requires @c.us for users.
-        let wwebjsNumber = number.replace('@s.whatsapp.net', '@c.us');
+        let wwebjsNumber;
+        if (number.endsWith('@g.us')) {
+            // Groups keep their @g.us suffix (whatsapp-web.js accepts this)
+            wwebjsNumber = number;
+        } else if (number.endsWith('@s.whatsapp.net')) {
+            // DMs need conversion from official to unofficial suffix
+            wwebjsNumber = number.replace('@s.whatsapp.net', '@c.us');
+        } else {
+            // Already in whatsapp-web.js format or invalid
+            wwebjsNumber = number;
+        }
 
-        await client.sendMessage(wwebjsNumber, textMessage.text, sendOptions);
+        // Optional validation (only for DMs):
+        if (!number.endsWith('@g.us') && !wwebjsNumber.match(/^\d+@c\.us$/)) {
+            console.error(`Invalid JID format after conversion: ${wwebjsNumber}, original: ${number}`);
+            return res.status(400).json({ error: `Invalid recipient format: ${number}` });
+        }
+
+        const trimmedText = textMessage.text.trim();
+        console.log(`Sending message to: ${wwebjsNumber}, Length: ${trimmedText.length}`);
+
+        const maxRetries = 2;
+        let attempt = 0;
+        let success = false;
+        let lastErr = null;
+
+        while (attempt <= maxRetries && !success) {
+            try {
+                const sendPromise = client.sendMessage(wwebjsNumber, trimmedText, sendOptions);
+                let timeoutId;
+                const timeoutPromise = new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => reject(new Error('sendMessage timed out after 10 seconds')), 10000);
+                });
+
+                await Promise.race([sendPromise, timeoutPromise]);
+                clearTimeout(timeoutId);
+                success = true;
+            } catch (err) {
+                lastErr = err;
+                attempt++;
+                if (attempt <= maxRetries) {
+                    console.log(`Attempt ${attempt} failed. Retrying in 2 seconds...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+        }
+
+        if (!success) {
+            throw lastErr;
+        }
+
+        // Update connection metrics on success
+        totalMessagesSent++;
+        lastSuccessfulSend = new Date().toISOString();
+        lastErrorMessage = null;
+        consecutiveFailures = 0;
+
         res.json({ status: 'ok' });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Error sending message. Details:", err);
+        console.error("Stack trace:", err.stack);
+        console.error("Request payload:", { number, textMessageLength: textMessage.text ? textMessage.text.length : 0, options });
+
+        lastErrorMessage = err.message;
+        consecutiveFailures++;
+
+        res.status(500).json({
+            error: err.message,
+            stack: err.stack,
+            name: err.name
+        });
     }
 });
 
