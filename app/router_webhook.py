@@ -111,10 +111,12 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
     Logic: Always invoke Chatty. Never invoke Auto-Translation.
     Bypass frequency throttles (every DM is a direct conversation).
     """
-    logger.debug(f"Domain=Routed|Type=DM|Action=ChattyOnly - sender: {sender_id}")
+    logger.info(f"DM message received: sender={sender_id}, chat={chat_id}, text_len={len(text)}, has_media={media_path is not None}")
     try:
         # For DMs, always trigger Chatty
+        logger.debug(f"DM: Initializing AIMemoryEngine for {chat_id}")
         engine = AIMemoryEngine(chat_id, sender_name, profile=profile)
+        logger.debug(f"DM: AIMemoryEngine initialized successfully for {chat_id}")
 
         # Cancel any pending background tasks for this chat to avoid race conditions
         if chat_id in pending_chatty_tasks:
@@ -122,7 +124,9 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             del pending_chatty_tasks[chat_id]
 
         # Process message WITH reply generation in the same request cycle
+        logger.debug(f"DM: Calling process_message with generate_reply=True for {chat_id}")
         ai_reply = await engine.process_message(text, media_path, generate_reply=True)
+        logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
             await send_text_message(
                 chat_id,
@@ -130,8 +134,25 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
                 reply_to_msg_id=None,
                 quoted_participant=None,
             )
+        else:
+            logger.warning(f"DM: LLM returned None for {chat_id}. Sending fallback.")
+            await send_text_message(
+                chat_id,
+                "⚠️ I received your message but couldn't generate a response right now. Please try again.",
+                reply_to_msg_id=None,
+                quoted_participant=None,
+            )
     except Exception as e:
-        logger.error(f"DM Handler Error: {e}", exc_info=True)
+        logger.error(f"DM Handler Error for {chat_id}: {e}", exc_info=True)
+        try:
+            await send_text_message(
+                chat_id,
+                "⚠️ Something went wrong processing your message. Please try again.",
+                reply_to_msg_id=None,
+                quoted_participant=None,
+            )
+        except Exception:
+            pass
 
 
 async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict, chat_settings, mentioned_jids: list[str]):
@@ -142,10 +163,10 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
     - Else -> Check Chatty frequency triggers.
     - If Chatty did NOT consume the message -> Run Auto-Translation.
     """
-    logger.debug(f"Domain=Routed|Type=Group|Action=MutualExclusion - chat: {chat_id}")
-    message_consumed_by_chatty = False
     bot_id = settings.BOT_NUMBER
     is_explicit_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
+    logger.info(f"Group message received: chat={chat_id}, sender={sender_id}, Mentioned={is_explicit_mention}, mentioned_jids={mentioned_jids}, bot_id={bot_id}")
+    message_consumed_by_chatty = False
 
     chatty_status = profile.get("chatty_status", settings.CHATTY_GROUP_DEFAULT)
 
@@ -172,6 +193,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
 
         engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
 
+        logger.info(f"Group: trigger={trigger}, is_explicit_mention={is_explicit_mention}, chatty_status={chatty_status} for {chat_id}")
         if trigger:
             message_consumed_by_chatty = True
             if is_explicit_mention:
@@ -224,12 +246,14 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
 
     # ── Auto-Translation Logic ──
     if message_consumed_by_chatty:
-        logger.debug("Skipping auto-translation: message was consumed by Chatty processing.")
+        logger.info(f"Group: Skipping auto-translation: message was consumed by Chatty. chat={chat_id}")
         return
 
     if is_explicit_mention:
-        logger.debug(f"Skipping auto-translation: message is an explicit bot mention.")
+        logger.info(f"Group: Skipping auto-translation: explicit bot mention. chat={chat_id}")
         return
+
+    logger.info(f"Group: Proceeding to auto-translation check. chat={chat_id}, SkipTranslation=False")
 
     is_auto_enabled = (
         chat_settings.auto_translate_enabled
@@ -387,6 +411,7 @@ async def process_message(
 
         # Domain Split
         is_dm = not chat_id.endswith("@g.us")
+        logger.info(f"Domain Split: chat={chat_id}, is_dm={is_dm}, mentioned_jids={mentioned_jids}")
         if is_dm:
             return await _handle_dm_message(
                 chat_id=chat_id,

@@ -34,11 +34,22 @@ def get_embedding_model():
     if _global_embedding_model is None:
         model_name = settings.RAG_EMBEDDING_MODEL
         try:
+            logger.info(f"Loading embedding model: {model_name} (this may take a moment on first run)")
             _global_embedding_model = SentenceTransformer(model_name)
+            logger.info(f"Embedding model '{model_name}' loaded successfully.")
         except Exception as e:
             logger.warning(f"Failed to load embedding model {model_name}. Fallback to all-MiniLM-L3-v2. Error: {e}")
             _global_embedding_model = SentenceTransformer('all-MiniLM-L3-v2')
     return _global_embedding_model
+
+# Eagerly preload the embedding model at import time to prevent blocking
+# the asyncio event loop on the first message. This is critical because
+# SentenceTransformer.__init__ is a synchronous blocking call that can
+# take 10-60 seconds to download and load the neural network weights.
+try:
+    get_embedding_model()
+except Exception as e:
+    logger.error(f"Failed to preload embedding model at startup: {e}")
 
 def get_chroma_client(db_path: str):
     if db_path not in _chroma_clients:
