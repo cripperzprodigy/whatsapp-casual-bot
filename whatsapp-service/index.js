@@ -196,9 +196,22 @@ app.post('/whatsapp/reset-session', async (req, res) => {
     }
 });
 
+// Helper function to detect session corruption errors
+function isSessionCorruptionError(errMessage) {
+    return errMessage && (
+        errMessage.includes('No LID') ||
+        errMessage.includes('session') ||
+        errMessage.includes('corrupt') ||
+        errMessage.includes('invalid')
+    );
+}
+
 // 4. Send Message (Internal API for Python)
 app.post('/message/sendText', async (req, res) => {
-    if (!isConnected || consecutiveFailures >= 3) {
+    const requiresImmediateRecovery = !isConnected || 
+                                      consecutiveFailures >= 3 ||
+                                      (lastErrorMessage && isSessionCorruptionError(lastErrorMessage));
+    if (requiresImmediateRecovery) {
         console.error('Send attempt failed: WhatsApp not connected or consecutive failures. Attempting auto-recovery...');
         try {
             await client.destroy();
@@ -277,12 +290,22 @@ app.post('/message/sendText', async (req, res) => {
                 success = true;
             } catch (err) {
                 lastErr = err;
+                // Immediate recovery if session corruption detected
+                if (isSessionCorruptionError(err.message)) {
+                    console.error('Session corruption detected ("' + err.message + '"). Initiating immediate recovery...');
+                    break; // Exit retry loop to trigger recovery below
+                }
                 attempt++;
                 if (attempt <= maxRetries) {
                     console.log(`Attempt ${attempt} failed. Retrying in 2 seconds...`);
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
             }
+        }
+
+        if (!success && isSessionCorruptionError(lastErr?.message)) {
+            // Force recovery even if maxRetries not exhausted
+            consecutiveFailures = 999; // Force threshold breach
         }
 
         if (!success) {

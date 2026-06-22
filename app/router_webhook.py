@@ -143,16 +143,8 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
                 quoted_participant=None,
             )
     except Exception as e:
-        logger.error(f"DM Handler Error for {chat_id}: {e}", exc_info=True)
-        try:
-            await send_text_message(
-                chat_id,
-                "⚠️ Something went wrong processing your message. Please try again.",
-                reply_to_msg_id=None,
-                quoted_participant=None,
-            )
-        except Exception:
-            pass
+        logger.error(f"DM Handler Error for {chat_id}: {e}")
+        await send_text_message(chat_id, "⚠️ Something went wrong. Please try again.")
 
 
 async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict, chat_settings, mentioned_jids: list[str]):
@@ -314,8 +306,12 @@ async def process_message(
                 if c.strip()
             ]
             if allowed and chat_id not in allowed:
-                logger.debug(f"Message from {chat_id} dropped: not in WHITELISTED_CHATS")
-                return
+                # Permissive in dev/debug mode
+                if getattr(settings, "ENV", "production").lower() == "development" or settings.LOG_LEVEL == "DEBUG":
+                    logger.warning(f"DEV MODE: Message from {chat_id} not in whitelist. Permitting anyway.")
+                else:
+                    logger.warning(f"Message from {chat_id} dropped: not in WHITELISTED_CHATS")
+                    return
 
         # Self-awareness & Contact Syncing
         chat_settings = get_chat_settings(db, chat_id)

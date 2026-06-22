@@ -48,5 +48,8 @@ Strict adherence to the project's architecture is required.
 
 - **JID Normalization:** Node.js gateway implementations must normalize all incoming unofficial or device-specific JID suffixes (such as `@c.us` and `@lid`) to the official `@s.whatsapp.net` suffix before forwarding payloads to the Python backend. This ensures domain guard rails and mention detection logic function correctly against standardized JIDs.
 
-## 4.3 WhatsApp Gateway Session Health Monitoring (Pending Human Approval)
-- **Session Auto-Recovery**: The Node.js gateway must actively track consecutive send failures. If failures persist or the client reports disconnected despite an active loop, the gateway must execute a self-healing restart, purge the `.wwebjs_auth` directory via `fs.rmSync`, and prompt for a new QR scan instead of looping 500 errors indefinitely. (Note: Human review requested for this SOP addition).
+## 4.3 WhatsApp Gateway Session Health Monitoring
+- **Session Auto-Recovery**: The Node.js gateway must actively track consecutive send failures. If failures persist or the client reports disconnected despite an active loop, the gateway must execute a self-healing restart, purge the `.wwebjs_auth` directory via `fs.rmSync`, and prompt for a new QR scan instead of looping 500 errors indefinitely.
+- **Error Pattern Matching:** The gateway MUST actively monitor `sendMessage` API errors for specific patterns indicating session corruption (e.g., "No LID for user", "session corrupt", "invalid session").
+- **Immediate Recovery Strategy:** When a known session corruption pattern is detected, the gateway MUST bypass the standard N-consecutive-failures threshold and trigger an *immediate* session purge and restart.
+- **Delayed Recovery Strategy:** General timeout or disconnect errors should respect the standard consecutive failures threshold (e.g., 3 failures) before forcing a recovery, to prevent unnecessary resets during transient network blips.
