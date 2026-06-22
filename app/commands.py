@@ -870,11 +870,13 @@ async def handle_command(  # Issue 13: added return type
                 else:
                     target_jid = target
                     
-                success = await send_text_message(target_jid, text_to_send)
-                if success:
-                    await send_text_message(chat_id, f"✅ PM sent to {target_jid}.")
-                else:
-                    await send_text_message(chat_id, f"❌ Failed to send PM to {target_jid}.")
+                    result = await send_text_message(target_jid, text_to_send)
+                    if result.success:
+                        await send_text_message(chat_id, f"✅ PM sent to {target_jid}.")
+                    elif result.queued:
+                        pass # Silent queueing per constraint
+                    else:
+                        await send_text_message(chat_id, f"❌ Failed to send PM to {target_jid}.")
                 return
 
         elif command == "!contacts":

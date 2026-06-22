@@ -36,9 +36,11 @@ async def _send_batch_with_flood_control(chat_id: str, target_jids: List[str], t
                 tasks.append(send_text_message(jid, text))
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            success_count = sum(1 for r in results if r is True)
+            # send_text_message now returns a GatewaySendResult
+            success_count = sum(1 for r in results if getattr(r, "success", False) is True)
+            queued_count = sum(1 for r in results if getattr(r, "queued", False) is True)
             
-            logger.info(f"Batch completed: sent {success_count}/{len(batch)}")
+            logger.info(f"Batch completed: sent {success_count}/{len(batch)} (queued: {queued_count})")
             
             # If there are more batches, sleep
             if i + limit < total:

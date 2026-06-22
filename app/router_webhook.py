@@ -22,6 +22,7 @@ from app.whatsapp_gateway import (
     WhatsAppWebhookPayload,
     send_text_message,
     fetch_group_metadata,
+    check_gateway_health,
 )
 from app.state import get_db, add_message_to_buffer, get_chat_settings
 from app.commands import handle_command
@@ -284,6 +285,14 @@ async def process_message(
     try:
         data = payload.data
         msg_key = data.key
+
+        # Check gateway health before processing heavy tasks
+        health = await check_gateway_health()
+        if not health.get("isConnected", False) or health.get("recoveryTier", 0) > 0:
+            logger.warning(f"Gateway is in recovery/disconnected. Processing may be queued or fail. (Health: {health})")
+            # For DMs, we could choose to return early or let it queue
+            # Commands are safe to queue, but we might want to skip RAG
+            # For now, we will log it. Heavy AI tasks might still run, but their output will be queued.
 
         chat_id = msg_key.remoteJid
         sender_id = msg_key.participant or msg_key.remoteJid

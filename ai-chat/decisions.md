@@ -19,3 +19,8 @@
   - **Tier 2:** Reinitialize the `whatsapp-web.js` client without deleting the session folder.
   - **Tier 3:** If Tiers 1 and 2 fail, aggressively delete the `.wwebjs_auth` session directory via `fs.rmSync` and prompt for a new QR scan.
   This tiered approach drastically reduces the frequency of forced manual QR rescans caused by transient network or Puppeteer corruption.
+- **Decision #9: Standardized Inter-Service Protocol**
+  - **Problem:** Implicit crashes and state desync between the Node.js WhatsApp Gateway and Python Backend due to session corruption (e.g. `getChat undefined`).
+  - **Decision:** Implemented WISP (WhatsApp Inter-Service Protocol) with strict Pydantic/JSON schemas for `OutboundMessageRequest`, `DeliveryResponse`, and standardized `ErrorCode`s. The gateway operates in `CONNECTED`, `RECOVERING`, or `DISCONNECTED` states, utilizing 202 Accepted for queuing messages and 503 Service Unavailable for unrecoverable corruption.
+  - **Consequences:** Provides absolute state visibility to the Python backend, prevents silent crashes, and queues DM commands like `!claim_ownership` when the session is gracefully recovering.
+  - **Status:** Accepted.

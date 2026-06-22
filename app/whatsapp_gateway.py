@@ -10,6 +10,27 @@ _INCOMING_MSG_PREFIX = "false_"
 
 logger = logging.getLogger(__name__)
 
+# WISP Schemas
+class GatewaySendResult(BaseModel):
+    success: bool
+    status_code: int
+    queued: bool = False
+    error_code: Optional[str] = None
+    requires_qr: bool = False
+    message: Optional[str] = None
+
+    def __bool__(self):
+        return self.success
+
+class DeliveryResponse(BaseModel):
+    status: str
+    message_id: Optional[str] = None
+    error_code: Optional[str] = None
+    error: Optional[str] = None
+    requires_qr: Optional[bool] = False
+    recovery_tier: Optional[int] = 0
+    message: Optional[str] = None
+
 # Expected Webhook Payload schemas (Approximated for Evolution API / Baileys)
 class WebhookMessage(BaseModel):
     remoteJid: str # chat ID
@@ -35,6 +56,22 @@ class WhatsAppWebhookPayload(BaseModel):
     instance: Optional[str] = None
     data: WebhookData
 
+async def check_gateway_health() -> Dict[str, Any]:
+    """
+    Checks the health of the Node.js WhatsApp Gateway.
+    Returns the JSON response from /whatsapp/recovery-status
+    """
+    url = f"{settings.WHATSAPP_GATEWAY_URL}/whatsapp/recovery-status"
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=5.0)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"Failed to fetch gateway health: {e}")
+        return {"isConnected": False, "recoveryTier": -1, "consecutiveFailures": 99}
+
 async def fetch_group_metadata(
     chat_id: str,
 ) -> Optional[Dict[str, Any]]:
@@ -58,7 +95,7 @@ async def send_text_message(
     text: str,
     reply_to_msg_id: Optional[str] = None,
     quoted_participant: Optional[str] = None,
-) -> bool:
+) -> GatewaySendResult:
     """
     Sends a text message back to the WhatsApp group via the
     internal gateway HTTP API. Optionally quotes/replies to an
@@ -94,20 +131,45 @@ async def send_text_message(
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, json=payload)
+
+                # Check for 202 Accepted (Queued for Recovery)
+                if response.status_code == 202:
+                    resp_data = DeliveryResponse(**response.json())
+                    logger.warning(f"Message queued by gateway for {chat_id}. Reason: {resp_data.error_code}")
+                    return GatewaySendResult(
+                        success=False,
+                        status_code=202,
+                        queued=True,
+                        error_code=resp_data.error_code,
+                        message=resp_data.message
+                    )
+
                 response.raise_for_status()
                 logger.info(f"Message sent successfully to {chat_id}")
-                return True
+                return GatewaySendResult(
+                    success=True,
+                    status_code=200
+                )
         except httpx.HTTPStatusError as e:
             if e.response.status_code in [500, 503]:
                 try:
                     error_data = e.response.json()
-                    requires_qr = error_data.get("requires_qr", False)
+                    resp_data = DeliveryResponse(**error_data)
+                    requires_qr = resp_data.requires_qr
                     if requires_qr:
                         logger.critical(f"CRITICAL: WhatsApp session requires QR scan! Pausing message queue for {chat_id}. Notify admin immediately.")
-                        # Assuming some admin notification or queue pause logic here
-                        return False
-                except Exception:
-                    pass
+                        return GatewaySendResult(
+                            success=False,
+                            status_code=e.response.status_code,
+                            error_code=resp_data.error_code,
+                            requires_qr=True,
+                            message=resp_data.error
+                        )
+                    # If 503 but no QR required yet (e.g. initial validateSession fail), we could fail fast or retry
+                    if e.response.status_code == 503 and resp_data.error_code == "SESSION_CORRUPT":
+                        logger.error(f"Gateway reported SESSION_CORRUPT for {chat_id}. Attempting to wait for recovery...")
+                except Exception as ex:
+                    logger.error(f"Failed to parse error response: {ex}")
             
             delay = base_delay * (2 ** attempt)
             logger.warning(f"HTTPStatusError sending message to {chat_id} (Attempt {attempt+1}/{max_retries}). Retrying in {delay}s...")
@@ -118,4 +180,9 @@ async def send_text_message(
             await asyncio.sleep(delay)
             
     logger.error(f"Exhausted retries. Failed to send message to {chat_id}")
-    return False
+    return GatewaySendResult(
+        success=False,
+        status_code=500,
+        error_code="SEND_TIMEOUT",
+        message="Exhausted retries"
+    )

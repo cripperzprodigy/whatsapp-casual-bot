@@ -24,6 +24,9 @@ let consecutiveFailures = 0;
 // Initialize WhatsApp Client with local session persistence
 let client;
 
+// Message Queue for Recovering State
+let recoveryMessageQueue = [];
+
 function initClient() {
     client = new Client({
         authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
@@ -67,6 +70,11 @@ function initClient() {
     client.on('message', async msg => {
         // Forward incoming messages to Python FastAPI backend
         try {
+            if (!client.info || !client.pupPage || client.pupPage.isClosed()) {
+                console.error('Session state is invalid, ignoring incoming message to prevent getChat error.');
+                return;
+            }
+
             const chat = await msg.getChat();
             const contact = await msg.getContact();
             
@@ -260,19 +268,56 @@ async function attemptGracefulRecovery() {
 }
 
 // 4. Send Message (Internal API for Python)
-app.post('/message/sendText', async (req, res) => {
-    // Check if recovery is needed BEFORE attempting send
-    if (!isConnected || consecutiveFailures >= 3) {
-        console.error('Pre-send check: WhatsApp not connected or high failure rate. Attempting graceful recovery...');
-        const recovered = await attemptGracefulRecovery();
-        if (!recovered && recoveryTier >= 3) {
-            return res.status(503).json({
-                error: 'Session corrupted. QR scan required.',
-                requires_qr: true
-            });
+// Process the message queue when connection is restored
+async function processMessageQueue() {
+    if (recoveryMessageQueue.length === 0 || !isConnected || recoveryTier > 0) return;
+
+    console.log(`Processing ${recoveryMessageQueue.length} queued messages...`);
+    const queueToProcess = [...recoveryMessageQueue];
+    recoveryMessageQueue = []; // Clear queue before processing
+
+    for (const msg of queueToProcess) {
+        try {
+            await axios.post(`http://localhost:${PORT}/message/sendText`, msg);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limit processing
+        } catch (err) {
+            console.error('Failed to send queued message:', err.message);
         }
-        // Wait for recovery to complete
-        await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+}
+
+app.post('/message/sendText', async (req, res) => {
+    // validateSession() pre-flight check
+    const isSessionValid = client && client.info && client.info.wid && client.pupPage && !client.pupPage.isClosed();
+
+    if (!isSessionValid) {
+        console.error('validateSession() pre-flight check failed. Session state is invalid.');
+        // Trigger recovery if not already recovering?
+        if (recoveryTier === 0) {
+            attemptGracefulRecovery().then(processMessageQueue).catch(err => console.error("Async recovery failed", err));
+        }
+        return res.status(503).json({
+            status: "error",
+            error_code: "SESSION_CORRUPT",
+            error: "Session is corrupt, context undefined",
+            requires_qr: recoveryTier >= 3
+        });
+    }
+
+    // Check if recovery is needed BEFORE attempting send
+    if (!isConnected || consecutiveFailures >= 3 || recoveryTier > 0) {
+        console.error('Pre-send check: WhatsApp not connected, high failure rate, or recovering. Queuing...');
+
+        recoveryMessageQueue.push(req.body);
+
+        if (recoveryTier === 0) {
+            attemptGracefulRecovery().then(processMessageQueue).catch(err => console.error("Async recovery failed", err));
+        }
+        return res.status(202).json({
+            status: "queued",
+            error_code: "QUEUED_FOR_RECOVERY",
+            message: "Gateway is recovering, message queued."
+        });
     }
     
     const { number, textMessage, options } = req.body;
@@ -367,6 +412,11 @@ app.post('/message/sendText', async (req, res) => {
         lastErrorMessage = null;
         consecutiveFailures = 0;
 
+        // Ensure any remaining queued messages are processed
+        if (recoveryMessageQueue.length > 0) {
+            processMessageQueue();
+        }
+
         res.json({ status: 'ok' });
     } catch (err) {
         console.error("Error sending message. Details:", err);
@@ -382,6 +432,8 @@ app.post('/message/sendText', async (req, res) => {
         const requiresQr = recoveryTier >= 3 || !isConnected;
         
         res.status(requiresQr ? 503 : 500).json({
+            status: "error",
+            error_code: isSessionCorruptionError(err.message) ? "SESSION_CORRUPT" : "SEND_TIMEOUT",
             error: err.message,
             stack: err.name === 'TimeoutError' ? undefined : err.stack,
             name: err.name,
