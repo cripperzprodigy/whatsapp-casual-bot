@@ -13,6 +13,7 @@ from app.state import (
     get_global_setting,
     set_global_setting,
 )
+from app.services.profile_service import read_profile, write_profile
 from app.translation import translate_text, detect_language
 from app.pm_service import start_batched_pm_task
 from app.whatsapp_gateway import send_text_message
@@ -60,6 +61,20 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
         "├ `!note add <text>` - Add a note",
         "└ `!note list` - List notes\n"
     ])
+
+
+    if role in {ADMIN_ROLE, OWNER_ROLE} or not is_group_chat:
+        lines.extend([
+            "🧠 *AI Memory & RAG*",
+            "└ `!chatty on|off` - Toggle continuous AI conversation",
+            "├ `!chatty_freq <val>` - Set frequency",
+            "├ `!chatty_burst <val>` - Set burst count",
+            "├ `!chatty_delay <min> <max>` - Set human-like delay",
+            "├ `!chatty_mode <debounce|throttle>` - Delay strategy",
+            "├ `!chatty_status` - View current settings",
+            "├ `!lang set <code>` - DM Only: Set preferred language",
+            "└ `!lang reset` - DM Only: Revert language\n"
+        ])
 
     if role in {ADMIN_ROLE, OWNER_ROLE}:
         lines.extend([
@@ -248,16 +263,38 @@ async def handle_command(  # Issue 13: added return type
                         )
 
         elif command == "!t":
-            if len(args) >= 2:
-                target_lang = args[0]
+            if not args:
+                await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
+                return
+
+            from app.translation import FULL_NAME_TO_CODE, is_valid_language_code
+            first_word = args[0].lower()
+
+            if first_word == "auto" and len(args) > 1:
+                target_lang = "auto"
                 text_to_translate = " ".join(args[1:])
-                if target_lang == "auto":
-                    # Cascade: Chat Setting -> Global -> Default 'en'
-                    target_lang = (
-                        settings.default_target_language
-                        if settings.default_target_language is not None
-                        else (app_settings.GLOBAL_TARGET_LANGUAGE or "en")
-                    )
+            elif first_word in FULL_NAME_TO_CODE and len(args) > 1:
+                target_lang = FULL_NAME_TO_CODE[first_word]
+                text_to_translate = " ".join(args[1:])
+            elif is_valid_language_code(first_word) and len(args) > 1:
+                target_lang = first_word
+                text_to_translate = " ".join(args[1:])
+            else:
+                target_lang = "auto"
+                text_to_translate = " ".join(args)
+
+            if not text_to_translate.strip():
+                await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
+                return
+
+            if target_lang == "auto":
+                # Cascade: Chat Setting -> Global -> Default 'en'
+                target_lang = (
+                    settings.default_target_language
+                    if settings.default_target_language is not None
+                    else (app_settings.GLOBAL_TARGET_LANGUAGE or "en")
+                )
+            if text_to_translate.strip():
                 translated = await translate_text(
                     text_to_translate, target_lang
                 )
@@ -284,8 +321,9 @@ async def handle_command(  # Issue 13: added return type
             convo = "\n".join(
                 [f"{m.sender_name}: {m.content}" for m in recent_msgs]
             )
+            actual_count = len(recent_msgs)
             prompt = (
-                f"Summarize the following conversation. Mode: {mode}. "
+                f"Summarize the following conversation spanning the last {actual_count} messages. Mode: {mode}. "
                 "For 'short', use bullet points. For 'full', include "
                 "key points, decisions, and open questions.\n\n"
                 f"{convo}"
@@ -917,6 +955,183 @@ async def handle_command(  # Issue 13: added return type
                                     
                             await send_text_message(chat_id, msg)
 
+        elif command == "!chatty":
+            if len(args) == 1 and args[0] in ["on", "off"]:
+                status = args[0] == "on"
+                if is_group_chat:
+                    user_ledger = db.query(GroupContactLedger).filter(
+                        GroupContactLedger.chat_id == chat_id,
+                        GroupContactLedger.jid == sender_id
+                    ).first()
+                    is_group_admin = user_ledger and user_ledger.is_admin
+                    is_bot_owner = await is_owner(db, sender_id)
+                    if not is_group_admin and not is_bot_owner:
+                        await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner to toggle Chatty in a group.")
+                        return
+
+                profile = read_profile(chat_id)
+                profile["chatty_status"] = status
+                write_profile(chat_id, profile)
+
+                await send_text_message(chat_id, f"✅ Chatty mode turned {'ON' if status else 'OFF'}.")
+            else:
+                await send_text_message(chat_id, "Usage: !chatty on | !chatty off")
+
+        elif command == "!chatty_freq":
+            if not is_group_chat:
+                await send_text_message(chat_id, "This command is only available in groups.")
+                return
+            user_ledger = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                GroupContactLedger.jid == sender_id
+            ).first()
+            is_group_admin = user_ledger and user_ledger.is_admin
+            is_bot_owner = await is_owner(db, sender_id)
+            if not is_group_admin and not is_bot_owner:
+                await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner.")
+                return
+            if len(args) != 1:
+                await send_text_message(chat_id, "Usage: !chatty_freq <number>")
+                return
+            try:
+                freq = int(args[0])
+                if not 10 <= freq <= 1000:
+                    raise ValueError
+            except ValueError:
+                await send_text_message(chat_id, "Frequency must be an integer between 10 and 1000.")
+                return
+
+            profile = read_profile(chat_id)
+            profile["chatty_frequency"] = freq
+            write_profile(chat_id, profile)
+
+            await send_text_message(chat_id, f"✅ Chatty frequency set to {freq} messages.")
+
+        elif command == "!chatty_burst":
+            if not is_group_chat:
+                await send_text_message(chat_id, "This command is only available in groups.")
+                return
+            user_ledger = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                GroupContactLedger.jid == sender_id
+            ).first()
+            is_group_admin = user_ledger and user_ledger.is_admin
+            is_bot_owner = await is_owner(db, sender_id)
+            if not is_group_admin and not is_bot_owner:
+                await send_text_message(chat_id, "🚫 Access Denied: You must be a group admin or bot owner.")
+                return
+            if len(args) != 1:
+                await send_text_message(chat_id, "Usage: !chatty_burst <number>")
+                return
+            try:
+                burst = int(args[0])
+                if not 1 <= burst <= 5:
+                    raise ValueError
+            except ValueError:
+                await send_text_message(chat_id, "Burst count must be an integer between 1 and 5.")
+                return
+
+            profile = read_profile(chat_id)
+            profile["chatty_burst"] = burst
+            write_profile(chat_id, profile)
+
+            await send_text_message(chat_id, f"✅ Chatty burst set to {burst} messages.")
+
+        elif command == "!chatty_delay":
+            if not is_group_admin and not is_owner and is_group_chat:
+                await send_text_message(chat_id, "❌ Access Denied: You must be a group admin or bot owner to change Chatty delay.")
+                return
+
+            if len(args) != 2:
+                await send_text_message(chat_id, "Usage: !chatty_delay <min> <max>")
+                return
+
+            try:
+                delay_min = int(args[0])
+                delay_max = int(args[1])
+                if delay_min < 0 or delay_max < delay_min:
+                    raise ValueError
+            except ValueError:
+                await send_text_message(chat_id, "❌ Minimum and maximum must be valid positive numbers, and max must be >= min.")
+                return
+
+            profile = read_profile(chat_id)
+            profile["chatty_delay_min"] = delay_min
+            profile["chatty_delay_max"] = delay_max
+            write_profile(chat_id, profile)
+
+            await send_text_message(chat_id, f"✅ Chatty delay set to {delay_min}-{delay_max} seconds.")
+
+        elif command == "!chatty_mode":
+            if not is_group_admin and not is_owner and is_group_chat:
+                await send_text_message(chat_id, "❌ Access Denied: You must be a group admin or bot owner to change Chatty mode.")
+                return
+
+            if len(args) != 1 or args[0].lower() not in ["debounce", "throttle"]:
+                await send_text_message(chat_id, "Usage: !chatty_mode <debounce|throttle>\n\n*debounce*: resets the timer on every new message (waits until you stop typing).\n*throttle*: responds exactly N seconds after your first message.")
+                return
+
+            mode = args[0].lower()
+            profile = read_profile(chat_id)
+            profile["chatty_delay_mode"] = mode
+            write_profile(chat_id, profile)
+
+            await send_text_message(chat_id, f"✅ Chatty delay mode set to '{mode}'.")
+
+        elif command == "!chatty_status":
+            profile = read_profile(chat_id)
+
+            default_status = app_settings.CHATTY_GROUP_DEFAULT if chat_id.endswith("@g.us") else app_settings.CHATTY_DEFAULT
+            status = profile.get("chatty_status", default_status)
+            freq = profile.get("chatty_frequency", app_settings.CHATTY_DEFAULT_FREQUENCY)
+            burst = profile.get("chatty_burst", app_settings.CHATTY_DEFAULT_BURST)
+            d_min = profile.get("chatty_delay_min", app_settings.CHATTY_DELAY_MIN)
+            d_max = profile.get("chatty_delay_max", app_settings.CHATTY_DELAY_MAX)
+            d_mode = profile.get("chatty_delay_mode", app_settings.CHATTY_DELAY_MODE)
+            counter = profile.get("message_counter", 0)
+            lang = profile.get("preferred_language", "Auto")
+
+            msg = f"🧠 *Chatty Status*\n\nStatus: {'ON' if status else 'OFF'}\nFrequency: {freq}\nBurst: {burst}\nDelay: {d_min}-{d_max}s ({d_mode})\nCounter: {counter}/{freq}\nPreferred Lang: {lang}"
+            await send_text_message(chat_id, msg)
+
+        elif command == "!lang":
+            if is_group_chat:
+                await send_text_message(chat_id, "This command is only available in DMs. Use !target for groups.")
+                return
+            if len(args) == 0:
+                await send_text_message(chat_id, "Usage: !lang set <code> | !lang reset")
+                return
+
+            subcmd = args[0]
+            profile = read_profile(chat_id)
+
+            if subcmd == "reset":
+                profile["preferred_language"] = None
+                write_profile(chat_id, profile)
+                await send_text_message(chat_id, "✅ Preferred language reset to auto-detect.")
+            elif subcmd == "set" and len(args) == 2:
+                # Issue: Language Code Sanitization
+                SUPPORTED_CODES = ['en', 'id', 'ms', 'zh', 'ja', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'ar']
+                LANG_MAP = {
+                    'english': 'en', 'indonesian': 'id', 'malay': 'ms',
+                    'chinese': 'zh', 'japanese': 'ja', 'korean': 'ko',
+                    'french': 'fr', 'german': 'de', 'spanish': 'es',
+                    'portuguese': 'pt', 'russian': 'ru', 'arabic': 'ar'
+                }
+
+                raw_input = args[1].lower().strip()
+                code = LANG_MAP.get(raw_input, raw_input.split('-')[0])
+
+                if code not in SUPPORTED_CODES:
+                    await send_text_message(chat_id, f"Invalid language. Please use codes like 'en', 'id', 'ms'. Supported: {', '.join(SUPPORTED_CODES)}")
+                    return
+
+                profile["preferred_language"] = code
+                write_profile(chat_id, profile)
+                await send_text_message(chat_id, f"✅ Preferred language set to {code}.")
+            else:
+                await send_text_message(chat_id, "Usage: !lang set <code> | !lang reset")
+
         elif command == "!a":
             if len(args) > 0:
                 ai_prompt = " ".join(args)
@@ -929,6 +1144,12 @@ async def handle_command(  # Issue 13: added return type
                     chat_id,
                     "Usage: !a <text> - Ask the AI any general question or request.",
                 )
+
+        else:
+            await send_text_message(
+                chat_id,
+                "Unknown command. Type !help for available commands."
+            )
 
     except Exception as exc:
         logger.error(

@@ -10,12 +10,13 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     #  Internal WhatsApp Gateway config (Node.js microservice)
     # ------------------------------------------------------------------ #
-    WHATSAPP_GATEWAY_URL: str = "http://localhost:3000"
+    WHATSAPP_GATEWAY_URL: str = "http://whatsapp-gateway:3000"
 
     # ------------------------------------------------------------------ #
     #  Security Whitelist (Comma-separated chat IDs)
     #  Leave empty to allow all chats, e.g. "123@g.us,456@c.us"
     # ------------------------------------------------------------------ #
+    ENFORCE_WHITELIST: bool = False
     WHITELISTED_CHATS: str = ""
 
     # ------------------------------------------------------------------ #
@@ -39,7 +40,7 @@ class Settings(BaseSettings):
     #  Internal Bot config
     # ------------------------------------------------------------------ #
     # Issue 5: BOT_NUMBER used to prevent self-loops — warn if empty
-    BOT_NUMBER: str = ""
+    BOT_NUMBER: str
     # Bootstrap Owner configured via .env
     BOT_OWNER_ID: Optional[str] = None
     # Issue 2: buffer size, now referenced as a named config value
@@ -53,6 +54,11 @@ class Settings(BaseSettings):
     GLOBAL_TARGET_LANGUAGE: str = "en"
     # Comma-separated list of language codes to ignore globally
     GLOBAL_IGNORED_LANGUAGES: str = ""
+
+    # Auto-Translation Sensitivity
+    TRANSLATION_MIN_LENGTH: int = 4
+    TRANSLATION_CONFIDENCE_THRESHOLD: float = 0.70
+    TRANSLATION_EQUIVALENT_LANGS: str = "id,ms"
 
     # ------------------------------------------------------------------ #
     #  Issue 8: Rate Limiting
@@ -68,9 +74,12 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     #  Issue 14: Named constants replacing magic numbers
     # ------------------------------------------------------------------ #
-    SUMMARY_MESSAGE_LIMIT: int = 30
-    LLM_MAX_TOKENS: int = 1024
+    SUMMARY_MESSAGE_LIMIT: int = 500
+    LLM_MAX_TOKENS: int = 8192
     ROSTER_EXPORT_THROTTLE_SECONDS: int = 60
+    MAX_CONTEXT_MESSAGES: int = 50
+    TRANSLATION_CHUNK_SIZE: int = 2000
+    TRANSLATION_MAX_CHUNKS: int = 5
 
     # ------------------------------------------------------------------ #
     #  Issue 16: Logging
@@ -83,18 +92,111 @@ class Settings(BaseSettings):
     PM_FLOOD_LIMIT: int = 10
     PM_FLOOD_INTERVAL_SECONDS: int = 60
 
+    # ------------------------------------------------------------------ #
+    #  Chatty Feature & Persistent Memory (RAG)
+    # ------------------------------------------------------------------ #
+    CHATTY_DEFAULT: bool = True
+    CHATTY_GROUP_DEFAULT: bool = False
+    DYNAMIC_SYSTEM_PROMPT: bool = True
+    RAG_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    VISION_ENABLED: bool = True
+
+    # Chatty Frequency Control Defaults
+    CHATTY_DEFAULT_FREQUENCY: int = 10
+    CHATTY_DEFAULT_BURST: int = 1
+    CHATTY_DELAY_MIN: int = 5
+    CHATTY_DELAY_MAX: int = 10
+    CHATTY_DELAY_MODE: str = "debounce"
+    CHATTY_ENABLED_LANGUAGES: str = "en,id,ms"
+    DEFAULT_GROUP_LANGUAGE: str = "en"
+    DEFAULT_DM_LANGUAGE: str = "en"
+
+    # ------------------------------------------------------------------ #
+    #  User Facing Strings
+    # ------------------------------------------------------------------ #
+    MSG_TRANSLATION_ERROR: str = "[⚠️ Translation service temporarily unavailable]"
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"
     )
 
-    # Issue 5: warn on missing critical fields at startup
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_summary_limit(cls, data: dict) -> dict:
+        limit_val = data.get("SUMMARY_MESSAGE_LIMIT")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["SUMMARY_MESSAGE_LIMIT"] = max(10, min(2000, val))
+            except (ValueError, TypeError):
+                # Fall back to default silently if invalid
+                data.pop("SUMMARY_MESSAGE_LIMIT", None)
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_llm_tokens(cls, data: dict) -> dict:
+        limit_val = data.get("LLM_MAX_TOKENS")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["LLM_MAX_TOKENS"] = max(512, min(131072, val))
+            except (ValueError, TypeError):
+                data.pop("LLM_MAX_TOKENS", None)
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_context_messages(cls, data: dict) -> dict:
+        limit_val = data.get("MAX_CONTEXT_MESSAGES")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["MAX_CONTEXT_MESSAGES"] = max(5, min(1000, val))
+            except (ValueError, TypeError):
+                data.pop("MAX_CONTEXT_MESSAGES", None)
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_bot_number(cls, data: dict) -> dict:
+        bn = data.get("BOT_NUMBER")
+        if not bn or not str(bn).strip():
+            raise ValueError("CRITICAL CONFIG ERROR: BOT_NUMBER is missing or invalid. The bot cannot identify itself without this value. Check .env file.")
+
+        bn_str = str(bn).strip()
+        # Strip leading + if it exists
+        if bn_str.startswith('+'):
+            bn_str = bn_str[1:]
+
+        if not bn_str.isdigit():
+            raise ValueError("CRITICAL CONFIG ERROR: BOT_NUMBER must be numeric (can start with +). Check .env file.")
+
+        data["BOT_NUMBER"] = bn_str
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_translation_chunks(cls, data: dict) -> dict:
+        limit_val = data.get("TRANSLATION_CHUNK_SIZE")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["TRANSLATION_CHUNK_SIZE"] = max(500, min(4000, val))
+            except (ValueError, TypeError):
+                data.pop("TRANSLATION_CHUNK_SIZE", None)
+
+        chunks_val = data.get("TRANSLATION_MAX_CHUNKS")
+        if chunks_val is not None:
+            try:
+                val = int(chunks_val)
+                data["TRANSLATION_MAX_CHUNKS"] = max(1, min(20, val))
+            except (ValueError, TypeError):
+                data.pop("TRANSLATION_MAX_CHUNKS", None)
+        return data
+
     @model_validator(mode="after")
     def _warn_on_missing_critical_fields(self) -> "Settings":
-        if not self.BOT_NUMBER:
-            logger.warning(
-                "BOT_NUMBER is not set. The bot cannot prevent "
-                "self-message loops. Set BOT_NUMBER in your .env."
-            )
         if not self.LLM_API_KEY:
             logger.warning(
                 "LLM_API_KEY is not set. AI features will fail "

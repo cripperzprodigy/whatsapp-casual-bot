@@ -32,3 +32,8 @@
 | GitHub Copilot | 2026-06-20 00:00 UTC | AI Agent - Applied timezone-aware export fix and updated ai-chat docs | Active |
 
 | Jules | 2026-06-20 01:00 | Senior Python Developer - Implementing !pm commands and flood control | Active |
+| Antigravity | 2026-06-21 14:15 UTC | AI Agent - Fixing Python Installation Verification False Negatives | Active |
+
+| Jules | 2026-06-22 09:14 UTC | Senior Architect - RAG Memory, Deploy Optimization & Translation Hardening | Completed |
+| Jules | 2026-06-22 09:08 UTC | Senior Backend Architect - Architectural Refactor for DM/Group Domain Separation (Decision #7) | Active |
+| Jules | $(date -u +'%Y-%m-%d %H:%M') UTC | Execution Agent - Completed Architectural Refactor for DM/Group Domain Separation | Completed |

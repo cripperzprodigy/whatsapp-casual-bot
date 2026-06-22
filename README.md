@@ -241,3 +241,80 @@ As the bot owner, these files contain irreplaceable data. **Back them up regular
 **If `.env` is lost:**
 - Use your backup to restore it
 - The bot will not function without this configuration file
+
+---
+
+## 🧠 Chatty Mode & Persistent Memory (RAG)
+
+The bot features a highly sophisticated "Chatty Mode" that allows it to hold open-ended, continuous conversations with users, leveraging both Short-Term Context and Long-Term Memory (RAG).
+
+### 📐 Architecture & Data Flow
+
+1. **Incoming Message:** The user sends a text or media message via WhatsApp.
+2. **Language Detection:** The engine detects the language (via `langdetect` or LLM fallback) and locks the response language to preserve natural conversation flow.
+3. **Media Pipeline:**
+   - **Images:** Sent to the Vision LLM (if enabled) to generate descriptive text.
+   - **Documents:** Processed via `pdfplumber` to extract raw text context.
+4. **RAG Ingestion:** The combined text (message + media context) is embedded locally using `sentence-transformers` and stored in a user-specific ChromaDB vector database.
+5. **Prompt Construction:** The bot combines:
+   - System Profile (Name, preferred language).
+   - Long-Term Memory (Relevant chunks retrieved from ChromaDB).
+   - Short-Term Summary (An LLM-generated rolling summary of the recent state of conversation).
+   - The immediate user input.
+6. **LLM Generation:** The unified context is sent to your configured Chat LLM to generate a natural, context-aware reply.
+
+### ⚙️ Configuration & Storage
+
+Chatty Mode configuration can be found in your `.env` file under the `CHATTY FEATURE & PERSISTENT MEMORY (RAG)` section. You can toggle the feature globally for DMs (`CHATTY_DEFAULT`) and Groups (`CHATTY_GROUP_DEFAULT`), and configure the Embedding model.
+
+**Important:** The RAG implementation is completely independent of your Chat LLM provider.
+- **Embeddings:** All embeddings are generated completely locally using `sentence-transformers` on your machine (e.g. `all-MiniLM-L6-v2`).
+- **Chat/Generation:** The actual text generation is handled by whatever provider you have configured in `.env` (Local LM Studio, Ollama, Cloud OpenAI, etc.).
+This ensures that your RAG pipeline functions perfectly, regardless of what chat backend you hook the bot up to!
+
+### 🔒 Privacy First
+
+The bot employs an **Isolated Ledger System**. All data related to a user (Logs, Media, Vector DB, Profiles) is isolated explicitly within the local `./data/contacts/{id}/` folder.
+
+- **No data leaves your local machine** unless you have specifically configured a Cloud Provider (e.g. OpenAI) as your Chat LLM.
+- **RAG embeddings** never hit the cloud; they are always processed strictly on your host machine.
+
+---
+
+## 🧳 Backup & Migration
+
+If you are moving the bot to a new server, the repository includes a self-contained Python script to easily pack and unpack your authentication keys (`.wwebjs_auth`), database (`bot.db`), configuration (`.env`), and RAG memory files (`data/`).
+
+**To Backup:**
+```bash
+python3 backup_restore.py --mode backup
+```
+*This will generate a ZIP file containing everything you need, securely skipping bloat like `node_modules` or `.git`.*
+
+**To Restore (on the new server):**
+```bash
+# After git clone, place the ZIP in the root directory
+python3 backup_restore.py --mode restore --file <your_backup_file>.zip
+```
+*The script will safely restore your environment and verify no data is unintentionally overwritten. See [ai-chat/BACKUP_RESTORE_FEATURE.md](ai-chat/BACKUP_RESTORE_FEATURE.md) for full architectural details.*
+
+---
+
+## 🐍 Python Version Compatibility
+
+This bot strictly requires **Python 3.12**, which is the current stable LTS for AI/ML dependencies like PyTorch CPU.
+
+If your system runs newer versions (e.g., Python 3.13 or 3.14), do not worry! The `start.sh` script is designed to safely handle side-by-side installations. It will automatically detect if `python3.12` is missing and provide installation instructions, and it will safely isolate the bot's virtual environment (`venv/`) strictly to 3.12 without disrupting your default system Python binaries.
+
+---
+
+## 🤖 Smart Chatty Control & Frequency
+By default, enabling `!chatty` does not mean the bot will reply to every single message in a group (which creates spam). It natively integrates a **Frequency Counter** and **Mention Detection**.
+
+- **Mentions:** If you tag the bot using `@` in a group chat, it will respond instantaneously, bypassing all frequency delays and appending context into RAG.
+- **Frequency:** If unprompted, it silently listens, stores memory, and automatically generates a response every X messages (Default: 10). Group Admins can live-tune this using `!chatty_freq 20` or adjust sequential replies using `!chatty_burst`.
+
+## 🌐 Dynamic Summaries & Language
+The `!summary` feature is fully capable of dynamically processing vast contexts. Modify the `SUMMARY_MESSAGE_LIMIT` inside `.env` to analyze between 10 and 2000 recent messages at once depending on the capacities of your chosen LLM.
+
+For Private DM users, the bot supports completely freezing linguistic outputs to your preference without triggering costly auto-detection algorithms on subsequent messages. Just send `!lang set fr` to lock your profile to French.

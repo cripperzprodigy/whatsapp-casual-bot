@@ -21,6 +21,14 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+
+:: Check if .env exists
+if not exist ".env" (
+    echo [!] WARNING: .env file not found.
+    echo Please copy .env.example to .env and configure it before starting.
+    pause
+)
+
 :: Check if installation is needed
 set NEEDS_INSTALL=false
 if not exist "venv\" set NEEDS_INSTALL=true

@@ -5,7 +5,8 @@ const axios = require('axios');
 const fs = require('fs');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const PORT = process.env.PORT || 3000;
 const PYTHON_WEBHOOK_URL = process.env.PYTHON_WEBHOOK_URL || 'http://localhost:8000/webhook/whatsapp';
@@ -61,24 +62,48 @@ function initClient() {
             const chat = await msg.getChat();
             const contact = await msg.getContact();
             
+            let mediaData = null;
+            if (msg.hasMedia) {
+                try {
+                    const media = await msg.downloadMedia();
+                    if (media) {
+                        mediaData = {
+                            mimetype: media.mimetype,
+                            data: media.data,
+                            filename: media.filename || (media.mimetype.split('/')[1] ? `media.${media.mimetype.split('/')[1]}` : 'media.bin')
+                        };
+                    }
+                } catch (mediaErr) {
+                    console.error('Failed to download media for message:', msg.id.id, mediaErr.message);
+                }
+            }
+
             const payload = {
                 event: 'messages.upsert',
                 instance: 'whatsapp-web-js', // Issue 1: populate instance for Python schema
                 data: {
                     key: {
-                        remoteJid: msg.from,
+                        remoteJid: msg.from.replace('@c.us', '@s.whatsapp.net'),
                         fromMe: msg.fromMe,
                         id: msg.id.id,
-                        participant: chat.isGroup ? msg.author : null
+                        participant: (chat.isGroup && msg.author) ? msg.author.replace('@c.us', '@s.whatsapp.net') : null
                     },
                     message: {
-                        conversation: msg.body
+                        conversation: msg.body,
+                        extendedTextMessage: {
+                            text: msg.body,
+                            contextInfo: {
+                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace('@c.us', '@s.whatsapp.net')) : []
+                            }
+                        }
                     },
-                    pushName: contact.pushname || contact.name || "Unknown"
+                    pushName: contact.pushname || contact.name || "Unknown",
+                    media_data: mediaData
                 }
             };
             
-            await axios.post(PYTHON_WEBHOOK_URL, payload);
+            // Need to increase payload limits in express and axios if sending base64 files.
+            await axios.post(PYTHON_WEBHOOK_URL, payload, { maxBodyLength: Infinity, maxContentLength: Infinity });
         } catch (error) {
             console.error('Error forwarding message to Python backend:', error.message);
         }
@@ -163,8 +188,10 @@ app.post('/message/sendText', async (req, res) => {
             sendOptions.quotedMessageId = options.quoted;
         }
 
-        // whatsapp-web.js requires the id format `number@c.us` or `number@g.us`
-        await client.sendMessage(number, textMessage.text, sendOptions);
+        // The Python backend works with @s.whatsapp.net, but whatsapp-web.js requires @c.us for users.
+        let wwebjsNumber = number.replace('@s.whatsapp.net', '@c.us');
+
+        await client.sendMessage(wwebjsNumber, textMessage.text, sendOptions);
         res.json({ status: 'ok' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -192,7 +219,7 @@ app.get('/group/findGroupInfos', async (req, res) => {
         const mappedInfo = {
             subject: chat.name,
             participants: chat.participants.map(p => ({
-                id: p.id._serialized,
+                id: p.id._serialized.replace('@c.us', '@s.whatsapp.net'),
                 admin: p.isAdmin ? 'admin' : (p.isSuperAdmin ? 'superadmin' : null)
             }))
         };
