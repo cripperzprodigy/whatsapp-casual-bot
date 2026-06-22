@@ -266,10 +266,10 @@ async def handle_command(  # Issue 13: added return type
             if not args:
                 await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
                 return
-                
+
             from app.translation import FULL_NAME_TO_CODE, is_valid_language_code
             first_word = args[0].lower()
-            
+
             if first_word == "auto" and len(args) > 1:
                 target_lang = "auto"
                 text_to_translate = " ".join(args[1:])
@@ -282,7 +282,7 @@ async def handle_command(  # Issue 13: added return type
             else:
                 target_lang = "auto"
                 text_to_translate = " ".join(args)
-                
+
             if not text_to_translate.strip():
                 await send_text_message(chat_id, "Please provide text to translate. Usage: !t [lang] <text>")
                 return

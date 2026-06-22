@@ -1,6 +1,6 @@
 # WhatsApp Domain Suffixes Knowledge Base
 
-When dealing with WhatsApp APIs and Node gateways, it's critical to understand the various domain suffixes attached to phone numbers and identifiers. 
+When dealing with WhatsApp APIs and Node gateways, it's critical to understand the various domain suffixes attached to phone numbers and identifiers.
 
 Depending on the underlying gateway architecture (official Cloud API vs. reverse-engineered clients like `whatsapp-web.js`, Baileys, or Evolution API), the suffixes used to route messages vary significantly.
 

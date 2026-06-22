@@ -48,7 +48,7 @@ def split_text_smart(text: str, max_chars: int) -> list[str]:
     def split_by(text_to_split: str, delimiters: list) -> list[str]:
         if len(text_to_split) <= max_chars or not delimiters:
             return [text_to_split[i:i+max_chars] for i in range(0, len(text_to_split), max_chars)]
-            
+
         delimiter = delimiters[0]
         if isinstance(delimiter, str):
             parts = text_to_split.split(delimiter)
@@ -57,7 +57,7 @@ def split_text_smart(text: str, max_chars: int) -> list[str]:
             parts = [p + " " for p in delimiter.split(text_to_split) if p]
             if parts:
                 parts[-1] = parts[-1].rstrip() # remove trailing space from last part
-            
+
         result = []
         current_chunk = ""
         for part in parts:
@@ -163,7 +163,7 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
     if target_language != "auto" and not is_valid_language_code(target_language):
         logger.warning(f"Invalid target language '{target_language}'. Falling back to default.")
         target_language = settings.GLOBAL_TARGET_LANGUAGE or "en"
-        
+
     source_lang = detect_language_safe(text, target_language)
 
     if source_lang is None:
@@ -198,23 +198,23 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
         max_retries = 1
         current_multiplier = 1.0
         success = False
-        
+
         for attempt in range(max_retries + 1):
             try:
                 max_tokens = int(settings.LLM_MAX_TOKENS * current_multiplier)
                 response_content = await ask_llm(prompt, task_type="translation", max_tokens_override=max_tokens)
                 translated_parts.append(response_content.strip())
-                
+
                 # Extract the last sentence for the next chunk's context
                 last_sentence_match = re.search(r'([^.!?]+[.!?]+)\s*$', response_content.strip())
                 if last_sentence_match:
                     last_sentence = last_sentence_match.group(1).strip()
                 else:
                     last_sentence = response_content.strip()[-100:] # fallback to last 100 chars
-                    
+
                 success = True
                 break
-                
+
             except TokenExhaustedError:
                 if attempt < max_retries:
                     logger.warning(f"Translation hit token limit on chunk {i+1} (attempt {attempt + 1}). Retrying.")
@@ -223,15 +223,15 @@ async def translate_text(text: str, target_language: str, ignore_list: list = No
                 else:
                     logger.error(f"Translation failed on chunk {i+1} due to token exhaustion.")
                     return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
-                    
+
             except TranslationError as e:
                 logger.error(f"Translation failed silently on chunk {i+1}. error={str(e)}")
                 return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
-                
+
             except Exception as e:
                 logger.error(f"Critical error during translation API call on chunk {i+1}. error={str(e)}")
                 return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
-                
+
         if not success:
             return f"{text}\n\n[⚠️ Translation failed at part {i+1}/{len(chunks)}]"
 

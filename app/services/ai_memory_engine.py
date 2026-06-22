@@ -285,7 +285,7 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         # 1. Read history to find pending user messages
         if not self.history_path.exists():
             return None
-            
+
         pending_texts = []
         with open(self.history_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -300,12 +300,12 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
                         break
                 except json.JSONDecodeError:
                     continue
-                    
+
         if not pending_texts:
             return None
-            
+
         full_text = "\n".join(pending_texts)
-        
+
         # 2. Process Language
         lang = await self._detect_language(full_text)
 

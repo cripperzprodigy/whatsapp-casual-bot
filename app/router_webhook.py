@@ -72,7 +72,7 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
     try:
         if delay > 0:
             await asyncio.sleep(delay)
-            
+
         # Check if this task was replaced by a newer message during the sleep
         if pending_chatty_tasks.get(chat_id) != asyncio.current_task():
             return
@@ -105,6 +105,163 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
         if pending_chatty_tasks.get(chat_id) == asyncio.current_task():
             del pending_chatty_tasks[chat_id]
 
+async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict):
+    """
+    Handles Direct Messages (DMs).
+    Logic: Always invoke Chatty. Never invoke Auto-Translation.
+    Bypass frequency throttles (every DM is a direct conversation).
+    """
+    logger.debug(f"Domain=Routed|Type=DM|Action=ChattyOnly - sender: {sender_id}")
+    try:
+        # For DMs, always trigger Chatty
+        engine = AIMemoryEngine(chat_id, sender_name, profile=profile)
+
+        # Cancel any pending background tasks for this chat to avoid race conditions
+        if chat_id in pending_chatty_tasks:
+            pending_chatty_tasks[chat_id].cancel()
+            del pending_chatty_tasks[chat_id]
+
+        # Process message WITH reply generation in the same request cycle
+        ai_reply = await engine.process_message(text, media_path, generate_reply=True)
+        if ai_reply:
+            await send_text_message(
+                chat_id,
+                ai_reply,
+                reply_to_msg_id=None,
+                quoted_participant=None,
+            )
+    except Exception as e:
+        logger.error(f"DM Handler Error: {e}", exc_info=True)
+
+
+async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict, chat_settings, mentioned_jids: list[str]):
+    """
+    Handles Group Chat messages.
+    Logic: Implement the 'Mutual Exclusion' pattern.
+    - If @bot mentioned -> Trigger Chatty immediately.
+    - Else -> Check Chatty frequency triggers.
+    - If Chatty did NOT consume the message -> Run Auto-Translation.
+    """
+    logger.debug(f"Domain=Routed|Type=Group|Action=MutualExclusion - chat: {chat_id}")
+    message_consumed_by_chatty = False
+    bot_id = settings.BOT_NUMBER
+    is_explicit_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
+
+    chatty_status = profile.get("chatty_status", settings.CHATTY_GROUP_DEFAULT)
+
+    try:
+        trigger = False
+        burst_count = 1
+
+        def update_counter(p):
+            nonlocal trigger
+            nonlocal burst_count
+
+            if is_bot_mentioned(text, bot_id, is_group=True, mentioned_jids=mentioned_jids):
+                trigger = True
+                p["message_counter"] = 0
+            elif chatty_status:
+                p["message_counter"] = p.get("message_counter", 0) + 1
+                if p["message_counter"] >= p.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY):
+                    trigger = True
+                    p["message_counter"] = 0
+            burst_count = p.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
+
+        from app.services.profile_service import update_profile_atomic
+        updated_profile = update_profile_atomic(chat_id, update_counter)
+
+        engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
+
+        if trigger:
+            message_consumed_by_chatty = True
+            if is_explicit_mention:
+                # ── Path A: Explicit Mention ── Immediate inline reply ──
+                if chat_id in pending_chatty_tasks:
+                    pending_chatty_tasks[chat_id].cancel()
+                    del pending_chatty_tasks[chat_id]
+
+                ai_reply = await engine.process_message(text, media_path, generate_reply=True)
+                if ai_reply:
+                    await send_text_message(
+                        chat_id,
+                        ai_reply,
+                        reply_to_msg_id=None,
+                        quoted_participant=None,
+                    )
+                return
+            else:
+                # ── Path B: Frequency-Based ── Delayed background task ──
+                await engine.process_message(text, media_path, generate_reply=False)
+
+                d_min = updated_profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
+                d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
+                delay = random.uniform(d_min, d_max)
+                d_mode = updated_profile.get("chatty_delay_mode", settings.CHATTY_DELAY_MODE)
+
+                if chat_id in pending_chatty_tasks:
+                    if d_mode == "debounce":
+                        pending_chatty_tasks[chat_id].cancel()
+                    elif d_mode == "throttle":
+                        return
+
+                task = asyncio.create_task(_delayed_chatty_reply(
+                    chat_id, msg_key.id, msg_key.participant, engine, delay, burst_count
+                ))
+                pending_chatty_tasks[chat_id] = task
+                return
+        else:
+            # Still save to RAG context for future retrieval (Silent Observer)
+            # Even if chatty is disabled entirely, we log it to memory context
+            await engine.process_message(text, media_path, generate_reply=False)
+
+            # If chatty was supposed to trigger but didn't, or was evaluated,
+            # we should still mark it as consumed ONLY IF chatty_status is True.
+            # But the requirement says: "If Chatty did NOT consume the message -> Run Auto-Translation"
+            # Since trigger=False, Chatty didn't consume it for a reply.
+            message_consumed_by_chatty = False
+    except Exception as e:
+        logger.error(f"Group Chatty Handler Error: {e}", exc_info=True)
+
+    # ── Auto-Translation Logic ──
+    if message_consumed_by_chatty:
+        logger.debug("Skipping auto-translation: message was consumed by Chatty processing.")
+        return
+
+    if is_explicit_mention:
+        logger.debug(f"Skipping auto-translation: message is an explicit bot mention.")
+        return
+
+    is_auto_enabled = (
+        chat_settings.auto_translate_enabled
+        if chat_settings.auto_translate_enabled is not None
+        else settings.GLOBAL_AUTO_TRANSLATE
+    )
+    target_lang = (
+        chat_settings.default_target_language
+        if chat_settings.default_target_language is not None
+        else settings.GLOBAL_TARGET_LANGUAGE
+    )
+
+    if chat_settings.ignored_languages is not None:
+        ignore_list = chat_settings.ignored_languages
+    else:
+        ignore_list = [
+            lang.strip()
+            for lang in settings.GLOBAL_IGNORED_LANGUAGES.split(",")
+            if lang.strip()
+        ]
+
+    if is_auto_enabled and target_lang:
+        translated = await translate_text(text, target_lang, ignore_list=ignore_list, chat_id=chat_id, msg_id=msg_key.id)
+        if translated != text:
+            await send_text_message(
+                chat_id,
+                translated,
+                reply_to_msg_id=msg_key.id,
+                quoted_participant=msg_key.participant,
+            )
+
+
 async def process_message(
     payload: WhatsAppWebhookPayload, db: Session
 ) -> None:
@@ -117,7 +274,7 @@ async def process_message(
         sender_name = data.pushName or "Unknown"
 
         # System Domain Guard Rail
-        # Ignore non-conversational domains to prevent the bot from attempting 
+        # Ignore non-conversational domains to prevent the bot from attempting
         # to chat with Status updates, Channels, or Linked Devices.
         if chat_id == "status@broadcast" or chat_id.endswith("@broadcast") or chat_id.endswith("@newsletter") or chat_id.endswith("@lid"):
             logger.debug(f"Ignoring non-conversational system domain: {chat_id}")
@@ -220,148 +377,38 @@ async def process_message(
             except Exception as e:
                 logger.error(f"Failed to save media: {e}")
 
-        # Ensure user profile and Chatty Status is initialized
+        # Ensure user profile is initialized
         profile = read_profile(chat_id)
-        default_status = settings.CHATTY_GROUP_DEFAULT if chat_id.endswith("@g.us") else settings.CHATTY_DEFAULT
-        chatty_status = profile.get("chatty_status", default_status)
 
-        # Handle Commands
+        # Handle Commands (Pre-Split)
         if text.startswith("!"):
             await handle_command(text, chat_id, sender_id, db)
             return
 
-        # Mutual exclusion guard: if Chatty evaluates the message at all,
-        # auto-translation must be skipped for this message event.
-        message_consumed_by_chatty = False
-
-        bot_id = settings.BOT_NUMBER
-        is_explicit_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
-
-        # Trigger Chatty RAG response if explicitly mentioned OR chatty is enabled
-        if is_explicit_mention or chatty_status:
-            message_consumed_by_chatty = True
-            try:
-                trigger = False
-                burst_count = 1
-
-                def update_counter(p):
-                    nonlocal trigger
-                    nonlocal burst_count
-                    bot_id = settings.BOT_NUMBER
-                    is_group = chat_id.endswith("@g.us")
-                    
-                    if is_bot_mentioned(text, bot_id, is_group, mentioned_jids):
-                        trigger = True
-                        p["message_counter"] = 0
-                    elif chatty_status:
-                        p["message_counter"] = p.get("message_counter", 0) + 1
-                        if p["message_counter"] >= p.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY):
-                            trigger = True
-                            p["message_counter"] = 0
-                    burst_count = p.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
-
-                from app.services.profile_service import update_profile_atomic
-                updated_profile = update_profile_atomic(chat_id, update_counter)
-
-                engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
-
-                if trigger:
-                    explicit_tag = is_explicit_mention
-
-                    if explicit_tag:
-                        # ── Path A: Explicit Mention ── Immediate inline reply ──
-                        # Cancel any pending background tasks for this chat
-                        if chat_id in pending_chatty_tasks:
-                            pending_chatty_tasks[chat_id].cancel()
-                            del pending_chatty_tasks[chat_id]
-
-                        # Process message WITH reply generation in the same request cycle
-                        ai_reply = await engine.process_message(text, media_path, generate_reply=True)
-                        if ai_reply:
-                            await send_text_message(
-                                chat_id,
-                                ai_reply,
-                                reply_to_msg_id=None,
-                                quoted_participant=None,
-                            )
-                        return
-                    else:
-                        # ── Path B: Frequency-Based ── Delayed background task ──
-                        # Save to RAG context first without generating a reply
-                        await engine.process_message(text, media_path, generate_reply=False)
-
-                        d_min = updated_profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
-                        d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
-                        delay = random.uniform(d_min, d_max)
-                        d_mode = updated_profile.get("chatty_delay_mode", settings.CHATTY_DELAY_MODE)
-
-                        # Handle existing tasks based on mode
-                        if chat_id in pending_chatty_tasks:
-                            if d_mode == "debounce":
-                                pending_chatty_tasks[chat_id].cancel()
-                            elif d_mode == "throttle":
-                                # Do not reset timer, let the existing one finish
-                                return
-
-                        # Start new delayed task
-                        task = asyncio.create_task(_delayed_chatty_reply(
-                            chat_id, msg_key.id, msg_key.participant, engine, delay, burst_count
-                        ))
-                        pending_chatty_tasks[chat_id] = task
-                        return
-                else:
-                    # No trigger — still save to RAG context for future retrieval
-                    await engine.process_message(text, media_path, generate_reply=False)
-            except Exception as e:
-                logger.error(f"AI Memory Engine Error: {e}")
-
-        # Auto-translation
-        # Guard: If Chatty touched this message, translation must be skipped.
-        # Chatty and Auto-Translation are mutually exclusive for each message event.
-        if message_consumed_by_chatty:
-            logger.debug(
-                "Skipping auto-translation: message was consumed by Chatty processing."
+        # Domain Split
+        is_dm = not chat_id.endswith("@g.us")
+        if is_dm:
+            return await _handle_dm_message(
+                chat_id=chat_id,
+                sender_id=sender_id,
+                sender_name=sender_name,
+                text=text,
+                media_path=media_path,
+                msg_key=msg_key,
+                profile=profile
             )
-            return
-
-        # Guard: Skip translation for messages explicitly directed at the bot.
-        # These are conversational commands, not content requiring translation.
-        # This also acts as defense-in-depth if the chatty try/except leaks.
-        bot_id = settings.BOT_NUMBER
-        if is_explicitly_tagged(text, bot_id, mentioned_jids):
-            logger.debug(f"Skipping auto-translation: message is an explicit bot mention.")
-            return
-
-        # Uses the chat_settings already fetched at the top of the function
-        is_auto_enabled = (
-            chat_settings.auto_translate_enabled
-            if chat_settings.auto_translate_enabled is not None
-            else settings.GLOBAL_AUTO_TRANSLATE
-        )
-        target_lang = (
-            chat_settings.default_target_language
-            if chat_settings.default_target_language is not None
-            else settings.GLOBAL_TARGET_LANGUAGE
-        )
-
-        if chat_settings.ignored_languages is not None:
-            ignore_list = chat_settings.ignored_languages
         else:
-            ignore_list = [
-                lang.strip()
-                for lang in settings.GLOBAL_IGNORED_LANGUAGES.split(",")
-                if lang.strip()
-            ]
-
-        if is_auto_enabled and target_lang:
-            translated = await translate_text(text, target_lang, ignore_list=ignore_list, chat_id=chat_id, msg_id=msg_key.id)
-            if translated != text:
-                await send_text_message(
-                    chat_id,
-                    translated,
-                    reply_to_msg_id=msg_key.id,
-                    quoted_participant=msg_key.participant,
-                )
+            return await _handle_group_message(
+                chat_id=chat_id,
+                sender_id=sender_id,
+                sender_name=sender_name,
+                text=text,
+                media_path=media_path,
+                msg_key=msg_key,
+                profile=profile,
+                chat_settings=chat_settings,
+                mentioned_jids=mentioned_jids
+            )
     except sqlalchemy.exc.SQLAlchemyError as exc:
         logger.error(
             "Database error while processing message: %s", exc

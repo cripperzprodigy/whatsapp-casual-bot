@@ -103,3 +103,38 @@ The core of the Isolated Ledger pattern. Composite Primary Keys ensure data is s
 - **`MessageBuffer`**: A rolling window (default size 200, set via `MESSAGE_BUFFER_SIZE`) of the
   most recent messages per chat, utilised by the `!summary` command. Old messages are pruned with
   a `while` loop (not `if`) so burst arrivals never overflow the buffer.
+
+## Message Routing Architecture (Decision #7)
+
+The `router_webhook.py` handles inbound WhatsApp events using a strict "Domain Split" to ensure DMs and Group messages are evaluated securely and separately.
+
+```text
+       [Inbound Webhook Payload]
+                  |
+         [Extract Context]
+                  |
+     [Drop System/Broadcast JIDs]
+                  |
+         [Is it a Command (!)]
+        /                     \
+    [Yes]                    [No]
+      |                       |
+ [Handle Command]        [Check JID Domain]
+                              |
+                     --------------------
+                    |                    |
+                 [Is DM]             [Is Group]
+                    |                    |
+        _handle_dm_message()    _handle_group_message()
+            |                          |
+    Always Invoke Chatty      [Mentioned or Chatty Enabled?]
+    No Auto-Translation             /              \
+                                 [Yes]             [No]
+                                   |                 |
+                   [Explicit Mention?]         [Log to Memory]
+                        /       \                    |
+                     [Yes]      [No]            [Translate]
+                       |          |
+            [Immediate Reply] [Save to Memory]
+                              [Delayed Task]
+```

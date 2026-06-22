@@ -96,22 +96,22 @@ async def ask_llm(
             kwargs["response_format"] = { "type": "json_object" }
 
         response = await llm_client.chat.completions.create(**kwargs)
-        
+
         # Robust Parsing: Check if choices exists and is non-empty
         if not hasattr(response, 'choices') or not response.choices:
             raw_resp = response.model_dump_json() if hasattr(response, 'model_dump_json') else str(response)
             logger.error(f"LLM returned no choices. Raw response: {raw_resp}")
             raise TranslationError("LLM returned no choices.")
-            
+
         choice = response.choices[0]
         content = choice.message.content
         finish_reason = getattr(choice, 'finish_reason', None)
-        
+
         # Logic Update based on finish_reason
         if finish_reason == "length":
             logger.warning("Token limit hit during translation")
             raise TokenExhaustedError("Token limit hit.")
-            
+
         # Handle Refusals / Empty Content
         if not content or content.strip() == "":
             if finish_reason != "stop":
@@ -120,10 +120,10 @@ async def ask_llm(
                 raise TranslationError("LLM returned empty content.")
             else:
                 return ""
-            
+
         if finish_reason == "stop" or finish_reason is None:
             return content.strip()
-            
+
         return content.strip()
     except TokenExhaustedError:
         raise
@@ -137,6 +137,6 @@ async def ask_llm(
                 raw_body = f" Raw response body: {exc.response.text}"
             except Exception:
                 pass
-        
+
         logger.error(f"Error calling LLM: {exc}.{raw_body}")
         raise TranslationError(f"Could not process request with AI: {exc}")

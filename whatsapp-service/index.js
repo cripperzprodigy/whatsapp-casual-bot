@@ -190,7 +190,7 @@ app.post('/message/sendText', async (req, res) => {
 
         // The Python backend works with @s.whatsapp.net, but whatsapp-web.js requires @c.us for users.
         let wwebjsNumber = number.replace('@s.whatsapp.net', '@c.us');
-        
+
         await client.sendMessage(wwebjsNumber, textMessage.text, sendOptions);
         res.json({ status: 'ok' });
     } catch (err) {

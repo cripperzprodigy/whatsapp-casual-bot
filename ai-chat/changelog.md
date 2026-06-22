@@ -1,4 +1,5 @@
 # Changelog
+- Refactor: Implemented Strict Message Domain Separation (Decision #7). Split router logic into `_handle_dm_message` and `_handle_group_message`. Enforced strict `BOT_NUMBER` validation on startup.
 - start.sh: added cleanup trap to safely preserve .bot_ready_state on SIGINT
 - app/ai_client.py: Enhanced LLM parsing robustness to log raw local model responses on empty content/missing choices.
 - **Translation Token Fix**: Increased default token limit to 8192 for high context models, implemented automatic retry mechanism for token exhaustion, and created structured LLM responses for precise finish reason detection.

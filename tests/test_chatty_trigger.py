@@ -128,4 +128,3 @@ def test_native_whatsapp_mention():
     # Case E: Any other format (e.g. @any.domain)
     random_jid = f"{bot_number}@any.domain"
     assert is_explicitly_tagged("@Bot hello", bot_number, mentioned_jids=[random_jid]) is True
-
