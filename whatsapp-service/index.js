@@ -11,7 +11,9 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const PORT = process.env.PORT || 3000;
 const PYTHON_WEBHOOK_URL = process.env.PYTHON_WEBHOOK_URL || 'http://localhost:8000/webhook/whatsapp';
 const path = require('path');
-const SESSION_PATH = process.env.WHATSAPP_SESSION_PATH || path.resolve(__dirname, '.wwebjs_auth');
+const SESSION_PATH = process.env.WHATSAPP_SESSION_PATH
+    ? path.resolve(process.env.WHATSAPP_SESSION_PATH)
+    : path.resolve(__dirname, '.wwebjs_auth');
 
 let qrCodeData = null;
 let isConnected = false;
@@ -25,6 +27,24 @@ let consecutiveFailures = 0;
 // Initialize WhatsApp Client with local session persistence
 let client;
 
+function validateSessionPath() {
+    if (!fs.existsSync(SESSION_PATH)) {
+        console.log(`📁 Creating session directory at: ${SESSION_PATH}`);
+        fs.mkdirSync(SESSION_PATH, { recursive: true });
+        return 'NO_SESSION';
+    }
+
+    // Check for session files
+    const files = fs.readdirSync(SESSION_PATH);
+    if (files.length === 0) {
+        console.log(`⚠️  Session directory exists but is empty: ${SESSION_PATH}`);
+        return 'NO_SESSION';
+    }
+
+    console.log(`✅ Session directory validated: ${SESSION_PATH} (${files.length} files)`);
+    return 'SESSION_EXISTS';
+}
+
 function getSessionState() {
     const sessionExists = fs.existsSync(SESSION_PATH);
     const hasSessionFiles = sessionExists && fs.readdirSync(SESSION_PATH).length > 0;
@@ -35,8 +55,8 @@ function getSessionState() {
 let recoveryMessageQueue = [];
 
 function initClient() {
-    const { sessionExists, hasSessionFiles } = getSessionState();
-    if (!hasSessionFiles) {
+    const sessionStatus = validateSessionPath();
+    if (sessionStatus === 'NO_SESSION') {
         console.log('No session found - QR scan required');
     } else {
         console.log('Session found - attempting to restore');
@@ -272,7 +292,7 @@ async function attemptGracefulRecovery() {
     
     if (recoveryTier >= 3) {
         // Tier 3: Nuclear option - delete session and force QR scan
-        console.log('Recovery Tier 3: Checking if deletion is safe and necessary...');
+        console.log(`Recovery Tier 3: Checking if deletion is safe and necessary for path: ${SESSION_PATH}...`);
 
         const currentHour = Math.floor(Date.now() / 3600000);
         if (currentHour > lastDeletionHour) {
@@ -287,7 +307,7 @@ async function attemptGracefulRecovery() {
         await new Promise(resolve => setTimeout(resolve, 30000));
 
         if (hasSessionFiles && deletionCountPerHour < 3) {
-             console.log('Deleting session (last resort)...');
+             console.log(`Deleting session (last resort) at absolute path: ${SESSION_PATH}...`);
              try {
                 await client.destroy();
                 fs.rmSync(SESSION_PATH, { recursive: true, force: true });

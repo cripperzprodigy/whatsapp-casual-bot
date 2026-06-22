@@ -31,6 +31,61 @@ check_ready_state() {
     return 1
 }
 
+# --- Helper: Docker Installation ---
+install_docker() {
+    if command -v docker &> /dev/null && docker --version &> /dev/null; then
+        echo "✅ Docker is already installed: $(docker --version)"
+        return 0
+    fi
+
+    echo "⏳ Installing Docker Engine..."
+
+    # Preflight: Check if running as root or can use sudo
+    if [ "$(id -u)" -ne 0 ] && ! command -v sudo &> /dev/null; then
+        echo "❌ Error: Docker installation requires root privileges. Please run as root or ensure sudo is available."
+        exit 1
+    fi
+
+    # Remove old versions
+    sudo apt-get update
+    sudo apt-get remove -y docker docker-engine docker.io containerd runc || true
+
+    # Install prerequisites
+    sudo apt-get install -y \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release
+
+    # Add Docker's official GPG key
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+    # Set up the repository
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    # Install Docker Engine
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    # Add user to docker group (if not root)
+    if [ "$(id -u)" -ne 0 ]; then
+        sudo usermod -aG docker $USER
+        echo "⚠️  You may need to log out and back in to use Docker without sudo."
+    fi
+
+    # Verify installation
+    if command -v docker &> /dev/null && docker --version &> /dev/null; then
+        echo "✅ Docker installed successfully: $(docker --version)"
+        return 0
+    else
+        echo "❌ Docker installation failed!"
+        exit 1
+    fi
+}
+
 # --- Helper: OS Package Install ---
 install_os_pkg() {
     PKG_NAME=$1
@@ -53,6 +108,18 @@ install_system_deps() {
             echo "❌ Pre-flight checks failed. Please resolve the missing dependencies manually."
             exit 1
         fi
+    fi
+
+    # Check Docker
+    if ! command -v docker &> /dev/null; then
+        install_docker
+    fi
+
+    # Verify Docker daemon is running
+    if ! sudo systemctl is-active --quiet docker; then
+        echo "⏳ Starting Docker daemon..."
+        sudo systemctl start docker
+        sudo systemctl enable docker
     fi
 
     # Check Node.js/npm/ffmpeg
@@ -261,6 +328,77 @@ create_venv_and_deps() {
     fi
 }
 
+# --- 4b. Pre-load Libraries for Stability ---
+preload_libraries() {
+    echo "=========================================="
+    echo "📚 Pre-loading Libraries for Stability..."
+    echo "=========================================="
+
+    # Pre-load Python dependencies
+    echo "-> Pre-loading Python semantic models and dependencies..."
+    source venv/bin/activate
+
+    # Warm-up: Import critical modules to trigger lazy loading
+    python3 -c "
+import sys
+print('Pre-loading critical Python modules...')
+
+# Core dependencies
+import fastapi
+import uvicorn
+import httpx
+import pydantic
+import asyncio
+import sqlite3
+
+# AI/ML models (these trigger heavy downloads/compilation)
+try:
+    from sentence_transformers import SentenceTransformer
+    print('✅ SentenceTransformer pre-loaded')
+except ImportError as e:
+    print(f'⚠️  SentenceTransformer not available: {e}')
+
+try:
+    import torch
+    print(f'✅ PyTorch pre-loaded (CUDA: {torch.cuda.is_available()})')
+except ImportError as e:
+    print(f'⚠️  PyTorch not available: {e}')
+
+# App-specific imports
+try:
+    from app.config import settings
+    from app.translation import TranslationService
+    from app.ai_client import AIClient
+    print('✅ Application modules pre-loaded')
+except Exception as e:
+    print(f'⚠️  App module pre-load warning: {e}')
+
+print('Python pre-loading complete.')
+"
+
+    # Pre-load Node.js dependencies
+    echo "-> Pre-loading Node.js WhatsApp Gateway..."
+    cd whatsapp-service
+
+    # Warm-up: Require the main module to trigger initialization
+    node -e "
+console.log('Pre-loading Node.js dependencies...');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const express = require('express');
+const axios = require('axios');
+console.log('✅ Node.js core dependencies pre-loaded');
+
+// Validate session path resolution
+const path = require('path');
+const sessionPath = path.resolve(__dirname, '.wwebjs_auth');
+console.log('📁 Session path will resolve to:', sessionPath);
+"
+
+    cd ..
+    echo "✅ Library pre-loading complete. Services will start more stably."
+    echo ""
+}
+
 # --- 5. Start Services ---
 cleanup() {
     echo "🛑 Stopping services and cleaning up runtime artifacts..."
@@ -270,6 +408,9 @@ cleanup() {
 }
 
 start_services() {
+    # NEW: Pre-load all libraries first
+    preload_libraries
+
     echo "=========================================="
     echo "🚀 Starting Services..."
     echo "=========================================="

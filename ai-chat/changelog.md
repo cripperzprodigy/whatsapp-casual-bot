@@ -32,3 +32,9 @@
 - **DM Silent Failure Fix**: DM handler now sends a user-visible fallback message ("⚠️ I received your message but couldn't generate a response") when the LLM returns None or throws an exception, instead of silently swallowing the failure.
 - **Embedding Model Startup Preload**: Moved SentenceTransformer model loading from lazy first-message initialization to eager module-level preload. Prevents a 10-60 second synchronous blocking call from deadlocking the asyncio event loop on the first incoming message.
 - **WhatsApp Gateway Fixes**: Added detailed error logging, metrics, auto-recovery for corrupted sessions, payload validation with JID checks (`@c.us` and `@g.us`), timeout wrapped send messages, and created a script `test-whatsapp-gateway.sh` to monitor gateway connectivity.
+- **Session Persistence**: Converted WhatsApp session path from relative to absolute using `path.resolve(__dirname, '.wwebjs_auth')`, preventing session "loss" after restarts when working directory changes.
+- **Docker Installation**: Added automatic Docker Engine installation to `start.sh` with preflight checks, daemon verification, and user group configuration.
+- **Startup Stability**: Implemented aggressive library pre-loading sequence for Python (semantic models, FastAPI, httpx) and Node.js (whatsapp-web.js) to prevent race conditions during initialization.
+- **Session Validation**: Added `validateSessionPath()` function to distinguish between "no session", "empty session", and "valid session" states with appropriate logging.
+- **Recovery Logging**: Enhanced tiered recovery logs to display absolute session paths for easier debugging.
+- **Test Script**: `tests/test_session_persistence.sh` for automated verification of session persistence across restarts.

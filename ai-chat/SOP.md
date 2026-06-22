@@ -48,9 +48,13 @@ Strict adherence to the project's architecture is required.
 
 - **JID Normalization:** Node.js gateway implementations must normalize all incoming unofficial or device-specific JID suffixes (such as `@c.us` and `@lid`) to the official `@s.whatsapp.net` suffix before forwarding payloads to the Python backend. This ensures domain guard rails and mention detection logic function correctly against standardized JIDs.
 
-## 4.3 WhatsApp Gateway Session Health Monitoring
+## 4.3 Session Storage Paths
+- All session/authentication files MUST use absolute paths resolved via `path.resolve(__dirname, '...')` in Node.js
+- Python services MUST use `Path(__file__).resolve().parent` for relative path resolution
+- Never use relative paths like `'./.folder'` for persistent storage
+
+## 4.4 WhatsApp Gateway Session Health Monitoring
 - **Session Path Normalization:** All services, including the Node.js Gateway, must resolve file paths for persistent storage (like `.wwebjs_auth`) using absolute paths (e.g. `path.resolve(__dirname, '...')`) rather than purely relative strings. Docker deployments must use named volumes for these paths to ensure state survives container teardowns.
-- **Gateway State Management & WISP Protocol:** The Node.js gateway and Python backend communicate via the WhatsApp Inter-Service Protocol (WISP). The Gateway operates in three states: CONNECTED, RECOVERING, and DISCONNECTED. In the RECOVERING state, messages are acknowledged with HTTP 202 (QUEUED_FOR_RECOVERY) and kept in a silent queue (`recoveryMessageQueue`) to be processed upon recovery. Unrecoverable states return HTTP 503 (SESSION_CORRUPT). The Python backend expects strict Pydantic/JSON schema structures (GatewaySendResult, DeliveryResponse) and must silently queue commands (like `!claim_ownership` or `!pm`) rather than notifying the user during transient recovery.
 - **Gateway State Management & WISP Protocol:** The Node.js gateway and Python backend communicate via the WhatsApp Inter-Service Protocol (WISP). The Gateway operates in three states: CONNECTED, RECOVERING, and DISCONNECTED. In the RECOVERING state, messages are acknowledged with HTTP 202 (QUEUED_FOR_RECOVERY) and kept in a silent queue (`recoveryMessageQueue`) to be processed upon recovery. Unrecoverable states return HTTP 503 (SESSION_CORRUPT). The Python backend expects strict Pydantic/JSON schema structures (GatewaySendResult, DeliveryResponse) and must silently queue commands (like `!claim_ownership` or `!pm`) rather than notifying the user during transient recovery.
 - **Tiered Session Auto-Recovery:** The Node.js gateway must actively track consecutive send failures and implement a graceful, tiered recovery strategy to avoid unnecessary manual QR scans:
   - **Tier 1 (Puppeteer Restart):** Attempt to reload the underlying Puppeteer page context to resolve transient execution context errors without destroying the session.
@@ -59,3 +63,8 @@ Strict adherence to the project's architecture is required.
 - **Error Pattern Matching:** The gateway MUST actively monitor `sendMessage` API errors for specific patterns indicating session corruption (e.g., "No LID for user", "session corrupt", "invalid session", "ExecutionContext").
 - **Immediate Recovery Strategy:** When a known session corruption pattern is detected, the gateway MUST bypass the standard N-consecutive-failures threshold and trigger an *immediate* escalation through the recovery tiers.
 - **Delayed Recovery Strategy:** General timeout or disconnect errors should respect the standard consecutive failures threshold (e.g., 3 failures) before forcing a recovery escalation, to prevent unnecessary resets during transient network blips.
+
+### 6.4 Docker Installation
+- `start.sh` MUST check for Docker installation before attempting docker-compose operations
+- Docker installation MUST be automated with proper GPG key setup and repository configuration
+- Post-installation: user MUST be added to `docker` group and daemon MUST be started/enabled
