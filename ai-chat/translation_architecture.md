@@ -2,6 +2,9 @@
 
 This document summarizes the end-to-end behavior of the WhatsApp Casual Bot's auto-translation system after the latest performance and reliability refactor.
 
+## 0. Chatty Mutual Exclusion
+Before the auto-translation pipeline runs, `app/router_webhook.py` now validates whether the same incoming message was already evaluated by the Chatty engine. If Chatty touched the message at all—whether it generated a reply or simply recorded the content for future RAG context—the message is blocked from auto-translation for that webhook event.
+
 ## 1. Triggering Translation (The Fast-Path Guards)
 
 When a message is received, the `app/router_webhook.py` processes it and checks if auto-translation is enabled for the chat. It then passes the message to `translate_text()` inside `app/translation.py`, which delegates the gatekeeping logic to `detect_language_safe(text, target_lang)`.

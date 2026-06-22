@@ -17,6 +17,7 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 - **Robustness Upgrades**: Added hierarchical semantic chunking for massive translation texts to prevent data loss.
 - Applied a timezone-aware fix for `ChatSettings.last_roster_export_at` to ensure contact roster export throttling compares UTC-aware timestamps consistently.
 - Updated auto-translation replies so the bot quotes the original WhatsApp message and provides only the translated text.
+- Added strict Chatty vs Auto-Translation mutual exclusion: messages processed by Chatty are now blocked from being auto-translated in the same webhook event.
 - Improved group reply quoting by passing participant metadata into the internal gateway when replying to quoted group messages.
 - Added a persistent Owner/Admin permissions system with dynamic `!help` output and bootstrap ownership claim flow.
 

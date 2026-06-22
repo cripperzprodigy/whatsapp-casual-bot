@@ -230,12 +230,16 @@ async def process_message(
             await handle_command(text, chat_id, sender_id, db)
             return
 
+        # Mutual exclusion guard: if Chatty evaluates the message at all,
+        # auto-translation must be skipped for this message event.
+        message_consumed_by_chatty = False
 
         bot_id = settings.BOT_NUMBER
         is_explicit_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
 
         # Trigger Chatty RAG response if explicitly mentioned OR chatty is enabled
         if is_explicit_mention or chatty_status:
+            message_consumed_by_chatty = True
             try:
                 trigger = False
                 burst_count = 1
@@ -312,6 +316,14 @@ async def process_message(
                 logger.error(f"AI Memory Engine Error: {e}")
 
         # Auto-translation
+        # Guard: If Chatty touched this message, translation must be skipped.
+        # Chatty and Auto-Translation are mutually exclusive for each message event.
+        if message_consumed_by_chatty:
+            logger.debug(
+                "Skipping auto-translation: message was consumed by Chatty processing."
+            )
+            return
+
         # Guard: Skip translation for messages explicitly directed at the bot.
         # These are conversational commands, not content requiring translation.
         # This also acts as defense-in-depth if the chatty try/except leaks.
