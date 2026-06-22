@@ -86,12 +86,36 @@ async def send_text_message(
             )
         payload["options"] = {"quoted": serialized_id}
     
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            logger.info(f"Message sent successfully to {chat_id}")
-            return True
-    except Exception as e:
-        logger.error(f"Failed to send message to {chat_id}: {e}")
-        return False
+    import asyncio
+    max_retries = 3
+    base_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                logger.info(f"Message sent successfully to {chat_id}")
+                return True
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in [500, 503]:
+                try:
+                    error_data = e.response.json()
+                    requires_qr = error_data.get("requires_qr", False)
+                    if requires_qr:
+                        logger.critical(f"CRITICAL: WhatsApp session requires QR scan! Pausing message queue for {chat_id}. Notify admin immediately.")
+                        # Assuming some admin notification or queue pause logic here
+                        return False
+                except Exception:
+                    pass
+            
+            delay = base_delay * (2 ** attempt)
+            logger.warning(f"HTTPStatusError sending message to {chat_id} (Attempt {attempt+1}/{max_retries}). Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+        except Exception as e:
+            delay = base_delay * (2 ** attempt)
+            logger.warning(f"Failed to send message to {chat_id} (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+            
+    logger.error(f"Exhausted retries. Failed to send message to {chat_id}")
+    return False

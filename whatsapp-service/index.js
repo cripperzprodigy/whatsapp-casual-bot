@@ -196,44 +196,83 @@ app.post('/whatsapp/reset-session', async (req, res) => {
     }
 });
 
-// Helper function to detect session corruption errors
+// Recovery tiers: 1=Restart Puppeteer, 2=Reinitialize Client, 3=Delete Session (last resort)
+let recoveryTier = 0;
 function isSessionCorruptionError(errMessage) {
     return errMessage && (
         errMessage.includes('No LID') ||
         errMessage.includes('session') ||
         errMessage.includes('corrupt') ||
-        errMessage.includes('invalid')
+        errMessage.includes('invalid') ||
+        errMessage.includes('ExecutionContext')
     );
+}
+
+async function attemptGracefulRecovery() {
+    recoveryTier++;
+    
+    if (recoveryTier === 1) {
+        // Tier 1: Restart Puppeteer context without destroying session
+        console.log('Recovery Tier 1: Attempting Puppeteer context restart...');
+        try {
+            const page = client.pupPage; // Access underlying Puppeteer page
+            await page.reload({ waitUntil: 'networkidle0', timeout: 30000 });
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            console.log('Tier 1 recovery successful');
+            return true;
+        } catch (tier1Err) {
+            console.error('Tier 1 recovery failed:', tier1Err.message);
+            return false;
+        }
+    }
+    
+    if (recoveryTier === 2) {
+        // Tier 2: Reinitialize client WITHOUT deleting session
+        console.log('Recovery Tier 2: Reinitializing client (preserving session)...');
+        try {
+            await client.destroy();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            initClient(); // Reuses existing session
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            console.log('Tier 2 recovery successful');
+            return true;
+        } catch (tier2Err) {
+            console.error('Tier 2 recovery failed:', tier2Err.message);
+            return false;
+        }
+    }
+    
+    if (recoveryTier >= 3) {
+        // Tier 3: Nuclear option - delete session and force QR scan
+        console.log('Recovery Tier 3: Deleting session (last resort)...');
+        try {
+            await client.destroy();
+            fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+            recoveryTier = 0; // Reset for fresh start
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            initClient();
+            return false; // Requires QR scan
+        } catch (tier3Err) {
+            console.error('Tier 3 recovery failed:', tier3Err.message);
+            return false;
+        }
+    }
 }
 
 // 4. Send Message (Internal API for Python)
 app.post('/message/sendText', async (req, res) => {
-    const requiresImmediateRecovery = !isConnected || 
-                                      consecutiveFailures >= 3 ||
-                                      (lastErrorMessage && isSessionCorruptionError(lastErrorMessage));
-    if (requiresImmediateRecovery) {
-        console.error('Send attempt failed: WhatsApp not connected or consecutive failures. Attempting auto-recovery...');
-        try {
-            await client.destroy();
-        } catch (destroyErr) {
-            console.error('Error destroying client during auto-recovery:', destroyErr.message);
+    // Check if recovery is needed BEFORE attempting send
+    if (!isConnected || consecutiveFailures >= 3) {
+        console.error('Pre-send check: WhatsApp not connected or high failure rate. Attempting graceful recovery...');
+        const recovered = await attemptGracefulRecovery();
+        if (!recovered && recoveryTier >= 3) {
+            return res.status(503).json({
+                error: 'Session corrupted. QR scan required.',
+                requires_qr: true
+            });
         }
-
-        try {
-            fs.rmSync(SESSION_PATH, { recursive: true, force: true });
-        } catch (rmErr) {
-            console.error('Error removing session directory during auto-recovery:', rmErr.message);
-        }
-
-        setTimeout(() => {
-            console.log('Re-initializing client after cleanup...');
-            initClient();
-        }, 1000);
-
-        return res.status(503).json({
-            error: 'WhatsApp disconnected or session corrupted. Auto-recovery initiated. Please scan QR code.',
-            requires_qr: true
-        });
+        // Wait for recovery to complete
+        await new Promise(resolve => setTimeout(resolve, 5000));
     }
     
     const { number, textMessage, options } = req.body;
@@ -288,24 +327,34 @@ app.post('/message/sendText', async (req, res) => {
                 await Promise.race([sendPromise, timeoutPromise]);
                 clearTimeout(timeoutId);
                 success = true;
+                recoveryTier = 0; // Reset on success
             } catch (err) {
                 lastErr = err;
-                // Immediate recovery if session corruption detected
+                
+                // Detect session corruption
                 if (isSessionCorruptionError(err.message)) {
-                    console.error('Session corruption detected ("' + err.message + '"). Initiating immediate recovery...');
-                    break; // Exit retry loop to trigger recovery below
+                    console.error(`Session corruption detected (attempt ${attempt + 1}): "${err.message}". Initiating graceful recovery...`);
+                    
+                    // Attempt recovery immediately
+                    const recovered = await attemptGracefulRecovery();
+                    
+                    if (recovered) {
+                        console.log('Recovery successful, retrying message send...');
+                        attempt++; // Allow one more retry after recovery
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        continue;
+                    } else if (recoveryTier >= 3) {
+                        // Tier 3 reached, requires QR scan
+                        break;
+                    }
                 }
+                
                 attempt++;
                 if (attempt <= maxRetries) {
                     console.log(`Attempt ${attempt} failed. Retrying in 2 seconds...`);
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
             }
-        }
-
-        if (!success && isSessionCorruptionError(lastErr?.message)) {
-            // Force recovery even if maxRetries not exhausted
-            consecutiveFailures = 999; // Force threshold breach
         }
 
         if (!success) {
@@ -323,16 +372,35 @@ app.post('/message/sendText', async (req, res) => {
         console.error("Error sending message. Details:", err);
         console.error("Stack trace:", err.stack);
         console.error("Request payload:", { number, textMessageLength: textMessage.text ? textMessage.text.length : 0, options });
-
         lastErrorMessage = err.message;
-        consecutiveFailures++;
-
-        res.status(500).json({
+        
+        // Only increment if NOT a session corruption error (those are handled separately)
+        if (!isSessionCorruptionError(err.message)) {
+            consecutiveFailures++;
+        }
+        // Determine if QR scan is required
+        const requiresQr = recoveryTier >= 3 || !isConnected;
+        
+        res.status(requiresQr ? 503 : 500).json({
             error: err.message,
-            stack: err.stack,
-            name: err.name
+            stack: err.name === 'TimeoutError' ? undefined : err.stack,
+            name: err.name,
+            requires_qr: requiresQr,
+            recovery_tier: recoveryTier
         });
     }
+});
+
+// 5b. Recovery Status
+app.get('/whatsapp/recovery-status', (req, res) => {
+    res.json({
+        isConnected: isConnected,
+        recoveryTier: recoveryTier,
+        consecutiveFailures: consecutiveFailures,
+        lastErrorMessage: lastErrorMessage,
+        totalMessagesSent: totalMessagesSent,
+        lastSuccessfulSend: lastSuccessfulSend
+    });
 });
 
 // 5. Fetch Group Metadata (Internal API for Python)

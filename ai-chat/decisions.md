@@ -14,4 +14,8 @@
   - **Decision:** DMs and Groups are treated as mutually exclusive domains with completely separate handlers from the moment the message is received. `router_webhook.py` is split into `_handle_dm_message()` and `_handle_group_message()`.
   - **Consequences:** Auto-translation is permanently disabled for DMs. DMs always interact with the Chatty RAG memory engine. Commands are evaluated prior to the split.
   - **Status:** Accepted.
-- **Auto-Recovery Strategy for WhatsApp Gateway**: We implemented an auto-recovery mechanism in the Node.js service. If sending fails due to `!isConnected` or after 3 consecutive errors, the client is destroyed, the corrupted `.wwebjs_auth` session directory is forcefully removed (wrapped in a try-catch to prevent file lock crashes), and `initClient()` is called again after a short delay. A 503 response is returned prompting for a QR rescan, ensuring self-healing when session data expires or becomes corrupted.
+- **Auto-Recovery Strategy for WhatsApp Gateway**: We implemented a tiered auto-recovery mechanism in the Node.js service for session corruption (e.g. "No LID for user"). Previously, corruption triggered immediate aggressive deletion of the `.wwebjs_auth` directory. The new strategy attempts Graceful Session Recovery first:
+  - **Tier 1:** Restart the underlying Puppeteer execution context (resolves most UI injection issues).
+  - **Tier 2:** Reinitialize the `whatsapp-web.js` client without deleting the session folder.
+  - **Tier 3:** If Tiers 1 and 2 fail, aggressively delete the `.wwebjs_auth` session directory via `fs.rmSync` and prompt for a new QR scan.
+  This tiered approach drastically reduces the frequency of forced manual QR rescans caused by transient network or Puppeteer corruption.
