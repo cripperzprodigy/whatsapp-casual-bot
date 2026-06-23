@@ -40,3 +40,4 @@
 - **Recovery Logging**: Enhanced tiered recovery logs to display absolute session paths for easier debugging.
 - **Test Script**: `tests/test_session_persistence.sh` for automated verification of session persistence across restarts.
 - **Recovery and Persistence Optimizations**: Fixed rate limit check timing in whatsapp-service/index.js, improved docker setup feedback and added pre-load summary in start.sh, and added test case for Docker volume persistence.
+- **Process Lifecycle Improvements**: Enhanced start.sh to aggressively handle orphaned processes using port checking, safely sanitize Puppeteer locks before startup, and gracefully handle signals for clean termination.
