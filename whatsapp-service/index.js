@@ -300,13 +300,19 @@ async function attemptGracefulRecovery() {
             lastDeletionHour = currentHour;
         }
 
+        if (deletionCountPerHour >= 3) {
+             console.log('Rate limit exceeded, skipping Tier 3. Too many deletions in the last hour. Skipping deletion to prevent cascading failures.');
+             recoveryTier = 0;
+             return false;
+        }
+
         const { hasSessionFiles } = getSessionState();
 
         // Wait 30 seconds before deletion to allow transient errors to resolve
         console.log('Waiting 30 seconds before proceeding with deletion...');
         await new Promise(resolve => setTimeout(resolve, 30000));
 
-        if (hasSessionFiles && deletionCountPerHour < 3) {
+        if (hasSessionFiles) {
              console.log(`Deleting session (last resort) at absolute path: ${SESSION_PATH}...`);
              try {
                 await client.destroy();
@@ -320,10 +326,6 @@ async function attemptGracefulRecovery() {
                 console.error('Tier 3 recovery failed:', tier3Err.message);
                 return false;
              }
-        } else if (deletionCountPerHour >= 3) {
-             console.log('Too many deletions in the last hour. Skipping deletion to prevent cascading failures.');
-             recoveryTier = 0;
-             return false;
         } else {
              console.log('No session files found. Initializing client...');
              recoveryTier = 0;

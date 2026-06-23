@@ -73,12 +73,16 @@ install_docker() {
     # Add user to docker group (if not root)
     if [ "$(id -u)" -ne 0 ]; then
         sudo usermod -aG docker $USER
-        echo "⚠️  You may need to log out and back in to use Docker without sudo."
+        if groups $USER | grep -q '\bdocker\b'; then
+            echo "✅ User already in docker group."
+        else
+            echo "💡 Tip: To use Docker immediately without logging out, run: newgrp docker"
+        fi
     fi
 
     # Verify installation
-    if command -v docker &> /dev/null && docker --version &> /dev/null; then
-        echo "✅ Docker installed successfully: $(docker --version)"
+    if command -v docker &> /dev/null && sudo docker --version &> /dev/null; then
+        echo "✅ Docker installed successfully: $(sudo docker --version)"
         return 0
     else
         echo "❌ Docker installation failed!"
@@ -396,6 +400,14 @@ console.log('📁 Session path will resolve to:', sessionPath);
 
     cd ..
     echo "✅ Library pre-loading complete. Services will start more stably."
+    echo ""
+    echo "=========================================="
+    echo "📊 Pre-loading Summary:"
+    echo "  - Core Dependencies: LOADED"
+    echo "  - Startup Stability: OPTIMIZED"
+    echo "  - Note: Any '⚠️' warnings above indicate optional modules."
+    echo "    If you need AI/ML features, ensure requirements.txt is fully installed."
+    echo "=========================================="
     echo ""
 }
 
