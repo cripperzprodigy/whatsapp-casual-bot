@@ -477,31 +477,50 @@ start_services() {
     kill_process_on_port 3000
     kill_process_on_port 8000
 
-    # --- Sanitize Puppeteer Lock Files ---
-    echo "-> Sanitizing Puppeteer session locks..."
-    LOCK_DIR="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/Default"
-    LOCK_FILE="$LOCK_DIR/SingletonLock"
-    ALT_LOCK_FILE="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/.lock"
+    echo "=========================================="
+    echo "🧹 Aggressive Session & Zombie Cleanup..."
+    echo "=========================================="
+    SESSION_DIR="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session"
+    LOCK_FILE="$SESSION_DIR/Default/SingletonLock"
+    
+    # 1. Kill ANY chrome/chromium process referencing our session dir
+    echo "-> Hunting zombie Chrome processes..."
+    if [ -d "$SESSION_DIR" ]; then
+        # Find PIDs of chrome processes using this directory
+        ZOMBIES=$(ps aux | grep "[c]hrome" | grep "$SESSION_DIR" | awk '{print $2}' || true)
+        if [ -n "$ZOMBIES" ]; then
+            echo "   🎯 Found zombies: $ZOMBIES. Terminating..."
+            kill -9 $ZOMBIES 2>/dev/null || true
+        fi
+    fi
 
-    # Give OS a moment to release file handles after process kill
-    sleep 2
-
+    # 2. Use fuser to kill any process holding the lock file specifically
     if [ -f "$LOCK_FILE" ]; then
-        echo "   🗑️ Removing stale SingletonLock: $LOCK_FILE"
+        echo "-> Force-releasing lock file handles..."
+        sudo fuser -k "$LOCK_FILE" 2>/dev/null || true
+    fi
+
+    # 3. Wait for OS to flush file handles (Critical!)
+    sleep 3
+
+    # 4. Now delete the lock files
+    if [ -f "$LOCK_FILE" ]; then
+        echo "   🗑️ Removing stale SingletonLock..."
         rm -f "$LOCK_FILE"
     fi
-
-    if [ -f "$ALT_LOCK_FILE" ]; then
-        echo "   🗑️ Removing stale .lock: $ALT_LOCK_FILE"
-        rm -f "$ALT_LOCK_FILE"
+    
+    # Also remove the .lock file if it exists
+    ALT_LOCK="$SESSION_DIR/.lock"
+    if [ -f "$ALT_LOCK" ]; then
+        rm -f "$ALT_LOCK"
     fi
 
-    # Also clear any Chrome Crashpad logs that might indicate unclean shutdown
-    if [ -d "$LOCK_DIR/Crashpad" ]; then
-        rm -rf "$LOCK_DIR/Crashpad"
+    # 5. Clear Crashpad logs (often indicate unclean shutdown)
+    if [ -d "$SESSION_DIR/Default/Crashpad" ]; then
+        rm -rf "$SESSION_DIR/Default/Crashpad"
     fi
 
-    echo "   ✅ Session locks cleared."
+    echo "   ✅ Cleanup complete. Starting Gateway..."
 
     echo "-> Starting Node.js WhatsApp Gateway (background)..."
     cd "$SCRIPT_DIR/whatsapp-service"

@@ -54,21 +54,7 @@ function getSessionState() {
 // Message Queue for Recovering State
 let recoveryMessageQueue = [];
 
-function initClient() {
-    const sessionStatus = validateSessionPath();
-    if (sessionStatus === 'NO_SESSION') {
-        console.log('No session found - QR scan required');
-    } else {
-        console.log('Session found - attempting to restore');
-    }
-
-    client = new Client({
-        authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
-        puppeteer: { 
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'] 
-        }
-    });
+function registerEvents() {
 
     client.on('qr', (qr) => {
         console.log('QR RECEIVED. Scan it at http://localhost:' + PORT + '/whatsapp/qr');
@@ -165,10 +151,87 @@ function initClient() {
         }
     });
 
-    try {
-        client.initialize();
-    } catch (err) {
-        console.error("Failed to initialize WhatsApp client:", err);
+} // end of registerEvents
+
+async function initClient() {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Validate path first
+    const sessionState = validateSessionPath();
+    if (sessionState === 'NO_SESSION') {
+        console.log('🆕 No existing session found. New QR code will be generated.');
+    } else {
+        console.log('Session found - attempting to restore');
+    }
+
+    client = new Client({
+        authStrategy: new LocalAuth({
+            clientId: 'bot',
+            dataPath: SESSION_PATH
+        }),
+        puppeteer: {
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        }
+    });
+
+    registerEvents();
+
+    // --- RETRY LOGIC FOR LOCK ERRORS ---
+    let attempts = 0;
+    const maxAttempts = 2;
+    let initialized = false;
+
+    while (!initialized && attempts <= maxAttempts) {
+        try {
+            console.log(`🚀 Attempting to initialize client (Attempt ${attempts + 1}/${maxAttempts + 1})...`);
+            await client.initialize();
+            initialized = true; // Success
+        } catch (err) {
+            attempts++;
+            console.error(`❌ Initialization failed: ${err.message}`);
+            
+            // Check if it's the specific "browser already running" error
+            if (err.message.includes('browser is already running') && attempts <= maxAttempts) {
+                console.warn('⚠️ Detected stale browser lock. Attempting self-heal...');
+                
+                const lockPath = path.join(SESSION_PATH, 'session', 'Default', 'SingletonLock');
+                if (fs.existsSync(lockPath)) {
+                    console.log(`🗑️ Deleting stale lock: ${lockPath}`);
+                    fs.unlinkSync(lockPath);
+                }
+                
+                // Destroy client to release handles
+                try { await client.destroy(); } catch (e) {}
+                
+                // Re-create client instance
+                console.log('🔄 Re-instantiating client...');
+                client = new Client({
+                    authStrategy: new LocalAuth({ clientId: 'bot', dataPath: SESSION_PATH }),
+                    puppeteer: {
+                        headless: true,
+                        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+                    }
+                });
+                registerEvents(); // Re-register events
+                
+                // Wait before retry
+                await new Promise(r => setTimeout(r, 2000));
+            } else {
+                // Not a lock error or max attempts reached
+                console.error('💀 Fatal initialization error. Giving up.');
+                throw err;
+             }
+        }
     }
 }
 
