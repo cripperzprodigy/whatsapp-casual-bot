@@ -1,3 +1,4 @@
+- **Puppeteer Lock File Sanitization**: Fixed persistent "Browser Already Running" error on restart by expanding `start.sh` lock file cleanup to handle `SingletonLock`, `.lock`, and `Crashpad` artifacts. Added a 2-second delay after process killing to allow OS file handle release. Also added proactive lock removal in the `cleanup()` shutdown handler to prevent stale locks from forming in the first place.
 - **WISP Protocol Implementation**: Implemented the WhatsApp Inter-Service Protocol (Decision #9) between the Node.js Gateway and Python Backend. Added strict Pydantic schemas, state visibility (CONNECTED, RECOVERING, DISCONNECTED), and robust handling of `SESSION_CORRUPT` via 202 Queued and 503 HTTP status codes. Resolved the `getChat undefined` crash with a `validateSession()` pre-flight check.
 
 # Changelog

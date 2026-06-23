@@ -452,6 +452,12 @@ cleanup() {
     kill_process_on_port 8000
 
     rm -f .*.tmp
+
+    # Sanitize Puppeteer locks on shutdown to prevent stale lock on next start
+    LOCK_FILE="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/Default/SingletonLock"
+    ALT_LOCK_FILE="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/.lock"
+    rm -f "$LOCK_FILE" "$ALT_LOCK_FILE" 2>/dev/null
+
     echo "✅ Cleanup complete."
     exit 0
 }
@@ -471,12 +477,31 @@ start_services() {
     kill_process_on_port 3000
     kill_process_on_port 8000
 
-    # Session Lock Cleanup (Safe after process kill)
-    LOCK_FILE="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/Default/SingletonLock"
+    # --- Sanitize Puppeteer Lock Files ---
+    echo "-> Sanitizing Puppeteer session locks..."
+    LOCK_DIR="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/Default"
+    LOCK_FILE="$LOCK_DIR/SingletonLock"
+    ALT_LOCK_FILE="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/.lock"
+
+    # Give OS a moment to release file handles after process kill
+    sleep 2
+
     if [ -f "$LOCK_FILE" ]; then
-        echo "-> Removing stale browser lock file..."
+        echo "   🗑️ Removing stale SingletonLock: $LOCK_FILE"
         rm -f "$LOCK_FILE"
     fi
+
+    if [ -f "$ALT_LOCK_FILE" ]; then
+        echo "   🗑️ Removing stale .lock: $ALT_LOCK_FILE"
+        rm -f "$ALT_LOCK_FILE"
+    fi
+
+    # Also clear any Chrome Crashpad logs that might indicate unclean shutdown
+    if [ -d "$LOCK_DIR/Crashpad" ]; then
+        rm -rf "$LOCK_DIR/Crashpad"
+    fi
+
+    echo "   ✅ Session locks cleared."
 
     echo "-> Starting Node.js WhatsApp Gateway (background)..."
     cd "$SCRIPT_DIR/whatsapp-service"
