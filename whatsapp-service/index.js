@@ -70,11 +70,12 @@ function registerEvents() {
         recoveryTier = 0;
         consecutiveFailures = 0;
         isSettling = true;
-        console.log('⏳ Client ready. Entering 5-second settling period...');
-        setTimeout(() => {
+        console.log('⏳ Client ready. Entering 4.5s settling period for store hydration...');
+        setTimeout(async () => {
             isSettling = false;
-            console.log('✅ Settling complete. Ready for messages.');
-        }, 5000);
+            console.log('✅ Settling complete. Stores hydrated. Processing queue...');
+            await processMessageQueue();
+        }, 4500);
     });
 
     client.on('authenticated', () => {
@@ -410,28 +411,42 @@ async function attemptGracefulRecovery() {
 // 4. Send Message (Internal API for Python)
 // Process the message queue when connection is restored
 async function processMessageQueue() {
-    if (recoveryMessageQueue.length === 0 || !isConnected || recoveryTier > 0) return;
+    if (isSettling || !isConnected || recoveryMessageQueue.length === 0) return;
 
-    console.log(`Processing ${recoveryMessageQueue.length} queued messages...`);
-    const queueToProcess = [...recoveryMessageQueue];
-    recoveryMessageQueue = []; // Clear queue before processing
-
-    for (const msg of queueToProcess) {
+    console.log(`📬 Processing ${recoveryMessageQueue.length} queued messages...`);
+    
+    while (recoveryMessageQueue.length > 0) {
+        if (isSettling) break; // Stop if settling starts mid-process
+        
+        const msg = recoveryMessageQueue.shift();
+        
+        // Skip if too many retries
+        if ((msg.retryCount || 0) > 3) {
+            console.error(`❌ Dropping message to ${msg.number} after 3 retries.`);
+            continue;
+        }
+        
         try {
-            await axios.post(`http://localhost:${PORT}/message/sendText`, msg);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limit processing
-        } catch (err) {
-            console.error('Failed to send queued message:', err.message);
+            const response = await axios.post(`http://localhost:${PORT}/message/sendText`, msg);
+            if (response.status === 202) {
+                console.warn("⚠️ Queue paused: Received 202 Queued (Settling/Disconnected). Waiting for next ready event.");
+                break;
+            }
+            // Delay between messages to prevent flooding
+            await new Promise(r => setTimeout(r, 500));
+        } catch (e) {
+            console.error('Failed to send queued message:', e.message);
         }
     }
 }
 
 app.post('/message/sendText', async (req, res) => {
-    // NEW: Guard against settling state
-    if (!client || !isConnected || isSettling) {
-        console.log(`🚫 Message queued: Client is ${!isConnected ? 'disconnected' : 'settling'}`);
+    if (!isConnected || isSettling) {
+        console.log(`⏳ Message queued (Client ${isSettling ? 'settling' : 'disconnected'}).`);
+        const queuedBody = { ...req.body, timestamp: Date.now(), retryCount: (req.body.retryCount || 0) };
+        recoveryMessageQueue.push(queuedBody);
         return res.status(202).json({
-             status: 'QUEUED',
+             status: 'QUEUED_FOR_RECOVERY',
              reason: isSettling ? 'CLIENT_SETTLING' : 'DISCONNECTED'
          });
     }
@@ -456,11 +471,11 @@ app.post('/message/sendText', async (req, res) => {
         });
     }
 
-    // Check if recovery is needed BEFORE attempting send
-    if (!isConnected || consecutiveFailures >= 3 || recoveryTier > 0) {
-        console.error('Pre-send check: WhatsApp not connected, high failure rate, or recovering. Queuing...');
-
-        recoveryMessageQueue.push(req.body);
+    // Pre-send check is now mostly handled at the top, but we still check recoveryTier
+    if (consecutiveFailures >= 3 || recoveryTier > 0) {
+        console.error('Pre-send check: High failure rate or recovering. Queuing...');
+        const queuedBody = { ...req.body, timestamp: Date.now(), retryCount: (req.body.retryCount || 0) };
+        recoveryMessageQueue.push(queuedBody);
 
         if (recoveryTier === 0) {
             attemptGracefulRecovery().then(processMessageQueue).catch(err => console.error("Async recovery failed", err));
@@ -535,10 +550,12 @@ app.post('/message/sendText', async (req, res) => {
             } catch (err) {
                 lastErr = err;
                 
-                // CHECK 2: Specific handling for "getChat" undefined error
+                // NEW: Specific handling for getChat undefined
                 if (err.message && (err.message.includes('getChat') || err.message.includes('undefined'))) {
-                    console.error(`⚠️ Race Condition Detected: Client context not fully ready. Aborting immediate retry.`);
-                    break;
+                    console.error(`⚠️ Store hydration incomplete (getChat undefined). Forcing delay & re-queue.`);
+                    const queuedBody = { ...req.body, timestamp: Date.now(), retryCount: (req.body.retryCount || 0) + 1 };
+                    recoveryMessageQueue.push(queuedBody);
+                    return res.status(202).json({ status: 'REQUEUED_HYDRATION_ERROR' });
                 }
                 
                 // Detect session corruption

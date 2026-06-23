@@ -485,6 +485,8 @@ start_services() {
     
     # 1. Kill ANY chrome/chromium process referencing our session dir
     echo "-> Hunting zombie Chrome processes..."
+    pkill -9 -f "userDataDir.*\.wwebjs_auth" 2>/dev/null || true
+    pkill -9 -f "chrome.*--user-data-dir" 2>/dev/null || true
     if [ -d "$SESSION_DIR" ]; then
         # Find PIDs of chrome processes using this directory
         ZOMBIES=$(ps aux | grep "[c]hrome" | grep "$SESSION_DIR" | awk '{print $2}' || true)
@@ -524,6 +526,10 @@ start_services() {
 
     echo "-> Starting Node.js WhatsApp Gateway (background)..."
     cd "$SCRIPT_DIR/whatsapp-service"
+
+    # Force remove lock files again just before node start
+    rm -rf .wwebjs_auth/session/Default/SingletonLock
+    rm -rf .wwebjs_auth/session/Default/Lockfile
     node index.js &
     NODE_PID=$!
     cd ..
