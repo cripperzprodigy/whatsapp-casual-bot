@@ -69,6 +69,59 @@ fi
 echo "-> Cleaning up test processes..."
 kill $START_PID 2>/dev/null || true
 
+test_docker_volume_persistence() {
+    echo "-> Test 6: Running active Docker volume persistence test..."
+    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+        echo "⚠️ docker-compose not found, skipping active Docker test."
+        return 0
+    fi
+
+    local DOCKER_CMD="docker compose"
+    if command -v docker-compose &> /dev/null; then
+        DOCKER_CMD="docker-compose"
+    fi
+
+    # Start just the whatsapp-gateway to test its volume
+    echo "-> Starting whatsapp-gateway container..."
+    $DOCKER_CMD up -d whatsapp-gateway
+
+    echo "-> Waiting for container to initialize session volume (15s)..."
+    sleep 15
+
+    # Check if files exist inside the container's volume mount
+    local CONTAINER_ID=$($DOCKER_CMD ps -q whatsapp-gateway)
+    local FILES_EXIST=false
+    if [ -n "$CONTAINER_ID" ]; then
+        if docker exec "$CONTAINER_ID" ls -A /app/.wwebjs_auth >/dev/null 2>&1; then
+            FILES_EXIST=true
+            echo "✅ Session files/directories created inside container."
+        else
+            echo "⚠️  Session directory /app/.wwebjs_auth inside container is empty or missing."
+        fi
+    else
+        echo "❌ whatsapp-gateway container is not running."
+    fi
+
+    echo "-> Stopping container..."
+    $DOCKER_CMD down
+
+    local VOLUME_PERSISTS=false
+    if docker volume ls | grep -q "whatsapp_session"; then
+        VOLUME_PERSISTS=true
+        echo "✅ Docker volume 'whatsapp_session' persisted after teardown."
+    else
+        echo "❌ Docker volume 'whatsapp_session' did NOT persist."
+    fi
+
+    if [ "$FILES_EXIST" = true ] && [ "$VOLUME_PERSISTS" = true ]; then
+        echo "✅ Active Docker volume persistence test PASSED."
+    else
+        echo "⚠️ Active Docker volume persistence test encountered issues."
+    fi
+}
+
+test_docker_volume_persistence
+
 echo "=========================================="
 echo "✅ All advanced session persistence tests passed!"
 echo "=========================================="

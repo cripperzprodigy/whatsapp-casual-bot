@@ -3,7 +3,10 @@
 
 set -e
 
-MARKER_FILE=".bot_ready_state"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MARKER_FILE="$SCRIPT_DIR/.bot_ready_state"
+NODE_PID=""
+PYTHON_PID=""
 
 echo "=========================================="
 echo "    WhatsApp Casual Bot - Setup & Run     "
@@ -73,12 +76,16 @@ install_docker() {
     # Add user to docker group (if not root)
     if [ "$(id -u)" -ne 0 ]; then
         sudo usermod -aG docker $USER
-        echo "⚠️  You may need to log out and back in to use Docker without sudo."
+        if groups $USER | grep -q '\bdocker\b'; then
+            echo "✅ User already in docker group."
+        else
+            echo "💡 Tip: To use Docker immediately without logging out, run: newgrp docker"
+        fi
     fi
 
     # Verify installation
-    if command -v docker &> /dev/null && docker --version &> /dev/null; then
-        echo "✅ Docker installed successfully: $(docker --version)"
+    if command -v docker &> /dev/null && sudo docker --version &> /dev/null; then
+        echo "✅ Docker installed successfully: $(sudo docker --version)"
         return 0
     else
         echo "❌ Docker installation failed!"
@@ -267,13 +274,6 @@ verify_python() {
 
 # --- 4. Setup Virtual Env & Pip ---
 create_venv_and_deps() {
-    # Check if .env exists
-    if [ ! -f ".env" ]; then
-        echo "⚠️  WARNING: .env file not found."
-        echo "Please copy .env.example to .env and configure it before starting."
-        sleep 3
-    fi
-
     # Check and recreate venv if wrong version
     if [ -d "venv" ]; then
         CURRENT_VERSION=$(venv/bin/python --version 2>&1 | grep -oP '\d+\.\d+')
@@ -397,15 +397,67 @@ console.log('📁 Session path will resolve to:', sessionPath);
     cd ..
     echo "✅ Library pre-loading complete. Services will start more stably."
     echo ""
+    echo "=========================================="
+    echo "📊 Pre-loading Summary:"
+    echo "  - Core Dependencies: LOADED"
+    echo "  - Startup Stability: OPTIMIZED"
+    echo "  - Note: Any '⚠️' warnings above indicate optional modules."
+    echo "    If you need AI/ML features, ensure requirements.txt is fully installed."
+    echo "=========================================="
+    echo ""
 }
 
 # --- 5. Start Services ---
-cleanup() {
-    echo "🛑 Stopping services and cleaning up runtime artifacts..."
-    # DO NOT DELETE .bot_ready_state - required for idempotent restarts.
-    kill $NODE_PID 2>/dev/null || true
-    rm -f .*.tmp
+kill_process_on_port() {
+    local PORT=$1
+    local PIDS=$(lsof -ti :$PORT 2>/dev/null)
+
+    if [ -n "$PIDS" ]; then
+        echo "-> Found orphan process on port $PORT (PIDs: $PIDS). Terminating..."
+        for PID in $PIDS; do
+            kill -15 $PID 2>/dev/null
+        done
+        sleep 2
+        # Force kill if still hanging
+        for PID in $PIDS; do
+            if kill -0 $PID 2>/dev/null; then
+                kill -9 $PID 2>/dev/null
+            fi
+        done
+    fi
 }
+
+cleanup() {
+    echo ""
+    echo "🛑 Intercepted Stop Signal. Shutting down..."
+
+    # Kill Node Gateway
+    if [ -n "$NODE_PID" ] && kill -0 $NODE_PID 2>/dev/null; then
+        echo "-> Stopping WhatsApp Gateway (PID: $NODE_PID)..."
+        kill -15 $NODE_PID 2>/dev/null
+        sleep 2
+        kill -9 $NODE_PID 2>/dev/null || true
+    fi
+
+    # Kill Python API
+    if [ -n "$PYTHON_PID" ] && kill -0 $PYTHON_PID 2>/dev/null; then
+        echo "-> Stopping FastAPI Server (PID: $PYTHON_PID)..."
+        kill -15 $PYTHON_PID 2>/dev/null
+        sleep 2
+        kill -9 $PYTHON_PID 2>/dev/null || true
+    fi
+
+    # Fallback: Ensure ports are free (in case backgrounding detached PIDs)
+    kill_process_on_port 3000
+    kill_process_on_port 8000
+
+    rm -f .*.tmp
+    echo "✅ Cleanup complete."
+    exit 0
+}
+
+# Set Trap
+trap cleanup SIGINT SIGTERM EXIT
 
 start_services() {
     # NEW: Pre-load all libraries first
@@ -415,29 +467,42 @@ start_services() {
     echo "🚀 Starting Services..."
     echo "=========================================="
 
-    # Cleanup orphaned node processes that might still hold the port
-    if command -v fuser &> /dev/null; then
-        echo "-> Cleaning up orphaned processes on port 3000..."
-        fuser -k 3000/tcp 2>/dev/null || true
-    else
-        killall node 2>/dev/null || true
+    # Pre-flight Cleanup
+    kill_process_on_port 3000
+    kill_process_on_port 8000
+
+    # Session Lock Cleanup (Safe after process kill)
+    LOCK_FILE="$SCRIPT_DIR/whatsapp-service/.wwebjs_auth/session/Default/SingletonLock"
+    if [ -f "$LOCK_FILE" ]; then
+        echo "-> Removing stale browser lock file..."
+        rm -f "$LOCK_FILE"
     fi
 
     echo "-> Starting Node.js WhatsApp Gateway (background)..."
-    cd whatsapp-service
+    cd "$SCRIPT_DIR/whatsapp-service"
     node index.js &
     NODE_PID=$!
     cd ..
 
-    trap cleanup INT TERM EXIT
-
     echo "-> Starting Python FastAPI server..."
     echo "-> Once started, visit http://localhost:8000/whatsapp/qr to link your device."
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    source venv/bin/activate
+    python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+    PYTHON_PID=$!
+
+    # Wait for both
+    wait $NODE_PID $PYTHON_PID
 }
 
 # --- Main Pipeline ---
 main() {
+    # STEP 0: ENV CHECK (Fail Fast)
+    if [ ! -f "$SCRIPT_DIR/.env" ]; then
+        echo "❌ CRITICAL ERROR: .env file not found in $SCRIPT_DIR"
+        echo "   Please create a .env file based on .env.example before starting."
+        exit 1
+    fi
+
     if check_ready_state; then
         create_venv_and_deps
         start_services
