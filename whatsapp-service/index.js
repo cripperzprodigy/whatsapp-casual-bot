@@ -23,9 +23,7 @@ let totalMessagesSent = 0;
 let lastErrorMessage = null;
 let lastSuccessfulSend = null;
 let consecutiveFailures = 0;
-let isRecovering = false;
-let lastRecoveryTime = 0;
-const RECOVERY_SETTLE_TIME_MS = 5000;
+let isSettling = false;
 
 // Initialize WhatsApp Client with local session persistence
 let client;
@@ -71,11 +69,12 @@ function registerEvents() {
         isConnected = true;
         recoveryTier = 0;
         consecutiveFailures = 0;
-        isRecovering = false;
-        
-        // Mark settlement complete
-        lastRecoveryTime = Date.now(); 
-        console.log('✅ Client fully settled and ready for messages.');
+        isSettling = true;
+        console.log('⏳ Client ready. Entering 5-second settling period...');
+        setTimeout(() => {
+            isSettling = false;
+            console.log('✅ Settling complete. Ready for messages.');
+        }, 5000);
     });
 
     client.on('authenticated', () => {
@@ -330,7 +329,6 @@ function isSessionCorruptionError(errMessage) {
 }
 
 async function attemptGracefulRecovery() {
-    isRecovering = true;
     recoveryTier++;
     
     if (recoveryTier === 1) {
@@ -429,14 +427,13 @@ async function processMessageQueue() {
 }
 
 app.post('/message/sendText', async (req, res) => {
-    // CHECK 1: Is system settling after recovery?
-    const timeSinceRecovery = Date.now() - lastRecoveryTime;
-    if (timeSinceRecovery < RECOVERY_SETTLE_TIME_MS && lastRecoveryTime !== 0) {
-        console.log(`⏳ System settling after recovery (${timeSinceRecovery}ms elapsed). Deferring message.`);
-        return res.status(202).json({ 
-            status: 'QUEUED_FOR_SETTLING', 
-            message: `System settling. Try again in ${Math.ceil((RECOVERY_SETTLE_TIME_MS - timeSinceRecovery)/1000)}s.` 
-        });
+    // NEW: Guard against settling state
+    if (!client || !isConnected || isSettling) {
+        console.log(`🚫 Message queued: Client is ${!isConnected ? 'disconnected' : 'settling'}`);
+        return res.status(202).json({
+             status: 'QUEUED',
+             reason: isSettling ? 'CLIENT_SETTLING' : 'DISCONNECTED'
+         });
     }
 
     // validateSession() pre-flight check
@@ -518,7 +515,14 @@ app.post('/message/sendText', async (req, res) => {
 
         while (attempt <= maxRetries && !success) {
             try {
-                const sendPromise = client.sendMessage(wwebjsNumber, trimmedText, sendOptions);
+                const chatId = wwebjsNumber.includes('@') ? wwebjsNumber : `${wwebjsNumber}@c.us`;
+                const chat = await client.getChatById(chatId); // Pre-check
+                
+                if (!chat) {
+                     return res.status(404).json({ error: 'Chat not found' });
+                }
+
+                const sendPromise = client.sendMessage(chatId, trimmedText, sendOptions);
                 let timeoutId;
                 const timeoutPromise = new Promise((_, reject) => {
                     timeoutId = setTimeout(() => reject(new Error('sendMessage timed out after 10 seconds')), 10000);

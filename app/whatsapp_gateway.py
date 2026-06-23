@@ -27,6 +27,7 @@ class DeliveryResponse(BaseModel):
     message_id: Optional[str] = None
     error_code: Optional[str] = None
     error: Optional[str] = None
+    reason: Optional[str] = None
     requires_qr: Optional[bool] = False
     recovery_tier: Optional[int] = 0
     message: Optional[str] = None
@@ -135,12 +136,20 @@ async def send_text_message(
                 # Check for 202 Accepted (Queued for Recovery)
                 if response.status_code == 202:
                     resp_data = DeliveryResponse(**response.json())
-                    logger.warning(f"Message queued by gateway for {chat_id}. Reason: {resp_data.error_code}")
+                    reason = resp_data.reason or resp_data.error_code
+                    logger.warning(f"Message queued by gateway for {chat_id}. Reason: {reason}")
+                    
+                    if reason == "CLIENT_SETTLING":
+                        # Increase wait time to 6s before retry, wait longer than settling period
+                        logger.info(f"Client is settling. Delaying retry for 6 seconds...")
+                        await asyncio.sleep(6)
+                        continue
+                        
                     return GatewaySendResult(
                         success=False,
                         status_code=202,
                         queued=True,
-                        error_code=resp_data.error_code,
+                        error_code=reason,
                         message=resp_data.message
                     )
 
@@ -154,6 +163,12 @@ async def send_text_message(
             if e.response.status_code in [500, 503]:
                 try:
                     error_data = e.response.json()
+                    
+                    # If 503 NOT_READY, abort immediate retry and queue
+                    if e.response.status_code == 503 and error_data.get("status") == "NOT_READY":
+                        logger.error("Gateway reported NOT_READY. Aborting immediate retry and queuing.")
+                        return GatewaySendResult(success=False, status_code=503, queued=True, error_code="NOT_READY")
+                        
                     resp_data = DeliveryResponse(**error_data)
                     requires_qr = resp_data.requires_qr
                     if requires_qr:
