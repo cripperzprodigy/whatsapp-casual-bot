@@ -25,3 +25,14 @@
 - [CLOSED] Gateway Session Fails to Persist: Resolved bug where manual QR scans were required on every restart despite LocalAuth configured. Fixed by making `SESSION_PATH` absolute, updating docker-compose with a named volume, and restricting Tier 3 aggressive session purges. Also added Docker auto-installation and library pre-loading for improved startup stability.
 - [CLOSED] Zombie Retry Infinite Loop & Session Race Condition: After Tier 1/2 recovery, the node gateway immediately processed the queue before Puppeteer's internal stores were fully hydrated, triggering continuous `getChat` undefined crashes and infinite loop retries. Fixed by introducing a global `isSettling` 4.5-second cooldown delay post-recovery and explicit queue serialization with a 500ms debounce.
 - [CLOSED] Persistent Chrome Zombies Blocking Restart: `kill_process_on_port` left headless Chrome processes alive which maintained file locks on `.wwebjs_auth`. Fixed by adding targeted `pkill -9 -f "chrome.*--user-data-dir"` statements in `start.sh` cleanup traps.
+
+
+### Issue: WhatsApp Gateway Session Corruption Loop & Detached Frame Crash
+**Status:** ✅ Resolved
+**Description:**
+When sending a DM (e.g. `!claim_ownership`), a "No LID for user" error from `whatsapp-web.js` incorrectly triggered the `isSessionCorruptionError` check, forcing a tier 1 recovery (Puppeteer restart). The synchronous retry loop in the message handler then attempted to reuse a detached frame, crashing the send process entirely.
+
+**Resolution:**
+- Removed "No LID" from `isSessionCorruptionError`.
+- Wrapped the `getChatById` pre-check in a `try-catch` block to bypass failures.
+- Updated `attemptGracefulRecovery` logic to push failed messages to `recoveryMessageQueue` and return `HTTP 202 (Queued)` instead of retrying synchronously on a detached frame.

@@ -321,7 +321,6 @@ let deletionCountPerHour = 0;
 let lastDeletionHour = Math.floor(Date.now() / 3600000);
 function isSessionCorruptionError(errMessage) {
     return errMessage && (
-        errMessage.includes('No LID') ||
         errMessage.includes('session') ||
         errMessage.includes('corrupt') ||
         errMessage.includes('invalid') ||
@@ -531,10 +530,13 @@ app.post('/message/sendText', async (req, res) => {
         while (attempt <= maxRetries && !success) {
             try {
                 const chatId = wwebjsNumber.includes('@') ? wwebjsNumber : `${wwebjsNumber}@c.us`;
-                const chat = await client.getChatById(chatId); // Pre-check
-                
-                if (!chat) {
-                     return res.status(404).json({ error: 'Chat not found' });
+                try {
+                    const chat = await client.getChatById(chatId); // Pre-check
+                    if (!chat) {
+                        console.warn(`Chat not found for ${chatId}, attempting to send anyway.`);
+                    }
+                } catch (preCheckErr) {
+                    console.warn(`Pre-check getChatById failed for ${chatId}: ${preCheckErr.message}. Bypassing pre-check and attempting to send directly.`);
                 }
 
                 const sendPromise = client.sendMessage(chatId, trimmedText, sendOptions);
@@ -566,10 +568,20 @@ app.post('/message/sendText', async (req, res) => {
                     const recovered = await attemptGracefulRecovery();
                     
                     if (recovered) {
-                        console.log('Recovery successful, retrying message send...');
-                        attempt++; // Allow one more retry after recovery
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                        continue;
+                        console.log('Recovery successful. Queuing message to avoid detached frame errors while settling.');
+                        const queuedBody = { ...req.body, timestamp: Date.now(), retryCount: (req.body.retryCount || 0) + 1 };
+                        recoveryMessageQueue.push(queuedBody);
+
+                        // Process queue after a delay to allow full hydration
+                        setTimeout(async () => {
+                            try {
+                                await processMessageQueue();
+                            } catch (e) {
+                                console.error('Delayed queue processing failed:', e.message);
+                            }
+                        }, 5000);
+
+                        return res.status(202).json({ status: 'QUEUED_FOR_RECOVERY', reason: 'RECOVERY_INITIATED' });
                     } else if (recoveryTier >= 3) {
                         // Tier 3 reached, requires QR scan
                         break;

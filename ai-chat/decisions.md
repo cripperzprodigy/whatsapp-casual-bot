@@ -24,3 +24,14 @@
   - **Decision:** Implemented WISP (WhatsApp Inter-Service Protocol) with strict Pydantic/JSON schemas for `OutboundMessageRequest`, `DeliveryResponse`, and standardized `ErrorCode`s. The gateway operates in `CONNECTED`, `RECOVERING`, or `DISCONNECTED` states, utilizing 202 Accepted for queuing messages and 503 Service Unavailable for unrecoverable corruption.
   - **Consequences:** Provides absolute state visibility to the Python backend, prevents silent crashes, and queues DM commands like `!claim_ownership` when the session is gracefully recovering.
   - **Status:** Accepted.
+
+
+## Decision: Asynchronous Recovery Queuing for WhatsApp Gateway
+
+**Context:**
+During session recovery loops in the Node.js gateway, synchronous retries often failed with a "detached Frame" error because Puppeteer context was still reloading. Furthermore, "No LID" errors were falsely flagged as full session corruptions.
+
+**Decision:**
+1. "No LID" is now treated as a non-fatal warning and excluded from `isSessionCorruptionError`.
+2. `getChatById` pre-checks are bypassed upon failure to prevent blocking the send pipeline.
+3. Upon detecting a true session corruption and initiating recovery, the gateway immediately pushes the message to `recoveryMessageQueue` and returns `HTTP 202`. The queue is then processed asynchronously after a delay, avoiding detached frame errors.
