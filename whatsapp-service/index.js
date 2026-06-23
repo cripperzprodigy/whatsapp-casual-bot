@@ -23,6 +23,9 @@ let totalMessagesSent = 0;
 let lastErrorMessage = null;
 let lastSuccessfulSend = null;
 let consecutiveFailures = 0;
+let isRecovering = false;
+let lastRecoveryTime = 0;
+const RECOVERY_SETTLE_TIME_MS = 5000;
 
 // Initialize WhatsApp Client with local session persistence
 let client;
@@ -66,6 +69,13 @@ function registerEvents() {
         console.log('WhatsApp Client is ready!');
         qrCodeData = null;
         isConnected = true;
+        recoveryTier = 0;
+        consecutiveFailures = 0;
+        isRecovering = false;
+        
+        // Mark settlement complete
+        lastRecoveryTime = Date.now(); 
+        console.log('✅ Client fully settled and ready for messages.');
     });
 
     client.on('authenticated', () => {
@@ -320,6 +330,7 @@ function isSessionCorruptionError(errMessage) {
 }
 
 async function attemptGracefulRecovery() {
+    isRecovering = true;
     recoveryTier++;
     
     if (recoveryTier === 1) {
@@ -418,6 +429,16 @@ async function processMessageQueue() {
 }
 
 app.post('/message/sendText', async (req, res) => {
+    // CHECK 1: Is system settling after recovery?
+    const timeSinceRecovery = Date.now() - lastRecoveryTime;
+    if (timeSinceRecovery < RECOVERY_SETTLE_TIME_MS && lastRecoveryTime !== 0) {
+        console.log(`⏳ System settling after recovery (${timeSinceRecovery}ms elapsed). Deferring message.`);
+        return res.status(202).json({ 
+            status: 'QUEUED_FOR_SETTLING', 
+            message: `System settling. Try again in ${Math.ceil((RECOVERY_SETTLE_TIME_MS - timeSinceRecovery)/1000)}s.` 
+        });
+    }
+
     // validateSession() pre-flight check
     const isSessionValid = client && client.info && client.info.wid && client.pupPage && !client.pupPage.isClosed();
     if (isSessionValid) {
@@ -510,6 +531,12 @@ app.post('/message/sendText', async (req, res) => {
             } catch (err) {
                 lastErr = err;
                 
+                // CHECK 2: Specific handling for "getChat" undefined error
+                if (err.message && (err.message.includes('getChat') || err.message.includes('undefined'))) {
+                    console.error(`⚠️ Race Condition Detected: Client context not fully ready. Aborting immediate retry.`);
+                    break;
+                }
+                
                 // Detect session corruption
                 if (isSessionCorruptionError(err.message)) {
                     console.error(`Session corruption detected (attempt ${attempt + 1}): "${err.message}". Initiating graceful recovery...`);
@@ -557,6 +584,13 @@ app.post('/message/sendText', async (req, res) => {
         console.error("Stack trace:", err.stack);
         console.error("Request payload:", { number, textMessageLength: textMessage.text ? textMessage.text.length : 0, options });
         lastErrorMessage = err.message;
+        
+        if (err.message && (err.message.includes('getChat') || err.message.includes('undefined'))) {
+            return res.status(503).json({ 
+                error: 'CLIENT_NOT_READY', 
+                message: 'Internal page context loading. Please retry shortly.' 
+            });
+        }
         
         // Only increment if NOT a session corruption error (those are handled separately)
         if (!isSessionCorruptionError(err.message)) {
