@@ -15,8 +15,9 @@ async function processMessageQueue() {
         const msg = recoveryMessageQueue.shift();
 
         // Skip if too many retries
-        if ((msg.retryCount || 0) > 3) {
-            console.error(`❌ Dropping message to ${msg.number} after 3 retries.`);
+        msg.retryCount = (msg.retryCount || 0) + 1;
+        if (msg.retryCount > 3) {
+            console.error(`❌ Dropping message to ${msg.number || msg.chatId} after 3 retries.`);
             continue;
         }
 

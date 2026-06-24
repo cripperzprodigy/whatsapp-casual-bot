@@ -24,7 +24,7 @@ from app.whatsapp_gateway import (
     fetch_group_metadata,
     check_gateway_health,
 )
-from app.state import get_db, add_message_to_buffer, get_chat_settings
+from app.state import get_db, add_message_to_buffer, get_chat_settings, SessionLocal
 from app.commands import handle_command
 from app.translation import detect_language, translate_text
 from app.config import settings
@@ -280,9 +280,11 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
 
 
 async def process_message(
-    payload: WhatsAppWebhookPayload, db: Session
+    payload: WhatsAppWebhookPayload
 ) -> None:
+    db: Session | None = None
     try:
+        db = SessionLocal()
         data = payload.data
         msg_key = data.key
 
@@ -450,6 +452,12 @@ async def process_message(
             "Unexpected error processing message: %s", exc,
             exc_info=True,
         )
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
 
 
 @router.post("/webhook/whatsapp")
@@ -462,5 +470,7 @@ async def whatsapp_webhook(
     db: Session = Depends(get_db),
 ) -> dict:
     if payload.event == "messages.upsert":
-        background_tasks.add_task(process_message, payload, db)
+        # Do NOT pass the request-scoped DB into background tasks; background
+        # workers must create and manage their own DB sessions.
+        background_tasks.add_task(process_message, payload)
     return {"status": "ok"}
