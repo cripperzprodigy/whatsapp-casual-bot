@@ -1,4 +1,5 @@
 # Issues
+- [CLOSED] CLAIM-OWNERSHIP-DM-SILENT-FAIL: Resolved a multi-layer failure cascade where `!claim_ownership` silently failed in DMs. Fixed by persisting `CLAIM_OWNERSHIP_ENABLED` to the DB, adding a 202 QUEUED warning in the gateway, resolving local variable shadowing in `commands.py`, and updating the handler to return explicit success/failure feedback to the user.
 - [CLOSED] Gateway Session Fails to Persist: Resolved bug where manual QR scans were required on every restart despite LocalAuth configured. Fixed by making `SESSION_PATH` absolute, updating docker-compose with a named volume, and restricting Tier 3 aggressive session purges.
 - [CLOSED] State Marker Disappearing: fixed by fixing realpath logic and introducing cleanup function
 - [CLOSED] Silent LLM Translation Failure: fixed by adding robust checks for empty choices/content and detailed logging in ai_client.py
