@@ -371,7 +371,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                     await send_text_message(
                         chat_id,
                         ai_reply,
-                        quoted_msg_id=getattr(msg_key, 'id', None) if trigger_reason == "REPLY" else None,
+                        quoted_msg_id=getattr(msg_key, 'id', None),
                         quoted_participant=None,
                     )
                 return
