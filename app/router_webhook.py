@@ -200,7 +200,7 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
         if pending_chatty_tasks.get(chat_id) == asyncio.current_task():
             del pending_chatty_tasks[chat_id]
 
-def extract_context(message_content, bot_number: str | None, bot_known_ids: list[str]) -> tuple[Optional[str], Optional[str]]:
+def extract_context(message_content, bot_number: str | None, bot_known_ids: list[str]) -> tuple[str | None, str | None]:
     """
     Extracts quoted message context if the user is replying to the bot.
     Returns (context_type, context_content) or (None, None).
