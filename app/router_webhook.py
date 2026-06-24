@@ -227,7 +227,7 @@ def extract_context(message_content, bot_number: str | None, bot_known_ids: list
     is_bot = False
     if bot_number and normalize_jid_for_comparison(quoted_sender) == normalize_jid_for_comparison(bot_number):
         is_bot = True
-    elif quoted_sender in bot_known_ids:
+    elif any(normalize_jid_for_comparison(known_id) == normalize_jid_for_comparison(quoted_sender) for known_id in bot_known_ids):
         is_bot = True
 
     if is_bot:
@@ -303,6 +303,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
     bot_id = BotIdentityManager.get_bot_number()
     is_text_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
     has_reply_context = (context_tuple is not None) and (context_tuple[0] == "reply")
+    is_explicit_mention = is_text_mention or has_reply_context
     logger.info(f"Group message received: chat={chat_id}, sender={sender_id}, TextMention={is_text_mention}, ReplyContext={has_reply_context}, bot_id={bot_id}")
     message_consumed_by_chatty = False
 

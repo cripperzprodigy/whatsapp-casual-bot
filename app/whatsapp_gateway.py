@@ -112,17 +112,7 @@ async def send_text_message(
     }
     
     if reply_to_msg_id:
-        # whatsapp-web.js requires the fully-serialized message ID.
-        # Incoming (non-fromMe) group messages may need participant
-        # info appended for the reply to work properly.
-        serialized_id = (
-            f"{_INCOMING_MSG_PREFIX}{chat_id}_{reply_to_msg_id}"
-        )
-        if quoted_participant and chat_id.endswith("@g.us"):
-            serialized_id = (
-                f"{serialized_id}_{quoted_participant}"
-            )
-        payload["options"] = {"quoted": serialized_id}
+        payload["quotedMsgId"] = reply_to_msg_id
     
     import asyncio
     max_retries = 3
