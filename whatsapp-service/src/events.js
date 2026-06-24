@@ -5,6 +5,9 @@ const { processMessageQueue } = require('./queue');
 const PORT = process.env.PORT || 3000;
 const PYTHON_WEBHOOK_URL = process.env.PYTHON_WEBHOOK_URL || 'http://localhost:8000/webhook/whatsapp';
 
+const messageCache = new Map();
+const MAX_CACHE_SIZE = 1000;
+
 function registerEvents(client) {
     client.on('qr', (qr) => {
         console.log('QR RECEIVED. Scan it at http://localhost:' + PORT + '/whatsapp/qr');
@@ -49,6 +52,18 @@ function registerEvents(client) {
     });
 
     client.on('message', async msg => {
+        // Store mapping: Short Key ID -> Correct Quote ID format
+        if (msg.id && msg.id.id && msg.id.remote) {
+            const correctQuoteId = `${msg.id.remote}_${msg.id.id}`;
+            console.log(`[Cache] Storing short ID: ${msg.id.id} -> ${correctQuoteId}`);
+            messageCache.set(msg.id.id, correctQuoteId);
+            // Simple cleanup to prevent memory leaks
+            if (messageCache.size > MAX_CACHE_SIZE) {
+                const firstKey = messageCache.keys().next().value;
+                messageCache.delete(firstKey);
+            }
+        }
+
         // Forward incoming messages to Python FastAPI backend
         try {
             if (!client.info || !client.pupPage || client.pupPage.isClosed()) {
@@ -112,5 +127,6 @@ function registerEvents(client) {
 }
 
 module.exports = {
-    registerEvents
+    registerEvents,
+    messageCache
 };
