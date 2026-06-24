@@ -1,5 +1,20 @@
 # Architectural Decisions
 
+## ADR-018 — Threaded Conversation Support & Context Extraction
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  The Chatty engine previously treated all incoming group messages as isolated events, resulting in disjointed replies when users explicitly replied to the bot's own past messages (e.g., saying "That was funny" to a joke). 
+
+Decision :
+  Extract `quotedMessage` contexts directly from the incoming Baileys webhook payload. To prevent spoofing (users maliciously framing fake messages as bot replies), we strictly validate the `participant` field of the quoted message against the active `BOT_NUMBER` and registered LIDs in `BotIdentityManager`. The validated parent message is dynamically injected into the AI's `system_prompt`.
+
+Consequences :
+  + Seamlessly restores multi-turn conversational awareness in busy group chats.
+  + Eliminates spoofing vulnerability by relying on verified identity cache.
+  + Operates asynchronously via the webhook router without blocking heavy database tasks.
+
 ## ADR-017 — Owner-Registered Bot Identity (LIDs)
 
 Date    : 2026-06-25
