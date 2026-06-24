@@ -344,7 +344,11 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                 context_type = None
                 context_text = None
                 
-                if has_reply_context:
+                if has_reply_context and is_text_mention:
+                    quoted_text = context_tuple[1]
+                    context_type = "explicit_tag_and_reply"
+                    context_text = f"User @{sender_name} explicitly tagged you and is replying to your previous message: '{quoted_text}'. Their new message is:"
+                elif has_reply_context:
                     quoted_text = context_tuple[1]
                     context_type = "reply_thread"
                     context_text = f"User is replying to your previous message: '{quoted_text}'. Their new message is:"
