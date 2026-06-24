@@ -34,19 +34,7 @@
 - [CLOSED] Persistent Chrome Zombies Blocking Restart: `kill_process_on_port` left headless Chrome processes alive which maintained file locks on `.wwebjs_auth`. Fixed by adding targeted `pkill -9 -f "chrome.*--user-data-dir"` statements in `start.sh` cleanup traps.
 
 
-### Issue: WhatsApp Gateway Session Corruption Loop & Detached Frame Crash
-**Status:** ✅ Resolved
-**Description:**
-When sending a DM (e.g. `!claim_ownership`), a "No LID for user" error from `whatsapp-web.js` incorrectly triggered the `isSessionCorruptionError` check, forcing a tier 1 recovery (Puppeteer restart). The synchronous retry loop in the message handler then attempted to reuse a detached frame, crashing the send process entirely.
-
-**Resolution:**
-- Removed "No LID" from `isSessionCorruptionError`.
-- Wrapped the `getChatById` pre-check in a `try-catch` block to bypass failures.
-- Updated `attemptGracefulRecovery` logic to push failed messages to `recoveryMessageQueue` and return `HTTP 202 (Queued)` instead of retrying synchronously on a detached frame.
-
-## Resolved: "No LID DM Send Failure" (getNumberId() Fix)
-**Symptom**: Python backend sends `[number]@s.whatsapp.net` to the Node gateway. The gateway converts it to `[number]@c.us`. The `sendMessage` call fails with "No LID for user." The gateway incorrectly treats this as session corruption, triggering 3 full recovery retries.
-**Root Cause**: WhatsApp's multi-device protocol requires LIDs for DM routing. If a contact is only seen in a group context or not recently messaged, the internal store doesn't have the mapping to the raw `@c.us` JID.
-**Fix**: Implemented `resolveWhatsAppId()` in `src/utils/jid.js` that strips the suffix and calls `client.getNumberId(rawPhone)`. This officially navigates the protocol to retrieve the fully-qualified LID. Groups (`@g.us`) bypass this resolution as they do not require LIDs.
-- Refactoring left behind obsolete code. Resolved by sweeping for stale `.bak`, `.old`, `.temp` files, removing dead code comments from `whatsapp-service/src/recovery.js`, and creating a stricter standard for immediate cleanup in `ai-chat/SOP.md`.
-- [CLOSED] No LID / Number not on WhatsApp issue during DM replies (`!claim_ownership` failures): Fixed by implementing a graceful fallback in `jid.js` that catches `getNumberId` returning null on known valid JIDs due to LID account migration, allowing the send to proceed using the original ID.
+- [CLOSED] GATEWAY DETACHED FRAME CRASH: When sending a DM, a "No LID for user" error incorrectly triggered the `isSessionCorruptionError` check, forcing a tier 1 recovery. The synchronous retry loop then attempted to reuse a detached frame, crashing the process. Fixed by removing "No LID" from `isSessionCorruptionError`, catching `getChatById` failures, and pushing failed messages to `recoveryMessageQueue` with HTTP 202 (Queued).
+- [CLOSED] NO LID DM SEND FAILURE: DM routing failed when WhatsApp lacked `@c.us` LID mapping for users only seen in groups. Fixed by implementing `resolveWhatsAppId()` in `src/utils/jid.js` using `client.getNumberId(rawPhone)` to retrieve fully-qualified LIDs for private messages.
+- [CLOSED] STALE CODE ARTIFACTS: Refactoring left behind obsolete code. Resolved by sweeping for stale `.bak`, `.old`, `.temp` files, removing dead code comments, and creating a stricter standard for immediate cleanup in `ai-chat/SOP.md`.
+- [CLOSED] NO LID / MIGRATION FALLBACK: Catch `getNumberId` returning null on known valid JIDs due to LID account migration, allowing the send to proceed using the original ID.
