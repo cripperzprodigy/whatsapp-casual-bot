@@ -104,6 +104,26 @@ async def send_text_message(
     """
     url = f"{settings.WHATSAPP_GATEWAY_URL}/message/sendText"
     
+    # Resolve short ID to full Serialized ID if needed
+    if quoted_msg_id and isinstance(quoted_msg_id, str) and '_' not in quoted_msg_id:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{settings.WHATSAPP_GATEWAY_URL}/message/resolve-quote-id",
+                    json={"chatId": chat_id, "messageId": quoted_msg_id},
+                    timeout=5.0
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    quoted_msg_id = data.get('resolvedId')
+                    logger.debug(f"Resolved quote ID: {quoted_msg_id}")
+                else:
+                    logger.warning(f"Failed to resolve quote ID {quoted_msg_id}: {resp.text}. Sending plain message.")
+                    quoted_msg_id = None
+        except Exception as e:
+            logger.error(f"Error resolving quote ID: {e}")
+            quoted_msg_id = None
+
     payload = {
         "to": chat_id,
         "message": text,

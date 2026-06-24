@@ -182,4 +182,28 @@ router.post('/sendText', async (req, res) => {
     }
 });
 
+router.post('/resolve-quote-id', async (req, res) => {
+    const { chatId, messageId } = req.body;
+    const client = getClient();
+    if (!client) return res.status(503).json({ error: 'Client not ready' });
+
+    try {
+        const resolvedChatId = await resolveWhatsAppId(client, chatId);
+        const chat = await client.getChatById(resolvedChatId);
+        const messages = await chat.fetchMessages({ limit: 50 }); // Search recent messages
+
+        const targetMsg = messages.find(m => m.id.id === messageId);
+
+        if (targetMsg) {
+            // Return the serialized ID (e.g., "false_6587481374_3EB0...")
+            res.json({ resolvedId: targetMsg.id._serialized });
+        } else {
+            res.status(404).json({ error: 'Message not found in cache' });
+        }
+    } catch (error) {
+        console.error('Error resolving quote ID:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;
