@@ -44,3 +44,7 @@ During session recovery loops in the Node.js gateway, synchronous retries often 
 **Context**: Iterative refactoring leaves behind legacy fragments, dead comments, and duplicate entries, bloating the repository and adding cognitive load.
 **Decision**: Enforce an immediate cleanup of artifacts (such as dead comments and stale backup files like `*.bak` or `*.old`) within the refactoring phase itself instead of batching them up.
 **Consequence**: Maintain high repository hygiene without requiring separate hygiene-only sweeps.
+## Decision #12: Always Await Async Functions Before Boolean Evaluation
+**Context**: `!chatty_delay` and `!chatty_mode` referenced `is_owner` as a variable instead of awaiting the async function, causing a `NameError` that was silently caught by the try/except block.
+**Decision**: All async functions must be explicitly awaited before use in conditions. Never reference an async function as if it were a variable.
+**Consequence**: Prevents silent failures where coroutine objects are evaluated as truthy in boolean contexts instead of the actual result.

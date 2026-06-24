@@ -1,4 +1,5 @@
 # Issues
+- [CLOSED] DM Command Silent Failure (Undefined Variable Scope): `!chatty_delay` and `!chatty_mode` referenced `is_owner` as a variable instead of awaiting the async function, and `is_group_admin` was undefined in scope. This caused a `NameError` that was silently caught by the try/except block, resulting in no user feedback. Fixed by adding proper group admin checks with `GroupContactLedger` queries and awaiting `is_owner(db, sender_id)`.
 - [CLOSED] Gateway Session Fails to Persist: Resolved bug where manual QR scans were required on every restart despite LocalAuth configured. Fixed by making `SESSION_PATH` absolute, updating docker-compose with a named volume, and restricting Tier 3 aggressive session purges.
 - [CLOSED] State Marker Disappearing: fixed by fixing realpath logic and introducing cleanup function
 - [CLOSED] Silent LLM Translation Failure: fixed by adding robust checks for empty choices/content and detailed logging in ai_client.py

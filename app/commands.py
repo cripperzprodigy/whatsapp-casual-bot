@@ -1040,9 +1040,16 @@ async def handle_command(  # Issue 13: added return type
             await send_text_message(chat_id, f"✅ Chatty burst set to {burst} messages.")
 
         elif command == "!chatty_delay":
-            if not is_group_admin and not is_owner and is_group_chat:
-                await send_text_message(chat_id, "❌ Access Denied: You must be a group admin or bot owner to change Chatty delay.")
-                return
+            if is_group_chat:
+                user_ledger = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                    GroupContactLedger.jid == sender_id
+                ).first()
+                is_group_admin_check = user_ledger and user_ledger.is_admin
+                is_bot_owner_check = await is_owner(db, sender_id)
+                if not is_group_admin_check and not is_bot_owner_check:
+                    await send_text_message(chat_id, "❌ Access Denied: You must be a group admin or bot owner to change Chatty delay.")
+                    return
 
             if len(args) != 2:
                 await send_text_message(chat_id, "Usage: !chatty_delay <min> <max>")
@@ -1065,9 +1072,16 @@ async def handle_command(  # Issue 13: added return type
             await send_text_message(chat_id, f"✅ Chatty delay set to {delay_min}-{delay_max} seconds.")
 
         elif command == "!chatty_mode":
-            if not is_group_admin and not is_owner and is_group_chat:
-                await send_text_message(chat_id, "❌ Access Denied: You must be a group admin or bot owner to change Chatty mode.")
-                return
+            if is_group_chat:
+                user_ledger = db.query(GroupContactLedger).filter(
+                    GroupContactLedger.chat_id == chat_id,
+                    GroupContactLedger.jid == sender_id
+                ).first()
+                is_group_admin_check = user_ledger and user_ledger.is_admin
+                is_bot_owner_check = await is_owner(db, sender_id)
+                if not is_group_admin_check and not is_bot_owner_check:
+                    await send_text_message(chat_id, "❌ Access Denied: You must be a group admin or bot owner to change Chatty mode.")
+                    return
 
             if len(args) != 1 or args[0].lower() not in ["debounce", "throttle"]:
                 await send_text_message(chat_id, "Usage: !chatty_mode <debounce|throttle>\n\n*debounce*: resets the timer on every new message (waits until you stop typing).\n*throttle*: responds exactly N seconds after your first message.")
