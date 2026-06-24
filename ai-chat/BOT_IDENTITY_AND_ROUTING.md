@@ -262,3 +262,17 @@ If you notice the bot is not responding to `@mentions` in group chats:
 1. Run the `!botid` command to view the diagnostic status.
 2. Check if the "Match status" is "MISMATCH".
 3. If mismatched, either manually update `BOT_NUMBER` in `.env` to match the "Detected value" and restart, or set `AUTO_SYNC_BOT_NUMBER=True` in `.env` and restart the bot so it automatically corrects itself.
+
+---
+
+## 7. Mention Detection Fallback
+
+Because WhatsApp's multi-device architecture often issues unhydrated `@lid` identifiers instead of `@s.whatsapp.net` numbers in the `mentioned_jids` payload, relying strictly on an array lookup against `BOT_NUMBER` is fragile. 
+
+To solve this, the bot employs a **Text-Based Regex Fallback**:
+1. The Node.js gateway dynamically exposes `client.info.pushname` via the `/whatsapp/bot-identity` route.
+2. The Python `BotIdentityManager` caches both the bot's numeric ID and this display name.
+3. If the strict `mentioned_jids` array check fails (because the bot is listed as an unrecognized `@lid`), the webhook router performs a fast, case-insensitive regex search against the raw message text.
+4. If it detects `@BotName` or `@BotNumber` in the text, it triggers the bot.
+
+This completely sidesteps the need to issue a synchronous `getNumberId()` network request to the Node gateway on every single group message just to resolve a LID, preserving high system throughput while perfectly restoring mention reliability.

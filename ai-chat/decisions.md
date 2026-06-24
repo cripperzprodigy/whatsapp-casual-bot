@@ -50,6 +50,34 @@ Consequences :
     automatically curated.
   - Requires writing to .env at runtime which needs strict file locking.
 
+## ADR-016 — Local Regex Fallback over Network LID Resolution
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  When the bot is mentioned in a group chat, WhatsApp's multi-device
+  architecture often issues an unhydrated `@lid` identifier in the
+  `mentioned_jids` payload instead of a `@s.whatsapp.net` number.
+  Because the webhook router runs in Python, resolving this LID requires
+  issuing an HTTP `getNumberId()` request back to the Node.js gateway.
+  Doing this synchronously on every incoming group message introduces
+  unacceptable network latency and blocking.
+
+Decision :
+  We implemented a text-based regex fallback rather than network LID
+  resolution. The Node.js gateway now exposes the bot's display name
+  (`pushname`) via `/whatsapp/bot-identity`. The Python backend caches
+  this. If the strict JID array match fails, the router simply performs
+  a local case-insensitive regex search for `@BotName` or `@BotNumber`
+  in the message text.
+
+Consequences :
+  + Preserves high throughput by avoiding synchronous HTTP fetches on
+    every group message.
+  + Perfectly restores mention reliability for multi-device `@lid` cases.
+  - Relies on string matching which could theoretically yield false
+    positives if another user shares the bot's exact name.
+
 - **Token Limits for Reasoning Models:** Decided to use 8192 default tokens and strict prompting for high-context local reasoning models. This prevents models from exhausting tokens on verbose reasoning tracks.
 - **Custom Exceptions:** Introduced `TokenExhaustedError` and `TranslationError` instead of returning dataclasses from `ask_llm`. This enables precise error handling and clean retry mechanisms.
 -   * * S t r i c t   W h i t e l i s t i n g   f o r   T a r g e t   L a n g u a g e s : * *   I n s t e a d   o f   g r e e d i l y   t r e a t i n g   t h e   f i r s t   w o r d   a f t e r   ' ! t '   a s   a   l a n g u a g e   c o d e   i f   i t s   l e n g t h   i s   2 ,   t h e   s y s t e m   n o w   e n f o r c e s   a   s t r i c t   w h i t e l i s t   b a s e d   o n   2 0   k n o w n   I S O   c o d e s .   T h i s   a l l o w s   v a l i d   2 - l e t t e r   s l a n g   w o r d s   t o   f a l l   b a c k   s a f e l y   t o   t e x t   t r a n s l a t i o n .
@@ -98,14 +126,6 @@ During session recovery loops in the Node.js gateway, synchronous retries often 
 **Context**: `!chatty_delay` and `!chatty_mode` referenced `is_owner` as a variable instead of awaiting the async function, causing a `NameError` that was silently caught by the try/except block.
 **Decision**: All async functions must be explicitly awaited before use in conditions. Never reference an async function as if it were a variable.
 **Consequence**: Prevents silent failures where coroutine objects are evaluated as truthy in boolean contexts instead of the actual result.
-## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
-**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
-**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
-**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
-## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
-**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
-**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
-**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
 ## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
 **Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
 **Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
