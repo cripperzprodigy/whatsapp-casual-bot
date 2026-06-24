@@ -44,26 +44,50 @@ import re
 
 pending_chatty_tasks: Dict[str, asyncio.Task] = {}
 
-def is_explicitly_tagged(text: str, bot_number: str | None, mentioned_jids: list[str] = None) -> bool:
-    """Checks if the bot is explicitly tagged via @bot, its phone number, or native WhatsApp mentions."""
-    if re.search(r'(?i)(?<!\w)@bot(?!\w)', text):
-        return True
-    if bot_number:
-        # Match bot_number with optional @ prefix, ensuring it's not part of a larger number
-        pattern = r'(?<!\d)@?' + re.escape(bot_number) + r'(?!\d)'
-        if re.search(pattern, text):
-            return True
-        # Check native WhatsApp mentions
-        if mentioned_jids:
-            bot_prefix = f"{bot_number}@"
-            if any(jid.startswith(bot_prefix) for jid in mentioned_jids):
+def is_explicitly_tagged(
+    text: str,
+    bot_number: str | None,
+    mentioned_jids: list[str] | None = None
+) -> bool:
+    """
+    Returns True if the bot was explicitly addressed in this message.
+    Checks three signals:
+      1. Native WhatsApp @mention (mentionedJid list contains bot's JID)
+      2. Text contains @<bot_number> (bare digits)
+      3. Text contains the word 'bot' preceded by @ (case-insensitive)
+    """
+    if mentioned_jids and bot_number:
+        # Normalize both sides for comparison:
+        # mentioned_jids may be @s.whatsapp.net or @lid;
+        # BOT_NUMBER may be bare digits or full JID.
+        bare_bot = bot_number.replace('@c.us', '').replace('@s.whatsapp.net', '').strip() \
+            if '@' in (bot_number or '') else (bot_number or '').strip()
+        for jid in mentioned_jids:
+            bare_jid = jid.split('@')[0]
+            if bare_jid == bare_bot:
                 return True
+
+    if bot_number:
+        bare_bot = bot_number.split('@')[0] if '@' in bot_number else bot_number
+        if bare_bot:
+            pattern = r'(?<!\d)@?' + re.escape(bare_bot) + r'(?!\d)'
+            if re.search(pattern, text):
+                return True
+
+    if re.search(r'(?i)@\s*bot\b', text):
+        return True
+
     return False
 
-def is_bot_mentioned(text: str, bot_number: str | None, is_group: bool, mentioned_jids: list[str] = None) -> bool:
+def is_bot_mentioned(
+    text: str,
+    bot_number: str | None,
+    is_group: bool = True,
+    mentioned_jids: list[str] | None = None
+) -> bool:
     """
-    Robust helper to determine if Chatty should be triggered implicitly or explicitly.
-    DMs are always considered 'mentioned' (implicitly). Groups require an explicit tag.
+    In DMs, every message is implicitly a mention.
+    In groups, check for explicit tagging only.
     """
     if not is_group:
         return True

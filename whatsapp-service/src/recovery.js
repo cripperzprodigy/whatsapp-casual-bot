@@ -3,11 +3,18 @@ const state = require('./state');
 const { SESSION_PATH, getSessionState } = require('./utils/session');
 
 function isSessionCorruptionError(errMessage) {
-    return errMessage && (
-        errMessage.includes('session') ||
-        errMessage.includes('corrupt') ||
-        errMessage.includes('invalid') ||
-        errMessage.includes('ExecutionContext')
+    if (!errMessage) return false;
+    const msg = errMessage.toLowerCase();
+    return (
+      msg.includes('session closed') ||
+      msg.includes('session corrupt') ||
+      msg.includes('corrupt') ||
+      msg.includes('execution context was destroyed') ||
+      msg.includes('executioncontext') ||
+      msg.includes('target closed') ||
+      msg.includes('page has been closed') ||
+      msg.includes('detached frame') ||
+      msg.includes('protocol error')
     );
 }
 
@@ -17,18 +24,16 @@ async function attemptGracefulRecovery(client, initClient) {
     state.recoveryTier++;
 
     if (state.recoveryTier === 1) {
-        // Tier 1: Restart Puppeteer context without destroying session
-        console.log('Recovery Tier 1: Attempting Puppeteer context restart...');
-        try {
-            const page = client.pupPage; // Access underlying Puppeteer page
-            await page.reload({ waitUntil: 'networkidle0', timeout: 30000 });
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            console.log('Tier 1 recovery successful');
+        console.log('Recovery Tier 1: Soft wait — checking connection in 5s...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        // If client came back on its own (e.g., transient disconnect), reset tier
+        if (state.isConnected && client.info) {
+            state.recoveryTier = 0;
+            console.log('Tier 1: Connection restored naturally. Resetting recovery tier.');
             return true;
-        } catch (tier1Err) {
-            console.error('Tier 1 recovery failed:', tier1Err.message);
-            return false;
         }
+        console.log('Tier 1: Connection did not recover. Escalating to Tier 2.');
+        return false;
     }
 
     if (state.recoveryTier === 2) {

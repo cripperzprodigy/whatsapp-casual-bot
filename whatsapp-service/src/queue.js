@@ -5,26 +5,32 @@ const PORT = process.env.PORT || 3000;
 const recoveryMessageQueue = [];
 
 async function processMessageQueue() {
-    if (state.isSettling || !state.isConnected || recoveryMessageQueue.length === 0) return;
+    if (state.isSettling || !state.isConnected) return;
+    if (recoveryMessageQueue.length === 0) return;
 
     console.log(`📬 Processing ${recoveryMessageQueue.length} queued messages...`);
 
-    while (recoveryMessageQueue.length > 0) {
-        if (state.isSettling) break; // Stop if settling starts mid-process
+    // Drain snapshot — do not iterate the live array
+    const batch = recoveryMessageQueue.splice(0, recoveryMessageQueue.length);
 
-        const msg = recoveryMessageQueue.shift();
-
-        // Skip if too many retries
-        if ((msg.retryCount || 0) > 3) {
-            console.error(`❌ Dropping message to ${msg.number} after 3 retries.`);
+    for (const msg of batch) {
+        if (state.isSettling || !state.isConnected) {
+            // Re-queue remaining on state change
+            recoveryMessageQueue.unshift(msg);
+            break;
+        }
+        if ((msg.retryCount || 0) >= 3) {
+            console.error(`❌ Dropping message to ${msg.number} — exceeded retry limit.`);
             continue;
         }
-
         try {
-            const response = await axios.post(`http://localhost:${PORT}/message/sendText`, msg);
+            const response = await axios.post(
+                `http://localhost:${PORT}/message/sendText`,
+                msg
+            );
             if (response.status === 202) {
-                console.warn("⚠️ Queue paused: Received 202 Queued (Settling/Disconnected). Waiting for next ready event.");
-                // If it returned 202, the handler itself should have requeued it.
+                console.warn('⚠️ Queue paused: gateway not ready. Will retry on next ready event.');
+                recoveryMessageQueue.unshift(msg); // put back at front
                 break;
             }
             // Delay between messages to prevent flooding

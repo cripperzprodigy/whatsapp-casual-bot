@@ -80,17 +80,17 @@ function registerEvents(client) {
                 instance: 'whatsapp-web-js',
                 data: {
                     key: {
-                        remoteJid: msg.from.replace(/@c\.us$/, '@s.whatsapp.net').replace(/@lid$/, '@s.whatsapp.net'),
+                        remoteJid: msg.from.replace(/@c\.us$/, '@s.whatsapp.net'),
                         fromMe: msg.fromMe,
                         id: msg.id.id,
-                        participant: (chat.isGroup && msg.author) ? msg.author.replace(/@c\.us$/, '@s.whatsapp.net').replace(/@lid$/, '@s.whatsapp.net') : null
+                        participant: (chat.isGroup && msg.author) ? msg.author.replace(/@c\.us$/, '@s.whatsapp.net') : null
                     },
                     message: {
                         conversation: msg.body,
                         extendedTextMessage: {
                             text: msg.body,
                             contextInfo: {
-                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net').replace(/@lid$/, '@s.whatsapp.net')) : []
+                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net')) : []
                             }
                         }
                     },
