@@ -35,3 +35,8 @@ During session recovery loops in the Node.js gateway, synchronous retries often 
 1. "No LID" is now treated as a non-fatal warning and excluded from `isSessionCorruptionError`.
 2. `getChatById` pre-checks are bypassed upon failure to prevent blocking the send pipeline.
 3. Upon detecting a true session corruption and initiating recovery, the gateway immediately pushes the message to `recoveryMessageQueue` and returns `HTTP 202`. The queue is then processed asynchronously after a delay, avoiding detached frame errors.
+
+## Decision #10: getNumberId() for LID-safe DM sending
+**Context**: WhatsApp's multi-device protocol introduces Linked IDs (LIDs) that are required for outbound message routing. Sending to a raw `@c.us` JID fails with `No LID for user` if the user's mapping isn't fully hydrated in the store (e.g. only seen in groups, not DMs). Bypassing `client.getChatById` doesn't fix this since `client.sendMessage` internally uses the same LID lookup.
+**Decision**: Use `client.getNumberId(rawPhone)` to resolve the true serialized LID prior to sending a DM message.
+**Consequence**: Eliminates `No LID for user` as a failure class, preventing unnecessary retries. If `getNumberId()` returns null, we safely throw a `NUMBER_NOT_ON_WHATSAPP` hard-abort (HTTP 400).

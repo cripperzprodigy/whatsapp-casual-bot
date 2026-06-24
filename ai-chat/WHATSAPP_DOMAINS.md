@@ -36,3 +36,7 @@ To maintain a clean and framework-agnostic Python backend, **never leak unoffici
 The Node.js gateway (e.g., `whatsapp-service/index.js`) must always function as a pure adapter:
 1. **Inbound:** Strip/replace `@c.us` with `@s.whatsapp.net` when emitting JSON payloads to the webhook router.
 2. **Outbound:** When receiving commands from the backend, replace `@s.whatsapp.net` with `@c.us` (or whatever the active gateway library demands) immediately before executing the `sendMessage` hook.
+
+## Outbound LID Resolution (getNumberId)
+When sending direct messages, raw phone numbers must be converted to fully qualified multi-device IDs using `client.getNumberId()`. Because of the Linked ID (LID) architecture, directly sending to `number@c.us` will throw `No LID for user` if the mapping isn't fully cached in the store.
+Group messages (`@g.us`) do not require LID resolution and can be passed to `sendMessage` directly.

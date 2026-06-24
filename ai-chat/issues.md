@@ -36,3 +36,8 @@ When sending a DM (e.g. `!claim_ownership`), a "No LID for user" error from `wha
 - Removed "No LID" from `isSessionCorruptionError`.
 - Wrapped the `getChatById` pre-check in a `try-catch` block to bypass failures.
 - Updated `attemptGracefulRecovery` logic to push failed messages to `recoveryMessageQueue` and return `HTTP 202 (Queued)` instead of retrying synchronously on a detached frame.
+
+## Resolved: "No LID DM Send Failure" (getNumberId() Fix)
+**Symptom**: Python backend sends `[number]@s.whatsapp.net` to the Node gateway. The gateway converts it to `[number]@c.us`. The `sendMessage` call fails with "No LID for user." The gateway incorrectly treats this as session corruption, triggering 3 full recovery retries.
+**Root Cause**: WhatsApp's multi-device protocol requires LIDs for DM routing. If a contact is only seen in a group context or not recently messaged, the internal store doesn't have the mapping to the raw `@c.us` JID.
+**Fix**: Implemented `resolveWhatsAppId()` in `src/utils/jid.js` that strips the suffix and calls `client.getNumberId(rawPhone)`. This officially navigates the protocol to retrieve the fully-qualified LID. Groups (`@g.us`) bypass this resolution as they do not require LIDs.

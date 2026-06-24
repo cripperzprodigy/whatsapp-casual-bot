@@ -138,3 +138,27 @@ The `router_webhook.py` handles inbound WhatsApp events using a strict "Domain S
             [Immediate Reply] [Save to Memory]
                               [Delayed Task]
 ```
+
+## 5. Gateway Modularity (`whatsapp-service/src/`)
+
+To prevent monolithic state management and ease debugging, the Node.js Gateway microservice is broken down into specific operational concerns.
+
+```text
+whatsapp-service/
+├── index.js                  ← Entry point only (bootstrap, express listen)
+├── src/
+│   ├── client.js             ← Client factory, initClient(), lock-heal logic
+│   ├── events.js             ← registerEvents() — qr, ready, auth_failure, disconnected, message
+│   ├── recovery.js           ← Tiered recovery: Tier1/Tier2/Tier3, isSessionCorruptionError()
+│   ├── queue.js              ← recoveryMessageQueue, processMessageQueue(), isSettling flag
+│   ├── state.js              ← Shared mutable state (isConnected, qrCodeData, metrics)
+│   ├── utils/
+│   │   ├── jid.js            ← normalizeJid(), resolveWhatsAppId(), isGroupJid()
+│   │   └── session.js        ← validateSessionPath(), getSessionState(), purgeLock()
+│   └── routes/
+│       ├── qr.js             ← GET /whatsapp/qr
+│       ├── status.js         ← GET /whatsapp/recovery-status
+│       ├── send.js           ← POST /message/sendText
+│       ├── group.js          ← GET /group/findGroupInfos
+│       └── session.js        ← POST /whatsapp/reset-session
+```

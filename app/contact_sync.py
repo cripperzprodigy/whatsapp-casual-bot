@@ -18,6 +18,10 @@ def process_active_sweep(  # Issue 13: added return type
     Performs an active sweep. Takes the raw participants list from
     the Gateway API and updates the Isolated Ledger for this group.
     """
+    if not chat_id.endswith('@g.us'):
+        logger.debug(f"contact_sync: Skipping non-group JID {chat_id}")
+        return
+
     if not settings.AUTO_SYNC_CONTACTS:
         return
 
@@ -86,6 +90,10 @@ def update_contact(  # Issue 13: added return type
     Passively updates a contact in the isolated ledger when they
     send a message.
     """
+    if not chat_id.endswith('@g.us'):
+        logger.debug(f"contact_sync: Skipping non-group JID {chat_id}")
+        return
+
     if not settings.AUTO_SYNC_CONTACTS:
         return
 
@@ -139,6 +147,10 @@ def export_group_contacts(  # Issue 13: added return type
     Throttles exports to once per ROSTER_EXPORT_THROTTLE_SECONDS
     to prevent disk thrashing, unless forced.
     """
+    if not chat_id.endswith('@g.us'):
+        logger.debug(f"contact_sync: Skipping non-group JID {chat_id}")
+        return
+
     if not settings.AUTO_SYNC_CONTACTS:
         return
 
