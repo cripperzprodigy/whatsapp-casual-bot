@@ -211,7 +211,7 @@ Output ONLY valid JSON."""
         except Exception as e:
             logger.error(f"Failed to update summary: {e}")
 
-    async def process_message(self, text: str, media_path: Optional[str] = None, is_burst: bool = False, generate_reply: bool = True) -> Optional[str]:
+    async def process_message(self, text: str, media_path: Optional[str] = None, is_burst: bool = False, generate_reply: bool = True, context: Optional[tuple] = None) -> Optional[str]:
         # 1. Process Language
         lang = await self._detect_language(text)
 
@@ -268,6 +268,13 @@ Custom Instructions: {custom_instructions}
 
 [Constraint]
 Reply ONLY in {lang}. Be natural, human-like, and concise."""
+
+        if context:
+            ctx_type, ctx_content = context
+            if ctx_type == "reply":
+                system_prompt += f"\n\n[Context]: The user is replying to your previous message: '{ctx_content}'"
+            elif ctx_type == "tag":
+                system_prompt += f"\n\n[Context]: The user tagged you specifically saying: '{ctx_content}'"
 
         # 6. Call LLM
         # For Chatty, we just pass the system prompt and the current full_text

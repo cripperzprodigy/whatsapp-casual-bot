@@ -290,3 +290,13 @@ In environments where the Text-Based Regex Fallback is insufficient (e.g., when 
 5. Future mention checks in `is_explicitly_tagged()` will cross-reference incoming mentions against this cached list, granting the bot self-awareness without requiring synchronous background network resolution.
 
 This creates a lightweight, self-healing system where the bot's identity can dynamically adapt to WhatsApp's opaque internal multi-device routing simply through natural user interaction. Use `!forget-me` to clear out stale identities.
+
+---
+
+## 9. Threaded Conversation & Reply Validation
+
+To prevent the AI engine from treating each message as an isolated event in busy group chats, the bot implements a secure "Context-Aware Reply" flow:
+
+1. **Extraction**: The `router_webhook` dynamically extracts `quotedMessage` and `contextInfo` from incoming payloads.
+2. **Security Validation (Spoof Prevention)**: It checks the `participant` field of the quoted message against the `BotIdentityManager` (both the active `BOT_NUMBER` and the registered `@lid` array). If a user replies to another user, the context is stripped to preserve privacy and prevent hijacking.
+3. **Injection**: If validated as a genuine reply to the bot itself, the original text is extracted and passed to the `AIMemoryEngine`, which seamlessly injects it into the `system_prompt`. This allows the LLM to understand references like "That was funny" with complete clarity.

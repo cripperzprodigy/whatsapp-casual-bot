@@ -200,7 +200,51 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
         if pending_chatty_tasks.get(chat_id) == asyncio.current_task():
             del pending_chatty_tasks[chat_id]
 
-async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict):
+def extract_context(message_content, bot_number: str | None, bot_known_ids: list[str]) -> tuple[Optional[str], Optional[str]]:
+    """
+    Extracts quoted message context if the user is replying to the bot.
+    Returns (context_type, context_content) or (None, None).
+    """
+    context_info = None
+    if getattr(message_content, "contextInfo", None):
+        context_info = getattr(message_content, "contextInfo")
+    elif getattr(message_content, "extendedTextMessage", None):
+        ext_txt = getattr(message_content, "extendedTextMessage")
+        if isinstance(ext_txt, dict):
+            context_info = ext_txt.get("contextInfo")
+        elif hasattr(ext_txt, "contextInfo"):
+            context_info = getattr(ext_txt, "contextInfo")
+
+    if not context_info or not isinstance(context_info, dict):
+        return None, None
+        
+    quoted_sender = context_info.get("participant", "")
+    quoted_msg = context_info.get("quotedMessage", {})
+    
+    if not quoted_msg or not isinstance(quoted_msg, dict):
+        return None, None
+
+    is_bot = False
+    if bot_number and normalize_jid_for_comparison(quoted_sender) == normalize_jid_for_comparison(bot_number):
+        is_bot = True
+    elif quoted_sender in bot_known_ids:
+        is_bot = True
+
+    if is_bot:
+        quoted_text = quoted_msg.get("conversation", "")
+        if not quoted_text and "extendedTextMessage" in quoted_msg:
+            ext_text = quoted_msg["extendedTextMessage"]
+            if isinstance(ext_text, dict):
+                quoted_text = ext_text.get("text", "")
+            else:
+                quoted_text = getattr(ext_text, "text", "")
+        
+        if quoted_text:
+            return "reply", quoted_text
+            
+    return None, None
+
+async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict, context_tuple: tuple = None):
     """
     Handles Direct Messages (DMs).
     Logic: Always invoke Chatty. Never invoke Auto-Translation.
@@ -220,7 +264,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
 
         # Process message WITH reply generation in the same request cycle
         logger.debug(f"DM: Calling process_message with generate_reply=True for {chat_id}")
-        ai_reply = await engine.process_message(text, media_path, generate_reply=True)
+        ai_reply = await engine.process_message(text, media_path, generate_reply=True, context=context_tuple)
         logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
             await send_text_message(
@@ -242,7 +286,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
         await send_text_message(chat_id, "⚠️ Something went wrong. Please try again.")
 
 
-async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict, chat_settings, mentioned_jids: list[str]):
+async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, text: str, media_path: str, msg_key, profile: dict, chat_settings, mentioned_jids: list[str], context_tuple: tuple = None):
     """
     Handles Group Chat messages.
     Logic: Implement the 'Mutual Exclusion' pattern.
@@ -289,7 +333,12 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                     pending_chatty_tasks[chat_id].cancel()
                     del pending_chatty_tasks[chat_id]
 
-                ai_reply = await engine.process_message(text, media_path, generate_reply=True)
+                # If it's explicitly tagged, and no reply context, it's a tag context
+                active_context = context_tuple
+                if not active_context[0]:
+                    active_context = ("tag", text)
+
+                ai_reply = await engine.process_message(text, media_path, generate_reply=True, context=active_context)
                 if ai_reply:
                     await send_text_message(
                         chat_id,
@@ -300,7 +349,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                 return
             else:
                 # ── Path B: Frequency-Based ── Delayed background task ──
-                await engine.process_message(text, media_path, generate_reply=False)
+                await engine.process_message(text, media_path, generate_reply=False, context=context_tuple)
 
                 d_min = updated_profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
                 d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
@@ -321,7 +370,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
         else:
             # Still save to RAG context for future retrieval (Silent Observer)
             # Even if chatty is disabled entirely, we log it to memory context
-            await engine.process_message(text, media_path, generate_reply=False)
+            await engine.process_message(text, media_path, generate_reply=False, context=context_tuple)
 
             # If chatty was supposed to trigger but didn't, or was evaluated,
             # we should still mark it as consumed ONLY IF chatty_status is True.
@@ -478,9 +527,13 @@ async def process_message(
         mentioned_jids: list[str] = []
         ext_txt = getattr(data.message, 'extendedTextMessage', None)
         if isinstance(ext_txt, dict):
-            ctx = ext_txt.get('contextInfo', {}) or {}
-            raw_jids = ctx.get('mentionedJid', []) or []
-            mentioned_jids = [j for j in raw_jids if isinstance(j, str)]
+            ctx_info = ext_txt.get('contextInfo', {})
+            mentioned_jids = ctx_info.get('mentionedJid', [])
+        elif hasattr(ext_txt, 'contextInfo') and isinstance(ext_txt.contextInfo, dict):
+            mentioned_jids = ext_txt.contextInfo.get('mentionedJid', [])
+
+        bot_known_ids = BotIdentityManager.load_known_bot_ids()
+        context_tuple = extract_context(content_obj, bot_number, bot_known_ids)
 
         if not text:
             return
@@ -548,7 +601,8 @@ async def process_message(
                     text=text,
                     media_path=media_path,
                     msg_key=msg_key,
-                    profile=profile
+                    profile=profile,
+                    context_tuple=context_tuple
                 )
             else:
                 return await _handle_group_message(
@@ -560,7 +614,8 @@ async def process_message(
                     msg_key=msg_key,
                     profile=profile,
                     chat_settings=chat_settings,
-                    mentioned_jids=mentioned_jids
+                    mentioned_jids=mentioned_jids,
+                    context_tuple=context_tuple
                 )
         finally:
             if tmp_file and os.path.exists(tmp_file.name):
