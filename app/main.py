@@ -52,6 +52,8 @@ app.include_router(webhook_router)
 app.include_router(system_router)
 
 
+from app.config import settings, BotIdentityManager
+
 @app.on_event("startup")
 async def startup_event() -> None:
     logger.info("Initializing Database...")
@@ -79,6 +81,17 @@ async def startup_event() -> None:
             logger.warning("WhatsApp Gateway reports it is not connected or requires a QR scan. Please check http://localhost:8000/whatsapp/qr")
     except Exception as exc:
         logger.warning(f"Could not reach WhatsApp gateway during startup: {exc}")
+
+    # Pre-warm bot identity cache on startup
+    detected = BotIdentityManager.get_bot_number()
+    if detected:
+        logger.info(f"[Startup] Bot identity resolved: {detected}")
+    else:
+        logger.warning(
+            "[Startup] Bot identity could not be resolved. "
+            "Explicit @mention detection will be degraded until the "
+            "WhatsApp gateway is reachable."
+        )
 
 
 

@@ -63,7 +63,16 @@ Strict adherence to the project's architecture is required.
   - **Tier 3 (Nuclear Purge):** As a last resort, purge the `.wwebjs_auth` directory via `fs.rmSync` and prompt for a new QR scan.
 - **Error Pattern Matching:** The gateway MUST actively monitor `sendMessage` API errors for specific patterns indicating session corruption (e.g., "No LID for user", "session corrupt", "invalid session", "ExecutionContext").
 - **Immediate Recovery Strategy:** When a known session corruption pattern is detected, the gateway MUST bypass the standard N-consecutive-failures threshold and trigger an *immediate* escalation through the recovery tiers.
-- **Delayed Recovery Strategy:** General timeout or disconnect errors should respect the standard consecutive failures threshold (e.g., 3 failures) before forcing a recovery escalation, to prevent unnecessary resets during transient network blips.
+- **Delayed Recovery Strategy:** General timeout or disconnect errors should respect the threshold (e.g., 3 failures) before forcing a recovery escalation, to prevent unnecessary resets during transient network blips.
+
+## Configuration Management Standards
+
+### Runtime-Detected Identifiers
+For any system identity that is only known after a service connects
+(e.g., WhatsApp JIDs, OAuth client IDs returned at runtime), prefer
+runtime detection with caching over static ENV configuration. ENV
+variables MAY be used as fallbacks but MUST NOT be the primary source.
+See ADR-014 in decisions.md.
 
 ### 6.4 Docker Installation
 - `start.sh` MUST check for Docker installation before attempting docker-compose operations

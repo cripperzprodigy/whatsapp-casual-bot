@@ -1,5 +1,34 @@
 # Architectural Decisions
 
+## ADR-014 — Runtime Bot Identity Detection over Static Configuration
+
+Date    : 2026-06-24
+Status  : Accepted
+Context :
+  The bot's WhatsApp JID is only reliably known after the
+  whatsapp-web.js client authenticates. Storing it in a static
+  environment variable (BOT_NUMBER) is fragile because the JID
+  can change across re-authentications or deployments.
+
+Decision :
+  The Node.js gateway exposes a /whatsapp/bot-identity endpoint.
+  The Python backend fetches this at startup and on a 5-minute TTL
+  via BotIdentityManager. The ENV variable is retained as a fallback
+  for degraded-mode operation.
+
+Consequences :
+  + Bot identity is always accurate after initial connection.
+  + Eliminates a class of silent misconfiguration bugs.
+  + Adds a lightweight internal HTTP dependency (mitigated by cache).
+  - Slight startup delay on first cold fetch (mitigated by 2 s timeout
+    and fallback to ENV).
+
+Pattern established :
+  "Runtime detection over static configuration" — prefer detecting
+  volatile system identities at runtime rather than requiring them
+  to be pre-configured in .env.
+
+
 - **Token Limits for Reasoning Models:** Decided to use 8192 default tokens and strict prompting for high-context local reasoning models. This prevents models from exhausting tokens on verbose reasoning tracks.
 - **Custom Exceptions:** Introduced `TokenExhaustedError` and `TranslationError` instead of returning dataclasses from `ask_llm`. This enables precise error handling and clean retry mechanisms.
 -   * * S t r i c t   W h i t e l i s t i n g   f o r   T a r g e t   L a n g u a g e s : * *   I n s t e a d   o f   g r e e d i l y   t r e a t i n g   t h e   f i r s t   w o r d   a f t e r   ' ! t '   a s   a   l a n g u a g e   c o d e   i f   i t s   l e n g t h   i s   2 ,   t h e   s y s t e m   n o w   e n f o r c e s   a   s t r i c t   w h i t e l i s t   b a s e d   o n   2 0   k n o w n   I S O   c o d e s .   T h i s   a l l o w s   v a l i d   2 - l e t t e r   s l a n g   w o r d s   t o   f a l l   b a c k   s a f e l y   t o   t e x t   t r a n s l a t i o n .

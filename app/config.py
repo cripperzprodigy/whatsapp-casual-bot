@@ -1,9 +1,88 @@
 import logging
+import time
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+class BotIdentityManager:
+    """
+    Manages dynamic detection of the bot's own WhatsApp number.
+    Prefers runtime detection via the Node.js gateway over the static
+    BOT_NUMBER environment variable. Results are cached with a TTL to
+    minimise HTTP overhead.
+    """
+    _cache: str | None = None
+    _cache_timestamp: float | None = None
+    _cache_ttl: int = 300  # seconds (5 minutes)
+
+    @classmethod
+    def get_bot_number(cls) -> str | None:
+        """
+        Returns the bot's bare phone number (digits only, no JID suffix).
+        Fetches from gateway if cache is expired, falls back to ENV.
+        """
+        now = time.time()
+
+        # Return cached value if still fresh
+        if (cls._cache is not None
+                and cls._cache_timestamp is not None
+                and (now - cls._cache_timestamp) < cls._cache_ttl):
+            return cls._cache
+
+        # Attempt runtime detection from Node.js gateway
+        try:
+            import httpx
+            gateway_url = getattr(settings, 'WHATSAPP_GATEWAY_URL', None)
+            if gateway_url:
+                url = f"{gateway_url.rstrip('/')}/whatsapp/bot-identity"
+                with httpx.Client(timeout=2.0) as http:
+                    resp = http.get(url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        detected = data.get('number')
+                        if detected:
+                            cls._cache = detected
+                            cls._cache_timestamp = now
+                            # Warn if ENV value differs from detected
+                            env_number = getattr(settings, 'BOT_NUMBER', None)
+                            if env_number and env_number != detected:
+                                logger.warning(
+                                    f"BOT_NUMBER env ({env_number}) differs "
+                                    f"from detected JID ({detected}). "
+                                    f"Using detected value."
+                                )
+                            else:
+                                logger.info(
+                                    f"Bot identity confirmed: {detected}"
+                                )
+                            return cls._cache
+        except Exception as exc:
+            logger.warning(
+                f"Could not fetch bot identity from gateway: {exc}. "
+                f"Falling back to BOT_NUMBER env var."
+            )
+
+        # Fallback: use ENV variable
+        fallback = getattr(settings, 'BOT_NUMBER', None)
+        cls._cache = fallback
+        cls._cache_timestamp = now
+        if fallback:
+            logger.info(f"Using BOT_NUMBER from ENV as fallback: {fallback}")
+        else:
+            logger.error(
+                "BOT_NUMBER is unset and gateway is unreachable. "
+                "@mention detection will be disabled."
+            )
+        return cls._cache
+
+    @classmethod
+    def invalidate_cache(cls) -> None:
+        """Force the next call to re-fetch from the gateway."""
+        cls._cache = None
+        cls._cache_timestamp = None
+        logger.debug("BotIdentityManager cache invalidated.")
 
 
 class Settings(BaseSettings):
@@ -40,7 +119,7 @@ class Settings(BaseSettings):
     #  Internal Bot config
     # ------------------------------------------------------------------ #
     # Issue 5: BOT_NUMBER used to prevent self-loops — warn if empty
-    BOT_NUMBER: str
+    BOT_NUMBER: Optional[str] = None
     # Bootstrap Owner configured via .env
     BOT_OWNER_ID: Optional[str] = None
     # Issue 2: buffer size, now referenced as a named config value
@@ -162,7 +241,7 @@ class Settings(BaseSettings):
     def _validate_bot_number(cls, data: dict) -> dict:
         bn = data.get("BOT_NUMBER")
         if not bn or not str(bn).strip():
-            raise ValueError("CRITICAL CONFIG ERROR: BOT_NUMBER is missing or invalid. The bot cannot identify itself without this value. Check .env file.")
+            return data # Now optional
 
         bn_str = str(bn).strip()
         # Strip leading + if it exists

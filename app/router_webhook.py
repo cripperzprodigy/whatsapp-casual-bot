@@ -27,7 +27,7 @@ from app.whatsapp_gateway import (
 from app.state import get_db, add_message_to_buffer, get_chat_settings, SessionLocal
 from app.commands import handle_command
 from app.translation import detect_language, translate_text
-from app.config import settings
+from app.config import settings, BotIdentityManager
 from app.contact_sync import (
     update_contact,
     export_group_contacts,
@@ -44,29 +44,79 @@ import re
 
 pending_chatty_tasks: Dict[str, asyncio.Task] = {}
 
+# ── JID normalisation helpers ────────────────────────────────────
+
+_JID_SUFFIXES = (
+    '@s.whatsapp.net',
+    '@c.us',
+    '@lid',
+    '@g.us',
+    '@broadcast',
+    '@newsletter',
+)
+
+def normalize_jid_for_comparison(jid: str) -> str:
+    """
+    Strips any WhatsApp JID suffix and leading '+' to return a bare
+    numeric string suitable for equality comparison.
+
+    Examples:
+      '68728804868116@lid'          → '68728804868116'
+      '68728804868116@s.whatsapp.net' → '68728804868116'
+      '+6587802805'                 → '6587802805'
+      '6587802805'                  → '6587802805'
+    """
+    if not jid:
+        return ""
+    jid = jid.strip()
+    for suffix in _JID_SUFFIXES:
+        if jid.endswith(suffix):
+            jid = jid[: -len(suffix)]
+            break
+    return jid.lstrip('+')
+
+
 def is_explicitly_tagged(
     text: str,
     bot_number: str | None,
-    mentioned_jids: list[str] | None = None
+    mentioned_jids: list[str] | None = None,
 ) -> bool:
     """
-    Returns True if the bot was explicitly addressed.
-    Checks: (1) native @mention in mentionedJids list,
-            (2) bot's bare number appears in text,
-            (3) text contains @bot (case-insensitive).
+    Returns True if the bot was explicitly addressed in the message.
+
+    Detection order (any match returns True immediately):
+      1. Bot's bare number found in the mentionedJids array
+         (normalized comparison — handles @lid, @c.us, @s.whatsapp.net).
+      2. Bot's bare number appears literally in the message text.
+      3. Message text contains the pattern '@bot' (case-insensitive).
+
+    Args:
+      text          : Raw message body string.
+      bot_number    : Bot's number in any format (or None to disable check).
+      mentioned_jids: List of JID strings from the WhatsApp message payload.
+
+    Returns:
+      bool
     """
-    if mentioned_jids and bot_number:
-        bare_bot = bot_number.split('@')[0] if '@' in bot_number else bot_number
+    if not bot_number:
+        return False
+
+    bare_bot = normalize_jid_for_comparison(bot_number)
+    if not bare_bot:
+        return False
+
+    # 1. Check native @mention via mentionedJids array
+    if mentioned_jids:
         for jid in mentioned_jids:
-            if jid.split('@')[0] == bare_bot:
+            if normalize_jid_for_comparison(jid) == bare_bot:
                 return True
 
-    if bot_number:
-        bare_bot = bot_number.split('@')[0] if '@' in bot_number else bot_number
-        if bare_bot and re.search(re.escape(bare_bot), text):
-            return True
+    # 2. Check if bot's bare number is literally present in text
+    if bare_bot and re.search(re.escape(bare_bot), text or ""):
+        return True
 
-    if re.search(r'(?i)@\s*bot\b', text):
+    # 3. Check for generic @bot pattern
+    if re.search(r'(?i)@\s*bot\b', text or ""):
         return True
 
     return False
@@ -169,7 +219,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
     - Else -> Check Chatty frequency triggers.
     - If Chatty did NOT consume the message -> Run Auto-Translation.
     """
-    bot_id = settings.BOT_NUMBER
+    bot_id = BotIdentityManager.get_bot_number()
     is_explicit_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
     logger.info(f"Group message received: chat={chat_id}, sender={sender_id}, Mentioned={is_explicit_mention}, mentioned_jids={mentioned_jids}, bot_id={bot_id}")
     message_consumed_by_chatty = False
@@ -360,15 +410,13 @@ async def process_message(
                     "subject", "Unknown Group"
                 )
                 # Determine if bot is admin
-                bot_number = settings.BOT_NUMBER
+                bot_number = BotIdentityManager.get_bot_number()
                 participants = group_info.get("participants", [])
                 if bot_number:
+                    bare_bot_number = normalize_jid_for_comparison(bot_number)
                     for p in participants:
                         pid = p.get("id", "")
-                        if (
-                            pid == bot_number
-                            or pid == f"{bot_number}@s.whatsapp.net"
-                        ):
+                        if normalize_jid_for_comparison(pid) == bare_bot_number:
                             chat_settings.bot_is_admin = p.get(
                             "admin"
                         ) in ["admin", "superadmin"]
@@ -385,7 +433,8 @@ async def process_message(
             export_group_contacts(db, chat_id)
 
         # Don't process our own messages to avoid loops
-        if msg_key.fromMe or (settings.BOT_NUMBER and sender_id and sender_id.startswith(settings.BOT_NUMBER)):
+        bot_number = BotIdentityManager.get_bot_number()
+        if msg_key.fromMe or (bot_number and sender_id and normalize_jid_for_comparison(sender_id) == normalize_jid_for_comparison(bot_number)):
             return
 
         content_obj = data.message
