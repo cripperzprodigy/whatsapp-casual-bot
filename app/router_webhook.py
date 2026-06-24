@@ -421,9 +421,9 @@ async def process_message(
             profile = read_profile(chat_id)
 
             # Handle Commands (Pre-Split)
-            if text.startswith("!"):
+            if text.strip().startswith("!"):
                 await handle_command(text, chat_id, sender_id, db)
-                return
+                return  # Exits immediately, preventing fall-through to Chatty engine
 
             # Domain Split
             is_dm = not chat_id.endswith("@g.us")

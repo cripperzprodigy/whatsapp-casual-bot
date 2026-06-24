@@ -29,6 +29,7 @@ Strict adherence to the project's architecture is required.
 - **Modularity:** Ensure code is well-structured and separated into logical, independent modules.
 - **Interface Parity:** Interfaces should remain consistent across modules.
 - **Error Handling:** Implement robust error handling strategies.
+- **Command Routing:** Command handlers must return immediately after execution to prevent fall-through into other domain handlers (e.g., the DM Chatty engine). Command prefix matching must be robust against whitespace (e.g., `text.strip().startswith("!")`).
 
 ## Testing & Deployment
 - **Unit Testing:** Agents must write unit tests for any new logic introduced.
