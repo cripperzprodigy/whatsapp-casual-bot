@@ -64,3 +64,7 @@ This issue has been successfully resolved.
 64. **Reply Detection Prefix Handling Fix**: Fixed `app/router_webhook.py` `extract_context` logic to strip the leading `+` prefix from international JID numbers and consolidate under the robust `normalize_jid_for_comparison` standard. This resolves the `ReplyContext=False` mismatch where `6587...` failed to equal `+6587...`.
 
 Status: **RESOLVED**. Quoting, Threaded Replies, Tags, and Payload Validation are fully operational.
+
+65. **JID Normalization Logic Overhaul**: Refactored `normalize_jid_for_comparison` in `app/router_webhook.py` to use `.split("@")[0].lstrip("+")` instead of an explicit array of suffix replacements. This safely handles dynamically extended suffixes (like `@g.us_3EB0...`) and fixes the `ReplyContext=False` mismatch error when a user tags or replies to a bot in a group chat.
+
+66. **Python JSON Parsing Fix & resolve_quote_id abstraction**: Refactored the inline resolving logic in `app/whatsapp_gateway.py` to `resolve_quote_id(short_id)`. The function now correctly parses `resp.json()`, accesses `resp_data.get("serializedId")`, and importantly prepends the `_INCOMING_MSG_PREFIX` (`"false_"`) to the serialized ID so that the Node gateway can correctly process visual quoting.

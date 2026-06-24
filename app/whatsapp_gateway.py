@@ -91,6 +91,31 @@ async def fetch_group_metadata(
         logger.error(f"Failed to fetch group metadata for {chat_id}: {e}")
         return None
 
+async def resolve_quote_id(short_id: str) -> Optional[str]:
+    """
+    Resolves a short message ID to its full serialized format using the Node.js gateway cache.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{settings.WHATSAPP_GATEWAY_URL}/message/resolve-quote-id",
+                json={"shortId": short_id},
+                timeout=5.0
+            )
+            resp_data = resp.json()
+            logger.debug(f"Resolve API Response: {resp_data}")
+            if resp.status_code == 200 and resp_data.get("success"):
+                serialized_id = resp_data.get("serializedId")
+                if serialized_id:
+                    final_id = f"{_INCOMING_MSG_PREFIX}{serialized_id}"
+                    logger.debug(f"Successfully resolved ID: {final_id}")
+                    return final_id
+            logger.warning(f"Failed to resolve ID: {resp_data.get('error', 'Unknown error')}")
+            return None
+    except Exception as e:
+        logger.error(f"Error resolving quote ID {short_id}: {e}")
+        return None
+
 async def send_text_message(
     chat_id: str,
     text: str,
@@ -106,27 +131,7 @@ async def send_text_message(
     
     # Resolve short ID to full Serialized ID if needed
     if quoted_msg_id and isinstance(quoted_msg_id, str) and '_' not in quoted_msg_id:
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    f"{settings.WHATSAPP_GATEWAY_URL}/message/resolve-quote-id",
-                    json={"shortId": quoted_msg_id},
-                    timeout=5.0
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("success"):
-                        quoted_msg_id = data.get("serializedId")
-                        logger.debug(f"Resolved quote ID: {quoted_msg_id}")
-                    else:
-                        logger.warning(f"Failed to resolve quote ID {quoted_msg_id}: {data.get('error', 'Unknown error')}. Sending plain message.")
-                        quoted_msg_id = None
-                else:
-                    logger.warning(f"Failed to resolve quote ID {quoted_msg_id}: {resp.text}. Sending plain message.")
-                    quoted_msg_id = None
-        except Exception as e:
-            logger.error(f"Error resolving quote ID: {e}")
-            quoted_msg_id = None
+        quoted_msg_id = await resolve_quote_id(quoted_msg_id)
 
     payload = {
         "to": chat_id,

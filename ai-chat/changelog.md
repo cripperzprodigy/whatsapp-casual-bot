@@ -78,3 +78,10 @@
 - **CRITICAL Fix: ALL DM Messages Fail Silently (BackgroundTasks + async mismatch)**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` does NOT properly execute async functions. FastAPI's `BackgroundTasks.add_task()` wraps coroutines in a regular callable, so the coroutine is never awaited and silently does nothing. Every DM message — including commands — was dropped without error. Fixed by replacing with `asyncio.create_task(process_message(payload))`.
 - **Fix: WhatsApp LID Migration Fallback in jid.js**: Updated `resolveWhatsAppId` to gracefully fallback to the original JID if `getNumberId()` returns null for input strings that already contain an '@' sign. This fixes the issue where valid users with migrated LID accounts were falsely rejected as "NUMBER_NOT_ON_WHATSAPP".
 - **Fix: DM Command Silent Failure (Undefined Variable Scope)**: `!chatty_delay` and `!chatty_mode` referenced `is_owner` as a variable instead of awaiting the async function, and `is_group_admin` was undefined in scope. Added proper group admin checks with `GroupContactLedger` queries and fixed `is_owner` to `await is_owner(db, sender_id)`.
+
+### Fixed Visual Quoting and Reply Detection in Group Chats
+- **Issue**: The bot failed to visually quote messages when addressed via a reply, and failed to recognize when a user directly replied to it in group chats due to suffix mismatch.
+- **Resolution**:
+  1. Extracted and fixed JSON parsing of the quote ID in `app/whatsapp_gateway.py` within a new `resolve_quote_id` method. The script correctly parses `{ "success": true, "serializedId": "..." }` and prepends `_INCOMING_MSG_PREFIX` (`"false_"`) before sending to `whatsapp-web.js`.
+  2. Updated `normalize_jid_for_comparison` in `app/router_webhook.py` to robustly strip all potential suffixes by splitting at `@` and handling linked devices (e.g., `@lid`, `@c.us`, `@g.us_...`), correctly returning the pure numeric identifier for accurate comparison.
+- **Files Modified**: `app/whatsapp_gateway.py`, `app/router_webhook.py`

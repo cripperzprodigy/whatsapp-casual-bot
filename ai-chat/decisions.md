@@ -176,3 +176,18 @@ During session recovery loops in the Node.js gateway, synchronous retries often 
 ### LLM Timeout Configurability
 **Decision**: Expose LLM_TIMEOUT_SECONDS (default: 180s) via config.py and pass it to httpx.Timeout for all AsyncOpenAI operations.
 **Rationale**: Local LLM inferences (e.g. LM Studio, Ollama) on slow hardware often take ~40-120 seconds. Standard httpx timeouts kill the connection prematurely, causing race conditions and logic drop-offs (e.g. failing to pass quoted message context downstream).
+
+## ADR-019 — Robust JID Normalization
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  The `normalize_jid_for_comparison` was previously iterating through a list of possible suffixes (`@c.us`, `@lid`, etc.) to strip from incoming and internal JIDs. This failed when suffixes contained dynamic components (like the Message ID in `@g.us_3EB0...`), resulting in `ReplyContext=False` when users replied to the bot.
+
+Decision :
+  Refactored `normalize_jid_for_comparison` to uniformly drop everything from the `@` symbol onwards using `jid.split('@')[0].lstrip('+')`.
+
+Consequences :
+  + Eliminates hardcoded list of suffixes for comparison matching.
+  + Accurately identifies `ReplyContext` from incoming `whatsapp-web.js` webhook events.
+  + Streamlines message matching and context injection in `app/router_webhook.py`.

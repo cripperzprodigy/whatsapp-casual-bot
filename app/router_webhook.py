@@ -46,15 +46,6 @@ pending_chatty_tasks: Dict[str, asyncio.Task] = {}
 
 # ── JID normalisation helpers ────────────────────────────────────
 
-_JID_SUFFIXES = (
-    '@s.whatsapp.net',
-    '@c.us',
-    '@lid',
-    '@g.us',
-    '@broadcast',
-    '@newsletter',
-)
-
 def normalize_jid_for_comparison(jid: str) -> str:
     """
     Strips any WhatsApp JID suffix and leading '+' to return a bare
@@ -68,11 +59,8 @@ def normalize_jid_for_comparison(jid: str) -> str:
     """
     if not jid:
         return ""
-    jid = jid.strip()
-    for suffix in _JID_SUFFIXES:
-        if jid.endswith(suffix):
-            jid = jid[: -len(suffix)]
-            break
+    # Strip everything after '@' to handle varying suffixes like '@g.us_3EB0...'
+    jid = jid.split('@')[0]
     return jid.lstrip('+')
 
 
