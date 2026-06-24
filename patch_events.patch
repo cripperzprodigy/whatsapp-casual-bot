@@ -1,0 +1,33 @@
+--- whatsapp-service/src/events.js
++++ whatsapp-service/src/events.js
+@@ -107,6 +107,17 @@
+                 }
+             }
+
++            let quotedMsg = null;
++            if (msg.hasQuotedMsg) {
++                try {
++                    const qMsg = await msg.getQuotedMessage();
++                    if (qMsg) {
++                        quotedMsg = {
++                            participant: qMsg.author || qMsg.from,
++                            conversation: qMsg.body
++                        };
++                    }
++                } catch (e) {}
++            }
++
+             const payload = {
+                 event: 'messages.upsert',
+                 instance: 'whatsapp-web-js',
+@@ -124,7 +135,8 @@
+                         extendedTextMessage: {
+                             text: msg.body,
+                             contextInfo: {
+                                 // Normalize only @c.us entries; preserve @lid tokens
+-                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net')) : []
++                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net')) : [],
++                                ...(quotedMsg ? { quotedMessage: quotedMsg, participant: quotedMsg.participant } : {})
+                             }
+                         }
+                     },

@@ -81,7 +81,7 @@ async def fetch_group_metadata(
     and admin status from internal gateway.
     """
     url = f"{settings.WHATSAPP_GATEWAY_URL}/group/findGroupInfos"
-    
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params={"groupJid": chat_id})
@@ -107,8 +107,9 @@ async def resolve_quote_id(short_id: str) -> Optional[str]:
             if resp.status_code == 200 and resp_data.get("success"):
                 serialized_id = resp_data.get("serializedId")
                 if serialized_id:
-                    logger.debug(f"Successfully resolved ID: {serialized_id}")
-                    return serialized_id
+                    final_id = f"{_INCOMING_MSG_PREFIX}{serialized_id}"
+                    logger.debug(f"Successfully resolved ID: {final_id}")
+                    return final_id
             logger.warning(f"Failed to resolve ID: {resp_data.get('error', 'Unknown error')}")
             return None
     except Exception as e:
@@ -127,7 +128,7 @@ async def send_text_message(
     original message if `quoted_msg_id` is provided.
     """
     url = f"{settings.WHATSAPP_GATEWAY_URL}/message/sendText"
-    
+
     # Resolve short ID to full Serialized ID if needed
     if quoted_msg_id and isinstance(quoted_msg_id, str) and '_' not in quoted_msg_id:
         quoted_msg_id = await resolve_quote_id(quoted_msg_id)
@@ -137,7 +138,7 @@ async def send_text_message(
         "message": text,
         "type": "text"
     }
-    
+
     if quoted_msg_id and isinstance(quoted_msg_id, str) and quoted_msg_id.strip():
         payload["quotedMsgId"] = quoted_msg_id
         logger.debug(f"Including quote ID: {quoted_msg_id}")
@@ -145,11 +146,11 @@ async def send_text_message(
         logger.debug("No valid quote ID provided, sending plain message.")
 
     logger.debug(f"Sending payload to gateway: {payload}")
-    
+
     import asyncio
     max_retries = 3
     base_delay = 2
-    
+
     for attempt in range(max_retries):
         try:
             async with httpx.AsyncClient() as client:
@@ -160,13 +161,13 @@ async def send_text_message(
                     resp_data = DeliveryResponse(**response.json())
                     reason = resp_data.reason or resp_data.error_code
                     logger.warning(f"Command response queued by gateway for {chat_id}. User may not see immediate reply. Reason: {reason}")
-                    
+
                     if reason == "CLIENT_SETTLING":
                         # Increase wait time to 6s before retry, wait longer than settling period
                         logger.info(f"Client is settling. Delaying retry for 6 seconds...")
                         await asyncio.sleep(6)
                         continue
-                        
+
                     return GatewaySendResult(
                         success=False,
                         status_code=202,
@@ -185,12 +186,12 @@ async def send_text_message(
             if e.response.status_code in [500, 503]:
                 try:
                     error_data = e.response.json()
-                    
+
                     # If 503 NOT_READY, abort immediate retry and queue
                     if e.response.status_code == 503 and error_data.get("status") == "NOT_READY":
                         logger.error("Gateway reported NOT_READY. Aborting immediate retry and queuing.")
                         return GatewaySendResult(success=False, status_code=503, queued=True, error_code="NOT_READY")
-                        
+
                     resp_data = DeliveryResponse(**error_data)
                     requires_qr = resp_data.requires_qr
                     if requires_qr:
@@ -207,7 +208,7 @@ async def send_text_message(
                         logger.error(f"Gateway reported SESSION_CORRUPT for {chat_id}. Attempting to wait for recovery...")
                 except Exception as ex:
                     logger.error(f"Failed to parse error response: {ex}")
-            
+
             delay = base_delay * (2 ** attempt)
             logger.warning(f"HTTPStatusError sending message to {chat_id} (Attempt {attempt+1}/{max_retries}). Retrying in {delay}s...")
             await asyncio.sleep(delay)
@@ -215,7 +216,7 @@ async def send_text_message(
             delay = base_delay * (2 ** attempt)
             logger.warning(f"Failed to send message to {chat_id} (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {delay}s...")
             await asyncio.sleep(delay)
-            
+
     logger.error(f"Exhausted retries. Failed to send message to {chat_id}")
     return GatewaySendResult(
         success=False,

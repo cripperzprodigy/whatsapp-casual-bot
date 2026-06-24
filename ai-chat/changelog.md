@@ -85,3 +85,9 @@
   1. Extracted and fixed JSON parsing of the quote ID in `app/whatsapp_gateway.py` within a new `resolve_quote_id` method. The script correctly parses `{ "success": true, "serializedId": "..." }` and prepends `_INCOMING_MSG_PREFIX` (`"false_"`) before sending to `whatsapp-web.js`.
   2. Updated `normalize_jid_for_comparison` in `app/router_webhook.py` to robustly strip all potential suffixes by splitting at `@` and handling linked devices (e.g., `@lid`, `@c.us`, `@g.us_...`), correctly returning the pure numeric identifier for accurate comparison.
 - **Files Modified**: `app/whatsapp_gateway.py`, `app/router_webhook.py`
+
+### Fixed Quoted Message Extraction in Webhook Payload
+- **Issue**: The Python backend was failing to detect a user's reply (`ReplyContext=False`) because the Node.js gateway was not forwarding quoted message context in the webhook payload.
+- **Resolution**:
+  - Updated `whatsapp-service/src/events.js` to correctly detect `msg.hasQuotedMsg`.
+  - Added logic to fetch `getQuotedMessage()` and append `quotedMessage` and `participant` info dynamically to the `contextInfo` inside the outgoing webhook payload, restoring Python's ability to trigger `ReplyContext=True`.

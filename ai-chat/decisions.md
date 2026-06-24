@@ -191,3 +191,14 @@ Consequences :
   + Eliminates hardcoded list of suffixes for comparison matching.
   + Accurately identifies `ReplyContext` from incoming `whatsapp-web.js` webhook events.
   + Streamlines message matching and context injection in `app/router_webhook.py`.
+
+## ADR-020 — Webhook Quoted Message Context Serialization
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  The Python `extract_context` function expects Baileys-style `contextInfo.quotedMessage` to determine if a message is a reply to the bot. However, `whatsapp-web.js` does not automatically populate quoted messages into a single nested payload.
+Decision :
+  In `whatsapp-service/src/events.js`, when a message comes in with `hasQuotedMsg=true`, we manually fetch `getQuotedMessage()` and inject `quotedMessage.conversation` and `participant` into the outgoing `contextInfo` payload. We also updated the message caching logic to directly map `msg.id.id` to `msg.id._serialized` to perfectly emulate the visual quoting API string.
+Consequences :
+  + The Python backend can natively detect `ReplyContext=True` without extra network API calls.

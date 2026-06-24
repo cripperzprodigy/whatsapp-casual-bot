@@ -1,0 +1,13 @@
+--- app/whatsapp_gateway.py
++++ app/whatsapp_gateway.py
+@@ -107,8 +107,7 @@
+             if resp.status_code == 200 and resp_data.get("success"):
+                 serialized_id = resp_data.get("serializedId")
+                 if serialized_id:
+-                    final_id = f"{_INCOMING_MSG_PREFIX}{serialized_id}"
+-                    logger.debug(f"Successfully resolved ID: {final_id}")
+-                    return final_id
++                    logger.debug(f"Successfully resolved ID: {serialized_id}")
++                    return serialized_id
+             logger.warning(f"Failed to resolve ID: {resp_data.get('error', 'Unknown error')}")
+             return None

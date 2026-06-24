@@ -55,7 +55,7 @@ function registerEvents(client) {
     client.on('message', async msg => {
         // Store mapping: Short Key ID -> Correct Quote ID format
         if (msg.id && msg.id.id && msg.id.remote) {
-            const correctQuoteId = `${msg.id.remote}_${msg.id.id}`;
+            const correctQuoteId = msg.id._serialized || `false_${msg.id.remote}_${msg.id.id}`;
             messageCache.set(msg.id.id, correctQuoteId);
             console.log(`[Cache] Storing short ID: ${msg.id.id} -> ${correctQuoteId}`);
             
@@ -100,6 +100,22 @@ function registerEvents(client) {
                 }
             }
 
+            let quotedMsgPayload = null;
+            let quotedParticipant = null;
+            if (msg.hasQuotedMsg) {
+                try {
+                    const qMsg = await msg.getQuotedMessage();
+                    if (qMsg) {
+                        quotedParticipant = (qMsg.author || qMsg.from || '').replace(/@c\.us$/, '@s.whatsapp.net');
+                        quotedMsgPayload = {
+                            conversation: qMsg.body
+                        };
+                    }
+                } catch (e) {
+                    console.error('Failed to get quoted message:', e);
+                }
+            }
+
             const payload = {
                 event: 'messages.upsert',
                 instance: 'whatsapp-web-js',
@@ -119,7 +135,8 @@ function registerEvents(client) {
                             text: msg.body,
                             contextInfo: {
                                 // Normalize only @c.us entries; preserve @lid tokens
-                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net')) : []
+                                mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net')) : [],
+                                ...(quotedMsgPayload ? { quotedMessage: quotedMsgPayload, participant: quotedParticipant } : {})
                             }
                         }
                     },
