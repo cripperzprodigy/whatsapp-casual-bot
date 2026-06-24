@@ -80,6 +80,9 @@ function registerEvents(client) {
                 instance: 'whatsapp-web-js',
                 data: {
                     key: {
+                        // Normalize unofficial @c.us suffix to official @s.whatsapp.net.
+                        // Do NOT transform @lid entries — they are LID tokens and
+                        // must be preserved as-is for accurate reply routing.
                         remoteJid: msg.from.replace(/@c\.us$/, '@s.whatsapp.net'),
                         fromMe: msg.fromMe,
                         id: msg.id.id,
@@ -90,6 +93,7 @@ function registerEvents(client) {
                         extendedTextMessage: {
                             text: msg.body,
                             contextInfo: {
+                                // Normalize only @c.us entries; preserve @lid tokens
                                 mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net')) : []
                             }
                         }

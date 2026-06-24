@@ -1,0 +1,1 @@
+- **Mandatory Protocol:** Always follow the AI-Chat protocol at all times (including strict repository hygiene, agent registration in ai-chat/AGENT_REGISTRY.md, and updating ai-chat/changelog.md and ai-chat/issues.md when taking actions).

@@ -24,7 +24,7 @@ from app.whatsapp_gateway import (
     fetch_group_metadata,
     check_gateway_health,
 )
-from app.state import get_db, add_message_to_buffer, get_chat_settings
+from app.state import get_db, add_message_to_buffer, get_chat_settings, SessionLocal
 from app.commands import handle_command
 from app.translation import detect_language, translate_text
 from app.config import settings
@@ -50,29 +50,21 @@ def is_explicitly_tagged(
     mentioned_jids: list[str] | None = None
 ) -> bool:
     """
-    Returns True if the bot was explicitly addressed in this message.
-    Checks three signals:
-      1. Native WhatsApp @mention (mentionedJid list contains bot's JID)
-      2. Text contains @<bot_number> (bare digits)
-      3. Text contains the word 'bot' preceded by @ (case-insensitive)
+    Returns True if the bot was explicitly addressed.
+    Checks: (1) native @mention in mentionedJids list,
+            (2) bot's bare number appears in text,
+            (3) text contains @bot (case-insensitive).
     """
     if mentioned_jids and bot_number:
-        # Normalize both sides for comparison:
-        # mentioned_jids may be @s.whatsapp.net or @lid;
-        # BOT_NUMBER may be bare digits or full JID.
-        bare_bot = bot_number.replace('@c.us', '').replace('@s.whatsapp.net', '').strip() \
-            if '@' in (bot_number or '') else (bot_number or '').strip()
+        bare_bot = bot_number.split('@')[0] if '@' in bot_number else bot_number
         for jid in mentioned_jids:
-            bare_jid = jid.split('@')[0]
-            if bare_jid == bare_bot:
+            if jid.split('@')[0] == bare_bot:
                 return True
 
     if bot_number:
         bare_bot = bot_number.split('@')[0] if '@' in bot_number else bot_number
-        if bare_bot:
-            pattern = r'(?<!\d)@?' + re.escape(bare_bot) + r'(?!\d)'
-            if re.search(pattern, text):
-                return True
+        if bare_bot and re.search(re.escape(bare_bot), text):
+            return True
 
     if re.search(r'(?i)@\s*bot\b', text):
         return True
@@ -85,10 +77,7 @@ def is_bot_mentioned(
     is_group: bool = True,
     mentioned_jids: list[str] | None = None
 ) -> bool:
-    """
-    In DMs, every message is implicitly a mention.
-    In groups, check for explicit tagging only.
-    """
+    """In DMs every message is implicit. Groups require explicit tag."""
     if not is_group:
         return True
     return is_explicitly_tagged(text, bot_number, mentioned_jids)
@@ -304,9 +293,11 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
 
 
 async def process_message(
-    payload: WhatsAppWebhookPayload, db: Session
+    payload: WhatsAppWebhookPayload
 ) -> None:
+    db: Session | None = None
     try:
+        db = SessionLocal()
         data = payload.data
         msg_key = data.key
 
@@ -387,19 +378,17 @@ async def process_message(
 
         content_obj = data.message
         text = None
-        mentioned_jids = []
         if content_obj.conversation:
             text = content_obj.conversation
         elif content_obj.extendedTextMessage and "text" in content_obj.extendedTextMessage:
             text = content_obj.extendedTextMessage["text"]
 
-        # Extract mentions even if text was pulled from conversation
-        if content_obj.extendedTextMessage and "contextInfo" in content_obj.extendedTextMessage:
-            mentioned_jids = content_obj.extendedTextMessage["contextInfo"].get("mentionedJid", [])
-
-        # Fallback to root contextInfo if it exists
-        if not mentioned_jids and getattr(content_obj, "contextInfo", None):
-            mentioned_jids = content_obj.contextInfo.get("mentionedJid", [])
+        mentioned_jids: list[str] = []
+        ext_txt = getattr(data.message, 'extendedTextMessage', None)
+        if isinstance(ext_txt, dict):
+            ctx = ext_txt.get('contextInfo', {}) or {}
+            raw_jids = ctx.get('mentionedJid', []) or []
+            mentioned_jids = [j for j in raw_jids if isinstance(j, str)]
 
         if not text:
             return
@@ -409,62 +398,61 @@ async def process_message(
             db, chat_id, sender_id, sender_name, text
         )
 
-
-        # Media Handling
+        import tempfile
+        import os
         media_path = None
+        tmp_file = None
         if data.media_data:
             try:
-                media = data.media_data
-                if media and isinstance(media, dict) and 'data' in media and 'filename' in media:
-                    media_bytes = base64.b64decode(media['data'])
-                    safe_id = chat_id.replace('@', '_').replace('.', '_')
-                    contact_dir = Path(f"./data/contacts/{safe_id}/media")
-                    contact_dir.mkdir(parents=True, exist_ok=True)
-
-                    timestamp = int(time.time())
-                    filename = f"{timestamp}_{media['filename']}"
-                    file_path = contact_dir / filename
-
-                    with open(file_path, "wb") as f:
-                        f.write(media_bytes)
-
-                    media_path = str(file_path)
+                raw = base64.b64decode(data.media_data["data"])
+                ext = data.media_data.get("mimetype","").split("/")[-1] or "bin"
+                tmp_file = tempfile.NamedTemporaryFile(
+                    delete=False, suffix=f".{ext}", prefix="wa_media_"
+                )
+                tmp_file.write(raw)
+                tmp_file.close()
+                media_path = tmp_file.name
             except Exception as e:
-                logger.error(f"Failed to save media: {e}")
+                logger.error(f"Media decode failed: {e}")
+                media_path = None
 
-        # Ensure user profile is initialized
-        profile = read_profile(chat_id)
+        try:
+            # Ensure user profile is initialized
+            profile = read_profile(chat_id)
 
-        # Handle Commands (Pre-Split)
-        if text.startswith("!"):
-            await handle_command(text, chat_id, sender_id, db)
-            return
+            # Handle Commands (Pre-Split)
+            if text.strip().startswith("!"):
+                await handle_command(text, chat_id, sender_id, db)
+                return  # Exits immediately, preventing fall-through to Chatty engine
 
-        # Domain Split
-        is_dm = not chat_id.endswith("@g.us")
-        logger.info(f"Domain Split: chat={chat_id}, is_dm={is_dm}, mentioned_jids={mentioned_jids}")
-        if is_dm:
-            return await _handle_dm_message(
-                chat_id=chat_id,
-                sender_id=sender_id,
-                sender_name=sender_name,
-                text=text,
-                media_path=media_path,
-                msg_key=msg_key,
-                profile=profile
-            )
-        else:
-            return await _handle_group_message(
-                chat_id=chat_id,
-                sender_id=sender_id,
-                sender_name=sender_name,
-                text=text,
-                media_path=media_path,
-                msg_key=msg_key,
-                profile=profile,
-                chat_settings=chat_settings,
-                mentioned_jids=mentioned_jids
-            )
+            # Domain Split
+            is_dm = not chat_id.endswith("@g.us")
+            logger.info(f"Domain Split: chat={chat_id}, is_dm={is_dm}, mentioned_jids={mentioned_jids}")
+            if is_dm:
+                return await _handle_dm_message(
+                    chat_id=chat_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    text=text,
+                    media_path=media_path,
+                    msg_key=msg_key,
+                    profile=profile
+                )
+            else:
+                return await _handle_group_message(
+                    chat_id=chat_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    text=text,
+                    media_path=media_path,
+                    msg_key=msg_key,
+                    profile=profile,
+                    chat_settings=chat_settings,
+                    mentioned_jids=mentioned_jids
+                )
+        finally:
+            if tmp_file and os.path.exists(tmp_file.name):
+                os.unlink(tmp_file.name)
     except sqlalchemy.exc.SQLAlchemyError as exc:
         logger.error(
             "Database error while processing message: %s", exc
@@ -474,6 +462,12 @@ async def process_message(
             "Unexpected error processing message: %s", exc,
             exc_info=True,
         )
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
 
 
 @router.post("/webhook/whatsapp")
@@ -483,8 +477,9 @@ async def whatsapp_webhook(
     request: Request,  # required by slowapi
     payload: WhatsAppWebhookPayload,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
 ) -> dict:
     if payload.event == "messages.upsert":
-        background_tasks.add_task(process_message, payload, db)
+        # Do NOT pass the request-scoped DB into background tasks; background
+        # workers must create and manage their own DB sessions.
+        background_tasks.add_task(process_message, payload)
     return {"status": "ok"}

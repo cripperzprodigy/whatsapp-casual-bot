@@ -6,15 +6,15 @@ function isSessionCorruptionError(errMessage) {
     if (!errMessage) return false;
     const msg = errMessage.toLowerCase();
     return (
-      msg.includes('session closed') ||
-      msg.includes('session corrupt') ||
-      msg.includes('corrupt') ||
-      msg.includes('execution context was destroyed') ||
-      msg.includes('executioncontext') ||
-      msg.includes('target closed') ||
-      msg.includes('page has been closed') ||
-      msg.includes('detached frame') ||
-      msg.includes('protocol error')
+        msg.includes('session closed') ||
+        msg.includes('session corrupt') ||
+        msg.includes('corrupt') ||
+        msg.includes('execution context was destroyed') ||
+        msg.includes('executioncontext') ||
+        msg.includes('target closed') ||
+        msg.includes('page has been closed') ||
+        msg.includes('detached frame') ||
+        msg.includes('protocol error')
     );
 }
 
@@ -26,7 +26,6 @@ async function attemptGracefulRecovery(client, initClient) {
     if (state.recoveryTier === 1) {
         console.log('Recovery Tier 1: Soft wait — checking connection in 5s...');
         await new Promise(resolve => setTimeout(resolve, 5000));
-        // If client came back on its own (e.g., transient disconnect), reset tier
         if (state.isConnected && client.info) {
             state.recoveryTier = 0;
             console.log('Tier 1: Connection restored naturally. Resetting recovery tier.');
