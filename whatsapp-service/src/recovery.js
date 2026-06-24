@@ -3,13 +3,18 @@ const state = require('./state');
 const { SESSION_PATH, getSessionState } = require('./utils/session');
 
 function isSessionCorruptionError(errMessage) {
-    return errMessage && (
-        errMessage.includes('session') ||
-        errMessage.includes('corrupt') ||
-        errMessage.includes('ExecutionContext') ||
-        // Narrow 'invalid' checks to specific phrases to avoid false positives
-        errMessage.includes('invalid session') ||
-        errMessage.includes('invalid state')
+    if (!errMessage) return false;
+    const msg = errMessage.toLowerCase();
+    return (
+        msg.includes('session closed') ||
+        msg.includes('session corrupt') ||
+        msg.includes('corrupt') ||
+        msg.includes('execution context was destroyed') ||
+        msg.includes('executioncontext') ||
+        msg.includes('target closed') ||
+        msg.includes('page has been closed') ||
+        msg.includes('detached frame') ||
+        msg.includes('protocol error')
     );
 }
 
@@ -19,39 +24,15 @@ async function attemptGracefulRecovery(client, initClient) {
     state.recoveryTier++;
 
     if (state.recoveryTier === 1) {
-        // Tier 1: Gentle soft-check instead of aggressive page.reload().
-        // Reloading the page can cause transient Puppeteer instability.
-        console.log('Recovery Tier 1: Performing soft health-check of Puppeteer context...');
-        try {
-            const page = client.pupPage;
-            // If page reference exists but is closed/unavailable, flag failure.
-            if (!page || (page.isClosed && page.isClosed())) {
-                console.warn('Tier 1: Puppeteer page is closed or unavailable. Marking as failed.');
-                return false;
-            }
-
-            // Perform a small wait to allow network/WS heartbeats to recover.
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            // Re-check client state if helper exists
-            if (typeof client.getState === 'function') {
-                try {
-                    const st = await client.getState();
-                    if (st && st.connected) {
-                        console.log('Tier 1 recovery successful via soft-check');
-                        return true;
-                    }
-                } catch (getStateErr) {
-                    console.warn('Tier 1: getState check failed:', getStateErr.message);
-                }
-            }
-
-            console.warn('Tier 1 soft-check did not confirm healthy state; will escalate if necessary.');
-            return false;
-        } catch (tier1Err) {
-            console.error('Tier 1 recovery failed:', tier1Err.message);
-            return false;
+        console.log('Recovery Tier 1: Soft wait — checking connection in 5s...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        if (state.isConnected && client.info) {
+            state.recoveryTier = 0;
+            console.log('Tier 1: Connection restored naturally. Resetting recovery tier.');
+            return true;
         }
+        console.log('Tier 1: Connection did not recover. Escalating to Tier 2.');
+        return false;
     }
 
     if (state.recoveryTier === 2) {

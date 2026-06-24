@@ -44,27 +44,40 @@ import re
 
 pending_chatty_tasks: Dict[str, asyncio.Task] = {}
 
-def is_explicitly_tagged(text: str, bot_number: str | None, mentioned_jids: list[str] = None) -> bool:
-    """Checks if the bot is explicitly tagged via @bot, its phone number, or native WhatsApp mentions."""
-    if re.search(r'(?i)(?<!\w)@bot(?!\w)', text):
-        return True
-    if bot_number:
-        # Match bot_number with optional @ prefix, ensuring it's not part of a larger number
-        pattern = r'(?<!\d)@?' + re.escape(bot_number) + r'(?!\d)'
-        if re.search(pattern, text):
-            return True
-        # Check native WhatsApp mentions
-        if mentioned_jids:
-            bot_prefix = f"{bot_number}@"
-            if any(jid.startswith(bot_prefix) for jid in mentioned_jids):
+def is_explicitly_tagged(
+    text: str,
+    bot_number: str | None,
+    mentioned_jids: list[str] | None = None
+) -> bool:
+    """
+    Returns True if the bot was explicitly addressed.
+    Checks: (1) native @mention in mentionedJids list,
+            (2) bot's bare number appears in text,
+            (3) text contains @bot (case-insensitive).
+    """
+    if mentioned_jids and bot_number:
+        bare_bot = bot_number.split('@')[0] if '@' in bot_number else bot_number
+        for jid in mentioned_jids:
+            if jid.split('@')[0] == bare_bot:
                 return True
+
+    if bot_number:
+        bare_bot = bot_number.split('@')[0] if '@' in bot_number else bot_number
+        if bare_bot and re.search(re.escape(bare_bot), text):
+            return True
+
+    if re.search(r'(?i)@\s*bot\b', text):
+        return True
+
     return False
 
-def is_bot_mentioned(text: str, bot_number: str | None, is_group: bool, mentioned_jids: list[str] = None) -> bool:
-    """
-    Robust helper to determine if Chatty should be triggered implicitly or explicitly.
-    DMs are always considered 'mentioned' (implicitly). Groups require an explicit tag.
-    """
+def is_bot_mentioned(
+    text: str,
+    bot_number: str | None,
+    is_group: bool = True,
+    mentioned_jids: list[str] | None = None
+) -> bool:
+    """In DMs every message is implicit. Groups require explicit tag."""
     if not is_group:
         return True
     return is_explicitly_tagged(text, bot_number, mentioned_jids)
@@ -365,19 +378,17 @@ async def process_message(
 
         content_obj = data.message
         text = None
-        mentioned_jids = []
         if content_obj.conversation:
             text = content_obj.conversation
         elif content_obj.extendedTextMessage and "text" in content_obj.extendedTextMessage:
             text = content_obj.extendedTextMessage["text"]
 
-        # Extract mentions even if text was pulled from conversation
-        if content_obj.extendedTextMessage and "contextInfo" in content_obj.extendedTextMessage:
-            mentioned_jids = content_obj.extendedTextMessage["contextInfo"].get("mentionedJid", [])
-
-        # Fallback to root contextInfo if it exists
-        if not mentioned_jids and getattr(content_obj, "contextInfo", None):
-            mentioned_jids = content_obj.contextInfo.get("mentionedJid", [])
+        mentioned_jids: list[str] = []
+        ext_txt = getattr(data.message, 'extendedTextMessage', None)
+        if isinstance(ext_txt, dict):
+            ctx = ext_txt.get('contextInfo', {}) or {}
+            raw_jids = ctx.get('mentionedJid', []) or []
+            mentioned_jids = [j for j in raw_jids if isinstance(j, str)]
 
         if not text:
             return
@@ -387,62 +398,61 @@ async def process_message(
             db, chat_id, sender_id, sender_name, text
         )
 
-
-        # Media Handling
+        import tempfile
+        import os
         media_path = None
+        tmp_file = None
         if data.media_data:
             try:
-                media = data.media_data
-                if media and isinstance(media, dict) and 'data' in media and 'filename' in media:
-                    media_bytes = base64.b64decode(media['data'])
-                    safe_id = chat_id.replace('@', '_').replace('.', '_')
-                    contact_dir = Path(f"./data/contacts/{safe_id}/media")
-                    contact_dir.mkdir(parents=True, exist_ok=True)
-
-                    timestamp = int(time.time())
-                    filename = f"{timestamp}_{media['filename']}"
-                    file_path = contact_dir / filename
-
-                    with open(file_path, "wb") as f:
-                        f.write(media_bytes)
-
-                    media_path = str(file_path)
+                raw = base64.b64decode(data.media_data["data"])
+                ext = data.media_data.get("mimetype","").split("/")[-1] or "bin"
+                tmp_file = tempfile.NamedTemporaryFile(
+                    delete=False, suffix=f".{ext}", prefix="wa_media_"
+                )
+                tmp_file.write(raw)
+                tmp_file.close()
+                media_path = tmp_file.name
             except Exception as e:
-                logger.error(f"Failed to save media: {e}")
+                logger.error(f"Media decode failed: {e}")
+                media_path = None
 
-        # Ensure user profile is initialized
-        profile = read_profile(chat_id)
+        try:
+            # Ensure user profile is initialized
+            profile = read_profile(chat_id)
 
-        # Handle Commands (Pre-Split)
-        if text.startswith("!"):
-            await handle_command(text, chat_id, sender_id, db)
-            return
+            # Handle Commands (Pre-Split)
+            if text.startswith("!"):
+                await handle_command(text, chat_id, sender_id, db)
+                return
 
-        # Domain Split
-        is_dm = not chat_id.endswith("@g.us")
-        logger.info(f"Domain Split: chat={chat_id}, is_dm={is_dm}, mentioned_jids={mentioned_jids}")
-        if is_dm:
-            return await _handle_dm_message(
-                chat_id=chat_id,
-                sender_id=sender_id,
-                sender_name=sender_name,
-                text=text,
-                media_path=media_path,
-                msg_key=msg_key,
-                profile=profile
-            )
-        else:
-            return await _handle_group_message(
-                chat_id=chat_id,
-                sender_id=sender_id,
-                sender_name=sender_name,
-                text=text,
-                media_path=media_path,
-                msg_key=msg_key,
-                profile=profile,
-                chat_settings=chat_settings,
-                mentioned_jids=mentioned_jids
-            )
+            # Domain Split
+            is_dm = not chat_id.endswith("@g.us")
+            logger.info(f"Domain Split: chat={chat_id}, is_dm={is_dm}, mentioned_jids={mentioned_jids}")
+            if is_dm:
+                return await _handle_dm_message(
+                    chat_id=chat_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    text=text,
+                    media_path=media_path,
+                    msg_key=msg_key,
+                    profile=profile
+                )
+            else:
+                return await _handle_group_message(
+                    chat_id=chat_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    text=text,
+                    media_path=media_path,
+                    msg_key=msg_key,
+                    profile=profile,
+                    chat_settings=chat_settings,
+                    mentioned_jids=mentioned_jids
+                )
+        finally:
+            if tmp_file and os.path.exists(tmp_file.name):
+                os.unlink(tmp_file.name)
     except sqlalchemy.exc.SQLAlchemyError as exc:
         logger.error(
             "Database error while processing message: %s", exc
@@ -467,7 +477,6 @@ async def whatsapp_webhook(
     request: Request,  # required by slowapi
     payload: WhatsAppWebhookPayload,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
 ) -> dict:
     if payload.event == "messages.upsert":
         # Do NOT pass the request-scoped DB into background tasks; background
