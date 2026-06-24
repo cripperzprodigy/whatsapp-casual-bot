@@ -56,7 +56,12 @@ router.post('/sendText', async (req, res) => {
         });
     }
 
-    const { number, textMessage, options } = req.body;
+    // Adapt Python payload format
+    let { number, textMessage, options, to, message, quotedMsgId } = req.body;
+    
+    if (!number && to) number = to;
+    if (!textMessage && message) textMessage = { text: message };
+
     if (!number || !textMessage || typeof textMessage.text !== 'string' || textMessage.text.trim() === '') {
         return res.status(400).json({ error: 'Missing number or valid text' });
     }
@@ -66,6 +71,8 @@ router.post('/sendText', async (req, res) => {
 
         if (options && options.quoted) {
             sendOptions.quotedMessageId = options.quoted;
+        } else if (quotedMsgId) {
+            sendOptions.quotedMessageId = quotedMsgId;
         }
 
         const trimmedText = textMessage.text.trim();
@@ -78,10 +85,12 @@ router.post('/sendText', async (req, res) => {
 
         while (attempt <= maxRetries && !success) {
             try {
-                // Resolution fix applied here
                 const chatId = await resolveWhatsAppId(client, number);
 
-                const sendPromise = client.sendMessage(chatId, trimmedText, sendOptions);
+                const sendPromise = Object.keys(sendOptions).length > 0 
+                    ? client.sendMessage(chatId, trimmedText, sendOptions)
+                    : client.sendMessage(chatId, trimmedText);
+                    
                 let timeoutId;
                 const timeoutPromise = new Promise((_, reject) => {
                     timeoutId = setTimeout(() => reject(new Error('sendMessage timed out after 10 seconds')), 10000);

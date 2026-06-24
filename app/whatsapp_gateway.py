@@ -110,7 +110,7 @@ async def send_text_message(
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     f"{settings.WHATSAPP_GATEWAY_URL}/message/resolve-quote-id",
-                    json={"chatId": chat_id, "messageId": quoted_msg_id},
+                    json={"shortId": quoted_msg_id},
                     timeout=5.0
                 )
                 if resp.status_code == 200:
