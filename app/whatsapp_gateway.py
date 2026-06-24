@@ -115,8 +115,12 @@ async def send_text_message(
                 )
                 if resp.status_code == 200:
                     data = resp.json()
-                    quoted_msg_id = data.get('resolvedId')
-                    logger.debug(f"Resolved quote ID: {quoted_msg_id}")
+                    if data.get("success"):
+                        quoted_msg_id = data.get("serializedId")
+                        logger.debug(f"Resolved quote ID: {quoted_msg_id}")
+                    else:
+                        logger.warning(f"Failed to resolve quote ID {quoted_msg_id}: {data.get('error', 'Unknown error')}. Sending plain message.")
+                        quoted_msg_id = None
                 else:
                     logger.warning(f"Failed to resolve quote ID {quoted_msg_id}: {resp.text}. Sending plain message.")
                     quoted_msg_id = None

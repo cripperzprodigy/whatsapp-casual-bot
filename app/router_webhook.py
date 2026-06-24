@@ -200,10 +200,6 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
         if pending_chatty_tasks.get(chat_id) == asyncio.current_task():
             del pending_chatty_tasks[chat_id]
 
-def normalize_jid(jid: str) -> str:
-    if not jid: return ""
-    return jid.split('@')[0] if '@' in jid else jid
-
 def extract_context(message_content, bot_number: str | None, bot_known_ids: list[str]) -> tuple[str | None, str | None]:
     """
     Extracts quoted message context if the user is replying to the bot.
@@ -228,14 +224,14 @@ def extract_context(message_content, bot_number: str | None, bot_known_ids: list
     if not quoted_msg or not isinstance(quoted_msg, dict):
         return None, None
 
-    quoted_numeric = normalize_jid(quoted_sender)
-    bot_numerics = [normalize_jid(j) for j in bot_known_ids]
-    normalized_bot = normalize_jid(bot_number) if bot_number else ""
+    quoted_numeric = normalize_jid_for_comparison(quoted_sender)
+    bot_numerics = [normalize_jid_for_comparison(j) for j in bot_known_ids]
+    normalized_bot = normalize_jid_for_comparison(bot_number) if bot_number else ""
     if normalized_bot:
         bot_numerics.append(normalized_bot)
 
     is_reply_to_bot = quoted_numeric in bot_numerics
-    logger.debug(f"Reply Check: Quoted={quoted_sender} ({quoted_numeric}) vs Bot={bot_number} ({normalized_bot}). Match={is_reply_to_bot}")
+    logger.debug(f"Normalized Reply Check: {quoted_numeric} vs {normalized_bot}. Match={is_reply_to_bot}")
 
     if is_reply_to_bot:
         quoted_text = quoted_msg.get("conversation", "")
