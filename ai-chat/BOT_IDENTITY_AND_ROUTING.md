@@ -211,6 +211,46 @@ but store your expected bot number/ID in config or database.
 
 To prevent mention failures due to static configuration mismatches, the bot now features an **auto-sync mechanism**. 
 
+While standard Node.js applications simply rely on synchronous memory logic to verify their identities, the split architecture of `whatsapp-casual-bot` (Node.js for connection gateway + Python FastAPI for brain/routing) requires a robust bridge. 
+
+Instead of treating the `BOT_NUMBER` environment variable as strict immutable infrastructure (which breaks when casually switching test phones or instances), our `BotIdentityManager` actively repairs the `.env` file and hot-reloads the Python settings when it detects a discrepancy. This creates a self-healing system perfectly adapted for casual setups where QR codes might be scanned across multiple numbers.
+
+### Architecture & Data Flow
+
+```ascii
+Webhook Received OR Startup
+            |
+            v
+BotIdentityManager.get_bot_number()
+            |
+            v
+       Cache Hit? --YES--> Return cached value
+            |
+            NO
+            v
+   Fetch from Gateway --> Compare with ENV
+            |                  |
+            |              MISMATCH?
+            |               /     \
+            |             YES      NO
+            |             |        |
+            |             v        v
+            |  AUTO_SYNC_BOT_NUMBER?  |
+            |          /     \        |
+            |        YES      NO      |
+            |        |        |       |
+            |        v        v       |
+            | Update .env file Log warning
+            |        |        |       |
+            |        v        v       |
+            | Mark for reload Use detected
+            |        |        |       |
+            |        +------+-------+
+            |               |
+            v               v
+Cache detected value --> Return to caller
+```
+
 If the environment variable `AUTO_SYNC_BOT_NUMBER` is set to `True`, the `BotIdentityManager` will:
 1. Fetch the actual bot identity from the gateway.
 2. Compare it with the `BOT_NUMBER` in `.env`.
