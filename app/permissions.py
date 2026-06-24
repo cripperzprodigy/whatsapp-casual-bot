@@ -153,11 +153,18 @@ async def bootstrap_owner(db: Session) -> None:
     )
 
 
+def is_claim_ownership_available(db: Session) -> bool:
+    if settings.BOT_OWNER_ID:
+        return False
+    return db.query(BotAdmin).filter(
+        BotAdmin.role == OWNER_ROLE, BotAdmin.is_active.is_(True)
+    ).count() == 0
+
 async def try_claim_ownership(
     db: Session, user_id: str, is_group_chat: bool
 ) -> bool:
     global CLAIM_OWNERSHIP_ENABLED
-    if is_group_chat or not CLAIM_OWNERSHIP_ENABLED:
+    if is_group_chat:
         return False
 
     active_owner_count = (
@@ -170,6 +177,10 @@ async def try_claim_ownership(
     )
     if active_owner_count > 0:
         CLAIM_OWNERSHIP_ENABLED = False
+        return False
+
+    from app.config import settings as app_cfg
+    if app_cfg.BOT_OWNER_ID:
         return False
 
     await grant_role(db, user_id, OWNER_ROLE, user_id)

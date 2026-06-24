@@ -137,7 +137,7 @@ async def send_text_message(
                 if response.status_code == 202:
                     resp_data = DeliveryResponse(**response.json())
                     reason = resp_data.reason or resp_data.error_code
-                    logger.warning(f"Message queued by gateway for {chat_id}. Reason: {reason}")
+                    logger.warning(f"Command response queued by gateway for {chat_id}. User may not see immediate reply. Reason: {reason}")
                     
                     if reason == "CLIENT_SETTLING":
                         # Increase wait time to 6s before retry, wait longer than settling period

@@ -35,7 +35,7 @@ from app.permissions import (
 logger = logging.getLogger(__name__)
 
 
-async def _build_help_text(role: str, is_group_chat: bool) -> str:
+async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     lines = ["🤖 *WhatsApp Casual Bot Commands*\n"]
 
     lines.extend([
@@ -103,9 +103,9 @@ async def _build_help_text(role: str, is_group_chat: bool) -> str:
         ])
 
     if role == PUBLIC_ROLE and not is_group_chat:
-        from app.permissions import CLAIM_OWNERSHIP_ENABLED
+        from app.permissions import is_claim_ownership_available
 
-        if CLAIM_OWNERSHIP_ENABLED:
+        if is_claim_ownership_available(db):
             lines.extend([
                 "🔑 *Setup*",
                 "└ `!claim_ownership` - Claim initial bot ownership\n"
@@ -123,13 +123,13 @@ async def handle_command(  # Issue 13: added return type
 
     command = parts[0].lower()
     args = parts[1:]
-    settings = get_chat_settings(db, chat_id)
+    chat_settings = get_chat_settings(db, chat_id)
     user_role = await get_user_role(db, sender_id)
     is_group_chat = chat_id.endswith("@g.us")
 
     try:
         if command == "!help":
-            help_text = await _build_help_text(user_role, is_group_chat)
+            help_text = await _build_help_text(db, user_role, is_group_chat)
             await send_text_message(chat_id, help_text)
 
         elif command == "!auto":
@@ -141,11 +141,11 @@ async def handle_command(  # Issue 13: added return type
                             "🚫 Access Denied: This command requires Admin or Owner privileges.",
                         )
                     else:
-                        settings.auto_translate_enabled = (args[0] == "on")
+                        chat_settings.auto_translate_enabled = (args[0] == "on")
                         db.commit()
                         state = (
                             "ON"
-                            if settings.auto_translate_enabled
+                            if chat_settings.auto_translate_enabled
                             else "OFF"
                         )
                         await send_text_message(
@@ -160,7 +160,7 @@ async def handle_command(  # Issue 13: added return type
                             "🚫 Access Denied: This command requires Admin or Owner privileges.",
                         )
                     else:
-                        settings.auto_translate_enabled = None
+                        chat_settings.auto_translate_enabled = None
                         db.commit()
                         await send_text_message(
                             chat_id,
@@ -176,7 +176,7 @@ async def handle_command(  # Issue 13: added return type
                 )
             elif len(args) == 1:
                 if args[0] == "global":
-                    settings.default_target_language = None
+                    chat_settings.default_target_language = None
                     db.commit()
                     await send_text_message(
                         chat_id,
@@ -184,7 +184,7 @@ async def handle_command(  # Issue 13: added return type
                         "GLOBAL configuration.",
                     )
                 else:
-                    settings.default_target_language = args[0]
+                    chat_settings.default_target_language = args[0]
                     db.commit()
                     await send_text_message(
                         chat_id,
@@ -202,7 +202,7 @@ async def handle_command(  # Issue 13: added return type
                             "🚫 Access Denied: This command requires Admin or Owner privileges.",
                         )
                     else:
-                        settings.ignored_languages = None
+                        chat_settings.ignored_languages = None
                         db.commit()
                         await send_text_message(
                             chat_id,
@@ -213,8 +213,8 @@ async def handle_command(  # Issue 13: added return type
 
                 # Fetch explicit ignored list; treat None as empty list
                 ignored = (
-                    list(settings.ignored_languages)
-                    if settings.ignored_languages is not None
+                    list(chat_settings.ignored_languages)
+                    if chat_settings.ignored_languages is not None
                     else []
                 )
 
@@ -227,7 +227,7 @@ async def handle_command(  # Issue 13: added return type
                     else:
                         if args[1] not in ignored:
                             ignored.append(args[1])
-                            settings.ignored_languages = ignored
+                            chat_settings.ignored_languages = ignored
                             db.commit()
                         await send_text_message(
                             chat_id,
@@ -242,14 +242,14 @@ async def handle_command(  # Issue 13: added return type
                     else:
                         if args[1] in ignored:
                             ignored.remove(args[1])
-                            settings.ignored_languages = ignored
+                            chat_settings.ignored_languages = ignored
                             db.commit()
                         await send_text_message(
                             chat_id,
                             f"Removed '{args[1]}' from explicit ignore list.",
                         )
                 elif subcmd == "list":
-                    if settings.ignored_languages is None:
+                    if chat_settings.ignored_languages is None:
                         await send_text_message(
                             chat_id,
                             "Ignored languages currently following "
@@ -290,8 +290,8 @@ async def handle_command(  # Issue 13: added return type
             if target_lang == "auto":
                 # Cascade: Chat Setting -> Global -> Default 'en'
                 target_lang = (
-                    settings.default_target_language
-                    if settings.default_target_language is not None
+                    chat_settings.default_target_language
+                    if chat_settings.default_target_language is not None
                     else (app_settings.GLOBAL_TARGET_LANGUAGE or "en")
                 )
             if text_to_translate.strip():
@@ -708,19 +708,18 @@ async def handle_command(  # Issue 13: added return type
                 os._exit(0)
 
         elif command == "!claim_ownership":
-            claimed = await try_claim_ownership(
-                db, sender_id, is_group_chat
-            )
+            claimed = await try_claim_ownership(db, sender_id, is_group_chat)
             if claimed:
                 await send_text_message(
                     chat_id,
-                    "Ownership successfully claimed. You are now the bot owner.",
+                    "👑 Ownership claimed successfully! You are now the bot Owner.\n"
+                    "Use `!help` to see all available commands."
                 )
             else:
-                await send_text_message(
-                    chat_id,
-                    "Ownership claim is not available. It only works once in a private chat when no owner exists.",
-                )
+                if is_group_chat:
+                    await send_text_message(chat_id, "⚠️ Ownership can only be claimed in a private message.")
+                else:
+                    await send_text_message(chat_id, "⚠️ Ownership claim unavailable. An owner already exists or is configured via environment.")
 
         elif command == "!search":
             if len(args) > 0:
