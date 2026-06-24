@@ -479,7 +479,9 @@ async def whatsapp_webhook(
     background_tasks: BackgroundTasks,
 ) -> dict:
     if payload.event == "messages.upsert":
-        # Do NOT pass the request-scoped DB into background tasks; background
-        # workers must create and manage their own DB sessions.
-        background_tasks.add_task(process_message, payload)
+        # WARNING: BackgroundTasks.add_task() does NOT properly execute
+        # async functions. It wraps them in a regular callable, so the
+        # coroutine is never awaited and silently does nothing. We must
+        # use asyncio.create_task() directly instead.
+        asyncio.create_task(process_message(payload))
     return {"status": "ok"}

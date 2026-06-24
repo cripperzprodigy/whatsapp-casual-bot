@@ -48,3 +48,31 @@ During session recovery loops in the Node.js gateway, synchronous retries often 
 **Context**: `!chatty_delay` and `!chatty_mode` referenced `is_owner` as a variable instead of awaiting the async function, causing a `NameError` that was silently caught by the try/except block.
 **Decision**: All async functions must be explicitly awaited before use in conditions. Never reference an async function as if it were a variable.
 **Consequence**: Prevents silent failures where coroutine objects are evaluated as truthy in boolean contexts instead of the actual result.
+## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
+**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
+**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
+**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
+## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
+**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
+**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
+**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
+## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
+**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
+**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
+**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
+## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
+**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
+**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
+**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
+## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
+**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
+**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
+**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
+## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
+**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
+**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
+**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
+## Decision #13: Use `asyncio.create_task()` for Background Work — Never `BackgroundTasks.add_task()` with Coroutines
+**Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
+**Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
+**Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
