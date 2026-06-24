@@ -86,6 +86,7 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
             "├ `!export ledger` - Export group contacts",
             "├ `!broadcast <msg>` - Message all chats",
             "├ `!stats` - System statistics",
+            "├ `!botid` - Show bot identity status",
             "├ `!auto global` - Reset auto-translate",
             "└ `!ignore global` - Reset ignore list\n"
         ])
@@ -551,6 +552,46 @@ async def handle_command(  # Issue 13: added return type
 
         elif command == "!ping":
             await send_text_message(chat_id, "pong")
+
+        elif command == "!botid":
+            if not await is_admin(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Admin or Owner privileges.",
+                )
+            else:
+                from app.config import BotIdentityManager
+                import time
+                
+                env_val = getattr(app_settings, 'BOT_NUMBER', 'Not set')
+                
+                now = time.time()
+                ttl = getattr(app_settings, 'BOT_IDENTITY_CACHE_TTL', 300)
+                cache_status = "stale"
+                if (BotIdentityManager._cache is not None 
+                    and BotIdentityManager._cache_timestamp is not None
+                    and (now - BotIdentityManager._cache_timestamp) < ttl):
+                    cache_status = "fresh"
+                
+                detected = BotIdentityManager.get_bot_number()
+                
+                match_status = "MATCH" if str(env_val) == str(detected) else "MISMATCH"
+                recommendation = "All good."
+                if match_status == "MISMATCH":
+                    if getattr(app_settings, 'AUTO_SYNC_BOT_NUMBER', False):
+                        recommendation = "Restart the bot; AUTO_SYNC_BOT_NUMBER=True will sync it at startup."
+                    else:
+                        recommendation = "Update BOT_NUMBER in .env to match the detected value, or set AUTO_SYNC_BOT_NUMBER=True and restart."
+                        
+                msg = (
+                    "*Bot Identity Status*\n"
+                    f"ENV value: {env_val}\n"
+                    f"Detected value: {detected}\n"
+                    f"Cache status: {cache_status}\n"
+                    f"Match status: {match_status}\n"
+                    f"Recommendation: {recommendation}"
+                )
+                await send_text_message(chat_id, msg)
 
         elif command == "!owner":
             if not await is_owner(db, sender_id):

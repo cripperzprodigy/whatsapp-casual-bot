@@ -86,6 +86,14 @@ async def startup_event() -> None:
     detected = BotIdentityManager.get_bot_number()
     if detected:
         logger.info(f"[Startup] Bot identity resolved: {detected}")
+        env_number = getattr(settings, 'BOT_NUMBER', None)
+        if env_number and env_number != detected:
+            logger.critical(f"[Startup] CRITICAL WARNING: Bot identity mismatch! ENV: {env_number}, Gateway: {detected}")
+            if getattr(settings, 'AUTO_SYNC_BOT_NUMBER', False):
+                logger.info("[Startup] AUTO_SYNC_BOT_NUMBER is True. Syncing...")
+                if BotIdentityManager.sync_bot_number_to_env():
+                    from app.config import safe_reload_settings
+                    safe_reload_settings()
     else:
         logger.warning(
             "[Startup] Bot identity could not be resolved. "

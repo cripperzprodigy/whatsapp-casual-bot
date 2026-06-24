@@ -204,3 +204,21 @@ In general, the safest approach is:
 Use provider metadata to identify the bot number,
 but store your expected bot number/ID in config or database.
 ```
+
+---
+
+## 6. Auto-Sync Bot Number (WhatsApp Casual Bot Specific)
+
+To prevent mention failures due to static configuration mismatches, the bot now features an **auto-sync mechanism**. 
+
+If the environment variable `AUTO_SYNC_BOT_NUMBER` is set to `True`, the `BotIdentityManager` will:
+1. Fetch the actual bot identity from the gateway.
+2. Compare it with the `BOT_NUMBER` in `.env`.
+3. If they differ, automatically update the `.env` file using a safe, file-locked read-modify-write operation.
+4. Reload its settings so the new value is immediately active.
+
+### Troubleshooting Identity Mismatches
+If you notice the bot is not responding to `@mentions` in group chats:
+1. Run the `!botid` command to view the diagnostic status.
+2. Check if the "Match status" is "MISMATCH".
+3. If mismatched, either manually update `BOT_NUMBER` in `.env` to match the "Detected value" and restart, or set `AUTO_SYNC_BOT_NUMBER=True` in `.env` and restart the bot so it automatically corrects itself.

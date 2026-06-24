@@ -1,5 +1,8 @@
 import logging
 import time
+import os
+from pathlib import Path
+from filelock import FileLock
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from typing import Optional
@@ -15,7 +18,6 @@ class BotIdentityManager:
     """
     _cache: str | None = None
     _cache_timestamp: float | None = None
-    _cache_ttl: int = 300  # seconds (5 minutes)
 
     @classmethod
     def get_bot_number(cls) -> str | None:
@@ -24,11 +26,16 @@ class BotIdentityManager:
         Fetches from gateway if cache is expired, falls back to ENV.
         """
         now = time.time()
+        
+        # We need to defer accessing settings until it's instantiated
+        # but we can safely access global settings here since get_bot_number
+        # is called at runtime/startup, not at module definition time.
+        ttl = getattr(settings, 'BOT_IDENTITY_CACHE_TTL', 300)
 
         # Return cached value if still fresh
         if (cls._cache is not None
                 and cls._cache_timestamp is not None
-                and (now - cls._cache_timestamp) < cls._cache_ttl):
+                and (now - cls._cache_timestamp) < ttl):
             return cls._cache
 
         # Attempt runtime detection from Node.js gateway
@@ -84,6 +91,58 @@ class BotIdentityManager:
         cls._cache_timestamp = None
         logger.debug("BotIdentityManager cache invalidated.")
 
+    @classmethod
+    def sync_bot_number_to_env(cls) -> bool:
+        """
+        Fetches current bot identity from gateway.
+        Compares with .env BOT_NUMBER value.
+        If different, updates .env file atomically (read-modify-write with file lock).
+        Logs the change with before/after values.
+        Returns True if update was made, False otherwise.
+        """
+        try:
+            import httpx
+            gateway_url = getattr(settings, 'WHATSAPP_GATEWAY_URL', None)
+            if not gateway_url:
+                return False
+            url = f"{gateway_url.rstrip('/')}/whatsapp/bot-identity"
+            with httpx.Client(timeout=2.0) as http:
+                resp = http.get(url)
+                if resp.status_code != 200:
+                    return False
+                data = resp.json()
+                detected = data.get('number')
+                if not detected:
+                    return False
+
+            env_number = getattr(settings, 'BOT_NUMBER', None)
+            if detected != env_number:
+                logger.info(f"Auto-syncing BOT_NUMBER in .env: {env_number} -> {detected}")
+                env_path = Path(".env")
+                lock = FileLock(".env.lock")
+                with lock:
+                    lines = []
+                    if env_path.exists():
+                        with open(env_path, "r", encoding="utf-8") as f:
+                            lines = f.readlines()
+                    
+                    found = False
+                    for i, line in enumerate(lines):
+                        if line.startswith("BOT_NUMBER="):
+                            lines[i] = f"BOT_NUMBER={detected}\n"
+                            found = True
+                            break
+                    if not found:
+                        lines.append(f"\nBOT_NUMBER={detected}\n")
+                    
+                    with open(env_path, "w", encoding="utf-8") as f:
+                        f.writelines(lines)
+                return True
+            return False
+        except Exception as exc:
+            logger.error(f"Failed to auto-sync bot number: {exc}")
+            return False
+
 
 class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
@@ -120,6 +179,8 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # Issue 5: BOT_NUMBER used to prevent self-loops — warn if empty
     BOT_NUMBER: Optional[str] = None
+    AUTO_SYNC_BOT_NUMBER: bool = False
+    BOT_IDENTITY_CACHE_TTL: int = 300
     # Bootstrap Owner configured via .env
     BOT_OWNER_ID: Optional[str] = None
     # Issue 2: buffer size, now referenced as a named config value
@@ -285,3 +346,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+def safe_reload_settings():
+    """
+    Re-reads .env file, re-validates all settings, invalidates BotIdentityManager cache.
+    """
+    global settings
+    try:
+        settings = Settings()
+        BotIdentityManager.invalidate_cache()
+        logger.info("Settings reloaded successfully.")
+    except Exception as exc:
+        logger.error(f"Failed to reload settings: {exc}")
