@@ -1,5 +1,9 @@
 # Architectural Decisions
 
+### Global Event-Driven Cache for WhatsApp Message IDs
+**Decision**: In `whatsapp-service/src/events.js`, we intercept `client.on('message')` events and locally cache short message IDs against their full serialized IDs inside a standard `Map()` up to 1000 items. We expose `/message/resolve-quote-id` so Python can do an O(1) lookup.
+**Rationale**: `whatsapp-web.js` forces the usage of full serialized IDs (e.g., `false_1234@g.us_3EB0...`) when quoting a message in a reply. The Python backend only possesses the short message ID keys extracted from the webhook payload (`3EB0...`). The initial attempt to resolve this via `chat.fetchMessages({ limit: 50 })` was deemed highly inefficient and unreliable. A rolling LRU Map completely eliminates disk/network lookup time, returning the precise Serialized ID perfectly unless the target message has fallen out of the top 1000 queue (at which point the Python client will gracefully fall back to a non-quoted reply).
+
 ## ADR-018 — Threaded Conversation Support & Context Extraction
 
 Date    : 2026-06-25
