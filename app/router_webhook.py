@@ -292,6 +292,13 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
             )
 
 
+def normalize_chat_id(raw_id: str) -> str:
+    """
+    Normalizes a WhatsApp ID.
+    If it's an @lid, we accept it as is (since we can't synchronously resolve it to @s.whatsapp.net here).
+    """
+    return raw_id
+
 async def process_message(
     payload: WhatsAppWebhookPayload
 ) -> None:
@@ -305,22 +312,27 @@ async def process_message(
         health = await check_gateway_health()
         if not health.get("isConnected", False) or health.get("recoveryTier", 0) > 0:
             logger.warning(f"Gateway is in recovery/disconnected. Processing may be queued or fail. (Health: {health})")
-            # For DMs, we could choose to return early or let it queue
-            # Commands are safe to queue, but we might want to skip RAG
-            # For now, we will log it. Heavy AI tasks might still run, but their output will be queued.
 
-        chat_id = msg_key.remoteJid
-        sender_id = msg_key.participant or msg_key.remoteJid
+        raw_chat_id = msg_key.remoteJid
+        raw_sender_id = msg_key.participant or msg_key.remoteJid
+        chat_id = normalize_chat_id(raw_chat_id)
+        sender_id = normalize_chat_id(raw_sender_id)
         sender_name = data.pushName or "Unknown"
 
         # System Domain Guard Rail
-        # Ignore non-conversational domains to prevent the bot from attempting
-        # to chat with Status updates, Channels, or Linked Devices.
-        # NOTE: The Node.js gateway normalizes @lid → @s.whatsapp.net for legitimate user/group JIDs.
-        # Any @lid suffix that reaches Python after normalization is a true system domain (e.g., system notifications).
-        if chat_id == "status@broadcast" or chat_id.endswith("@broadcast") or chat_id.endswith("@newsletter") or chat_id.endswith("@lid"):
+        # Ignore non-conversational domains (broadcasts, newsletters)
+        if chat_id == "status@broadcast" or chat_id.endswith("@broadcast") or chat_id.endswith("@newsletter"):
             logger.debug(f"Ignoring non-conversational system domain: {chat_id}")
             return
+
+        # Handle DM LID logic
+        is_group = chat_id.endswith("@g.us")
+        if not is_group:
+            if not (chat_id.endswith("@s.whatsapp.net") or chat_id.endswith("@lid")):
+                logger.debug(f"Ignoring truly invalid sender: {chat_id}")
+                return
+            if chat_id.endswith("@lid"):
+                logger.debug(f"Processing DM from (possibly LID): {chat_id}")
 
         # Security: Check Whitelist
         if settings.ENFORCE_WHITELIST and settings.WHITELISTED_CHATS:
