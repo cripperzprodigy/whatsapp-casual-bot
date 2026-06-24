@@ -262,9 +262,15 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             pending_chatty_tasks[chat_id].cancel()
             del pending_chatty_tasks[chat_id]
 
+        context_type = None
+        context_text = None
+        if context_tuple and context_tuple[0] == "reply":
+            context_type = "reply_thread"
+            context_text = f"User is replying to your previous message: '{context_tuple[1]}'. Their new message is:"
+
         # Process message WITH reply generation in the same request cycle
         logger.debug(f"DM: Calling process_message with generate_reply=True for {chat_id}")
-        ai_reply = await engine.process_message(text, media_path, generate_reply=True, context=context_tuple)
+        ai_reply = await engine.process_message(text, media_path, generate_reply=True, context_type=context_type, context_text=context_text)
         logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
             await send_text_message(
@@ -295,7 +301,9 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
     - If Chatty did NOT consume the message -> Run Auto-Translation.
     """
     bot_id = BotIdentityManager.get_bot_number()
-    is_explicit_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
+    is_text_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
+    has_reply_context = (context_tuple is not None) and (context_tuple[0] == "reply")
+    is_explicit_mention = is_text_mention or has_reply_context
     logger.info(f"Group message received: chat={chat_id}, sender={sender_id}, Mentioned={is_explicit_mention}, mentioned_jids={mentioned_jids}, bot_id={bot_id}")
     message_consumed_by_chatty = False
 
@@ -309,7 +317,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
             nonlocal trigger
             nonlocal burst_count
 
-            if is_bot_mentioned(text, bot_id, is_group=True, mentioned_jids=mentioned_jids):
+            if is_explicit_mention:
                 trigger = True
                 p["message_counter"] = 0
             elif chatty_status:
@@ -333,12 +341,20 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                     pending_chatty_tasks[chat_id].cancel()
                     del pending_chatty_tasks[chat_id]
 
-                # If it's explicitly tagged, and no reply context, it's a tag context
-                active_context = context_tuple
-                if not active_context[0]:
-                    active_context = ("tag", text)
+                context_type = None
+                context_text = None
+                
+                if has_reply_context:
+                    quoted_text = context_tuple[1]
+                    context_type = "reply_thread"
+                    context_text = f"User is replying to your previous message: '{quoted_text}'. Their new message is:"
+                elif is_text_mention:
+                    context_type = "explicit_tag"
+                    context_text = f"User @{sender_name} tagged you in the group and said:"
 
-                ai_reply = await engine.process_message(text, media_path, generate_reply=True, context=active_context)
+                logger.debug(f"Group: Context extracted - type={context_type}, text={context_text}")
+
+                ai_reply = await engine.process_message(text, media_path, generate_reply=True, context_type=context_type, context_text=context_text)
                 if ai_reply:
                     await send_text_message(
                         chat_id,
@@ -349,7 +365,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                 return
             else:
                 # ── Path B: Frequency-Based ── Delayed background task ──
-                await engine.process_message(text, media_path, generate_reply=False, context=context_tuple)
+                await engine.process_message(text, media_path, generate_reply=False, context_type=None, context_text=None)
 
                 d_min = updated_profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
                 d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
@@ -370,7 +386,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
         else:
             # Still save to RAG context for future retrieval (Silent Observer)
             # Even if chatty is disabled entirely, we log it to memory context
-            await engine.process_message(text, media_path, generate_reply=False, context=context_tuple)
+            await engine.process_message(text, media_path, generate_reply=False, context_type=None, context_text=None)
 
             # If chatty was supposed to trigger but didn't, or was evaluated,
             # we should still mark it as consumed ONLY IF chatty_status is True.

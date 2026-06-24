@@ -1,4 +1,4 @@
-# Investigation: Threaded Conversation (Reply) Not Triggering
+# [RESOLVED] Investigation: Threaded Conversation (Reply) Not Triggering
 
 ## 1. Problem Statement
 In group chats, when a user uses the native WhatsApp "Reply" feature to respond directly to a message sent by the bot (e.g., "Yes, I'm here. How can I help you?"), the bot fails to respond immediately. It treats the message as a standard group message rather than a direct interaction.
@@ -48,5 +48,6 @@ def update_counter(p):
         # ... frequency logic
 ```
 
-## 4. Next Steps
-If this assessment aligns with expectations, I will execute the fix in `app/router_webhook.py` to restore native reply functionality.
+## 4. Resolution
+This issue has been successfully resolved. 
+The routing logic in `router_webhook.py` has been updated to correctly prioritize `is_reply_to_bot` and evaluate it as a valid `is_explicit_mention` trigger. Furthermore, `AIMemoryEngine` now successfully accepts `context_text` and injects it directly alongside the user prompt.
