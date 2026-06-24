@@ -93,7 +93,7 @@ async def ask_llm(
 
         # Support JSON mode if requested
         if task_type == "json":
-            kwargs["response_format"] = { "type": "json_object" }
+            kwargs["response_format"] = { "type": "text" }
 
         response = await llm_client.chat.completions.create(**kwargs)
 

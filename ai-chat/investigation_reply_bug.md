@@ -50,4 +50,6 @@ def update_counter(p):
 
 ## 4. Resolution
 This issue has been successfully resolved. 
-The routing logic in `router_webhook.py` has been updated to correctly prioritize `is_reply_to_bot` and evaluate it as a valid `is_explicit_mention` trigger. Furthermore, `AIMemoryEngine` now successfully accepts `context_text` and injects it directly alongside the user prompt.
+1. **Trigger Logic Fix**: The routing logic in `router_webhook.py` has been completely decoupled so `is_explicit_mention` and `is_reply_to_bot` evaluate independently into `trigger_reason` ('TAG' vs 'REPLY'), ensuring replies never get suppressed by a failed tag check.
+2. **Response Quoting**: The `send_text_message` function is now actively passed `reply_to_msg_id=getattr(msg_key, 'id', None)` so the bot's replies actually quote the user's message natively in WhatsApp.
+3. **API Fix**: Addressed the HTTP 400 LLM errors by replacing the invalid `json_object` format with `"text"` for the generic JSON memory summarization task in `ai_client.py`.

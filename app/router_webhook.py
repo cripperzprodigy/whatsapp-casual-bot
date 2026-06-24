@@ -276,7 +276,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             await send_text_message(
                 chat_id,
                 ai_reply,
-                reply_to_msg_id=None,
+                reply_to_msg_id=getattr(msg_key, 'id', None),
                 quoted_participant=None,
             )
         else:
@@ -303,27 +303,34 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
     bot_id = BotIdentityManager.get_bot_number()
     is_text_mention = is_explicitly_tagged(text, bot_id, mentioned_jids)
     has_reply_context = (context_tuple is not None) and (context_tuple[0] == "reply")
-    is_explicit_mention = is_text_mention or has_reply_context
-    logger.info(f"Group message received: chat={chat_id}, sender={sender_id}, Mentioned={is_explicit_mention}, mentioned_jids={mentioned_jids}, bot_id={bot_id}")
+    logger.info(f"Group message received: chat={chat_id}, sender={sender_id}, TextMention={is_text_mention}, ReplyContext={has_reply_context}, bot_id={bot_id}")
     message_consumed_by_chatty = False
 
     chatty_status = profile.get("chatty_status", settings.CHATTY_GROUP_DEFAULT)
 
     try:
         trigger = False
+        trigger_reason = None
         burst_count = 1
 
         def update_counter(p):
             nonlocal trigger
+            nonlocal trigger_reason
             nonlocal burst_count
 
-            if is_explicit_mention:
+            if has_reply_context:
                 trigger = True
+                trigger_reason = "REPLY"
+                p["message_counter"] = 0
+            elif is_text_mention:
+                trigger = True
+                trigger_reason = "TAG"
                 p["message_counter"] = 0
             elif chatty_status:
                 p["message_counter"] = p.get("message_counter", 0) + 1
                 if p["message_counter"] >= p.get("chatty_frequency", settings.CHATTY_DEFAULT_FREQUENCY):
                     trigger = True
+                    trigger_reason = "RANDOM"
                     p["message_counter"] = 0
             burst_count = p.get("chatty_burst", settings.CHATTY_DEFAULT_BURST)
 
@@ -332,10 +339,10 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
 
         engine = AIMemoryEngine(chat_id, sender_name, profile=updated_profile)
 
-        logger.info(f"Group: trigger={trigger}, is_explicit_mention={is_explicit_mention}, chatty_status={chatty_status} for {chat_id}")
+        logger.info(f"Group: trigger={trigger}, reason={trigger_reason}, chatty_status={chatty_status} for {chat_id}")
         if trigger:
             message_consumed_by_chatty = True
-            if is_explicit_mention:
+            if trigger_reason in ["REPLY", "TAG"]:
                 # ── Path A: Explicit Mention ── Immediate inline reply ──
                 if chat_id in pending_chatty_tasks:
                     pending_chatty_tasks[chat_id].cancel()
@@ -344,15 +351,15 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                 context_type = None
                 context_text = None
                 
-                if has_reply_context and is_text_mention:
+                if trigger_reason == "REPLY" and is_text_mention:
                     quoted_text = context_tuple[1]
                     context_type = "explicit_tag_and_reply"
                     context_text = f"User @{sender_name} explicitly tagged you and is replying to your previous message: '{quoted_text}'. Their new message is:"
-                elif has_reply_context:
+                elif trigger_reason == "REPLY":
                     quoted_text = context_tuple[1]
                     context_type = "reply_thread"
                     context_text = f"User is replying to your previous message: '{quoted_text}'. Their new message is:"
-                elif is_text_mention:
+                elif trigger_reason == "TAG":
                     context_type = "explicit_tag"
                     context_text = f"User @{sender_name} tagged you in the group and said:"
 
@@ -363,7 +370,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                     await send_text_message(
                         chat_id,
                         ai_reply,
-                        reply_to_msg_id=None,
+                        reply_to_msg_id=getattr(msg_key, 'id', None),
                         quoted_participant=None,
                     )
                 return
