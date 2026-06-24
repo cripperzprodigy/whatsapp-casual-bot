@@ -1,4 +1,5 @@
 # Changelog
+- **LLM Timeout Config**: Added `LLM_TIMEOUT_SECONDS` (default: 180s) to `app/config.py` and `.env.example` to ensure local LLMs with high latency do not trigger premature HTTP read timeouts before WhatsApp can fetch and attach the context.
 - **JID Normalizer Helper**: Added a direct `normalize_jid` helper in `extract_context` to safely strip domain suffixes for robust `is_reply_to_bot` detection.
 - **Explicit QuotedMsgId Routing**: Completely standardized the `quoted_msg_id` naming convention from the router down to `whatsapp_gateway.py`'s payload generation to ensure Node.js correctly receives the parameter for visual quoting.
 - **Empty Context on Tag/Reply**: Resolved an issue where tagging or replying to the bot constructed a context introduction string ("User said:") but failed to actually concatenate the message content. `router_webhook.py` now passes the fully built sentence (e.g., "User @Name tagged you... and said: '{message}'") directly into `process_message`.

@@ -161,3 +161,7 @@ During session recovery loops in the Node.js gateway, synchronous retries often 
 **Context**: `background_tasks.add_task(process_message, payload)` in `whatsapp_webhook()` silently dropped every DM message because FastAPI's `BackgroundTasks.add_task()` wraps async functions in a regular callable, so the coroutine is never awaited.
 **Decision**: Always use `asyncio.create_task()` directly for fire-and-forget async work. `BackgroundTasks.add_task()` only works with synchronous (non-async) callables.
 **Consequence**: Prevents the entire class of "silent message loss" bugs where incoming webhooks are silently ignored.
+
+### LLM Timeout Configurability
+**Decision**: Expose LLM_TIMEOUT_SECONDS (default: 180s) via config.py and pass it to httpx.Timeout for all AsyncOpenAI operations.
+**Rationale**: Local LLM inferences (e.g. LM Studio, Ollama) on slow hardware often take ~40-120 seconds. Standard httpx timeouts kill the connection prematurely, causing race conditions and logic drop-offs (e.g. failing to pass quoted message context downstream).

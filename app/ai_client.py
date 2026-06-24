@@ -16,9 +16,12 @@ class TranslationError(Exception):
 _TEMP_PRECISE = 0.3   # translation / language detection tasks
 _TEMP_CREATIVE = 0.7  # summary / search / generic tasks
 
+import httpx
+
 llm_client = AsyncOpenAI(
     base_url=settings.LLM_ENDPOINT,
     api_key=settings.LLM_API_KEY or "placeholder-key",
+    timeout=httpx.Timeout(settings.LLM_TIMEOUT_SECONDS),
 )
 
 _PRECISE_TASKS = {"translation", "language_detection"}

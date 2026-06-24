@@ -236,6 +236,7 @@ class Settings(BaseSettings):
     LLM_ENDPOINT: str = "https://api.openai.com/v1"
     LLM_API_KEY: str = ""
     DEFAULT_MODEL_NAME: str = "gpt-3.5-turbo"
+    LLM_TIMEOUT_SECONDS: int = 180
 
     # ------------------------------------------------------------------ #
     #  Database
