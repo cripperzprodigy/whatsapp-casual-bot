@@ -13,7 +13,7 @@ VALID_ROLES = {OWNER_ROLE, ADMIN_ROLE}
 
 # This is intentionally runtime-only. It enables a one-time ownership claim
 # when the bot starts with no configured owner and no BOT_OWNER_ID.
-CLAIM_OWNERSHIP_ENABLED = False
+# (Flag removed in favor of persistent DB checks)
 
 
 def _now_utc() -> datetime:
@@ -146,8 +146,6 @@ async def bootstrap_owner(db: Session) -> None:
         logger.info("Bootstrap Owner created from ENV: %s", owner_id)
         return
 
-    global CLAIM_OWNERSHIP_ENABLED
-    CLAIM_OWNERSHIP_ENABLED = True
     logger.warning(
         "No owner configured. Claim ownership via !claim_ownership in a private chat."
     )
@@ -156,14 +154,15 @@ async def bootstrap_owner(db: Session) -> None:
 def is_claim_ownership_available(db: Session) -> bool:
     if settings.BOT_OWNER_ID:
         return False
-    return db.query(BotAdmin).filter(
-        BotAdmin.role == OWNER_ROLE, BotAdmin.is_active.is_(True)
-    ).count() == 0
+    return (
+        db.query(BotAdmin)
+        .filter(BotAdmin.role == OWNER_ROLE, BotAdmin.is_active.is_(True))
+        .count()
+    ) == 0
 
 async def try_claim_ownership(
     db: Session, user_id: str, is_group_chat: bool
 ) -> bool:
-    global CLAIM_OWNERSHIP_ENABLED
     if is_group_chat:
         return False
 
@@ -176,7 +175,6 @@ async def try_claim_ownership(
         .count()
     )
     if active_owner_count > 0:
-        CLAIM_OWNERSHIP_ENABLED = False
         return False
 
     from app.config import settings as app_cfg
@@ -184,7 +182,6 @@ async def try_claim_ownership(
         return False
 
     await grant_role(db, user_id, OWNER_ROLE, user_id)
-    CLAIM_OWNERSHIP_ENABLED = False
     logger.info("Bootstrap Owner claimed by user: %s", user_id)
     return True
 

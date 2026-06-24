@@ -30,6 +30,7 @@ from app.permissions import (
     list_active_roles,
     revoke_role,
     try_claim_ownership,
+    is_claim_ownership_available,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,8 +104,6 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
         ])
 
     if role == PUBLIC_ROLE and not is_group_chat:
-        from app.permissions import is_claim_ownership_available
-
         if is_claim_ownership_available(db):
             lines.extend([
                 "🔑 *Setup*",
