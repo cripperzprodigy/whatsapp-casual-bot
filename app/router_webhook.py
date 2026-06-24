@@ -109,15 +109,40 @@ def is_explicitly_tagged(
     if mentioned_jids:
         for jid in mentioned_jids:
             if normalize_jid_for_comparison(jid) == bare_bot:
+                import logging
+                logging.getLogger(__name__).debug(f"Mention detected via JID match for bot {bot_number}")
                 return True
 
     # 2. Check if bot's bare number is literally present in text
     if bare_bot and re.search(re.escape(bare_bot), text or ""):
+        import logging
+        logging.getLogger(__name__).debug(f"Mention detected via literal number match for bot {bot_number}")
         return True
 
     # 3. Check for generic @bot pattern
     if re.search(r'(?i)@\s*bot\b', text or ""):
+        import logging
+        logging.getLogger(__name__).debug(f"Mention detected via generic @bot pattern")
         return True
+
+    # Fallback: Check message text for @BotName or @BotNumber
+    from app.config import BotIdentityManager
+    bot_identity = BotIdentityManager.get_bot_identity()
+    bot_name = bot_identity.get("name", "")
+    
+    patterns = []
+    if bot_name:
+        patterns.append(re.escape(bot_name))
+    if bare_bot:
+        patterns.append(re.escape(bare_bot))
+        
+    if patterns:
+        # Match @ followed by BotName or BotNumber (case-insensitive)
+        pattern = r'@(' + '|'.join(patterns) + r')\b'
+        if re.search(pattern, text or "", re.IGNORECASE):
+            import logging
+            logging.getLogger(__name__).debug(f"Mention detected via name regex for bot {bot_name}/{bot_number}")
+            return True
 
     return False
 

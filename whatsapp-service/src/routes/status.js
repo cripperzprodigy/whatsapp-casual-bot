@@ -53,6 +53,7 @@ router.get('/bot-identity', async (req, res) => {
       return res.json({
         jid    : wid._serialized,
         number : bareNumber,
+        pushname: client.info.pushname || "",
         formats: {
           bare      : bareNumber,
           whatsapp  : bareNumber + '@s.whatsapp.net',

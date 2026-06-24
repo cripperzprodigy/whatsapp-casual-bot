@@ -17,7 +17,17 @@ class BotIdentityManager:
     minimise HTTP overhead.
     """
     _cache: str | None = None
+    _cache_name: str | None = None
     _cache_timestamp: float | None = None
+
+    @classmethod
+    def get_bot_identity(cls) -> dict:
+        """Returns the bot's identity dict: {'number': ..., 'name': ...}"""
+        cls.get_bot_number() # Ensure cache is warm
+        return {
+            "number": cls._cache,
+            "name": cls._cache_name or ""
+        }
 
     @classmethod
     def get_bot_number(cls) -> str | None:
@@ -51,6 +61,7 @@ class BotIdentityManager:
                         detected = data.get('number')
                         if detected:
                             cls._cache = detected
+                            cls._cache_name = data.get('pushname', '')
                             cls._cache_timestamp = now
                             # Warn if ENV value differs from detected
                             env_number = getattr(settings, 'BOT_NUMBER', None)
@@ -88,6 +99,7 @@ class BotIdentityManager:
     def invalidate_cache(cls) -> None:
         """Force the next call to re-fetch from the gateway."""
         cls._cache = None
+        cls._cache_name = None
         cls._cache_timestamp = None
         logger.debug("BotIdentityManager cache invalidated.")
 
