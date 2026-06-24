@@ -276,3 +276,17 @@ To solve this, the bot employs a **Text-Based Regex Fallback**:
 4. If it detects `@BotName` or `@BotNumber` in the text, it triggers the bot.
 
 This completely sidesteps the need to issue a synchronous `getNumberId()` network request to the Node gateway on every single group message just to resolve a LID, preserving high system throughput while perfectly restoring mention reliability.
+
+---
+
+## 8. Owner-Registered Bot Identity (LIDs)
+
+In environments where the Text-Based Regex Fallback is insufficient (e.g., when the bot's name is highly generic or WhatsApp fails to hydrate the username altogether), the bot can explicitly learn its own runtime `@lid` via an owner-only registration mechanism.
+
+1. The bot owner explicitly tags the bot in a group chat and includes the command `!whoami`.
+2. The webhook router securely validates the sender against the owner registry.
+3. If validated, the router extracts the first JID from the `mentioned_jids` payload (which will be the exact `@lid` WhatsApp is currently assigning to the bot in that context).
+4. The bot securely persists this LID to `data/bot_known_lids.json` using `BotIdentityManager`.
+5. Future mention checks in `is_explicitly_tagged()` will cross-reference incoming mentions against this cached list, granting the bot self-awareness without requiring synchronous background network resolution.
+
+This creates a lightweight, self-healing system where the bot's identity can dynamically adapt to WhatsApp's opaque internal multi-device routing simply through natural user interaction. Use `!forget-me` to clear out stale identities.

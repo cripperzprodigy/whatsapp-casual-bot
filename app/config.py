@@ -1,6 +1,7 @@
 import logging
 import time
 import os
+import json
 from pathlib import Path
 from filelock import FileLock
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -154,6 +155,66 @@ class BotIdentityManager:
         except Exception as exc:
             logger.error(f"Failed to auto-sync bot number: {exc}")
             return False
+
+    # ------------------------------------------------------------------ #
+    #  LID Registration & Known Identity Persistence
+    # ------------------------------------------------------------------ #
+    _known_lids_cache: list[str] | None = None
+    KNOWN_LIDS_FILE = "data/bot_known_lids.json"
+
+    @classmethod
+    def load_known_bot_ids(cls) -> list[str]:
+        """Loads and caches the known LIDs from the persistence file."""
+        if cls._known_lids_cache is not None:
+            return cls._known_lids_cache
+
+        try:
+            os.makedirs(os.path.dirname(cls.KNOWN_LIDS_FILE), exist_ok=True)
+            if not os.path.exists(cls.KNOWN_LIDS_FILE):
+                cls._known_lids_cache = []
+                return []
+            
+            with open(cls.KNOWN_LIDS_FILE, "r", encoding="utf-8") as f:
+                cls._known_lids_cache = json.load(f)
+        except Exception as exc:
+            logger.error(f"Failed to load known bot LIDs: {exc}")
+            cls._known_lids_cache = []
+            
+        return cls._known_lids_cache
+
+    @classmethod
+    def register_bot_id(cls, jid: str) -> None:
+        """Appends a new JID/LID to the persistence file."""
+        known_ids = cls.load_known_bot_ids()
+        if jid in known_ids:
+            return
+            
+        known_ids.append(jid)
+        cls._known_lids_cache = known_ids
+        
+        try:
+            os.makedirs(os.path.dirname(cls.KNOWN_LIDS_FILE), exist_ok=True)
+            lock = FileLock(f"{cls.KNOWN_LIDS_FILE}.lock")
+            with lock:
+                with open(cls.KNOWN_LIDS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(known_ids, f, indent=2)
+            logger.info(f"Registered new Bot LID: {jid}")
+        except Exception as exc:
+            logger.error(f"Failed to save known bot LIDs: {exc}")
+
+    @classmethod
+    def clear_bot_ids(cls) -> None:
+        """Clears the persisted LIDs."""
+        cls._known_lids_cache = []
+        try:
+            os.makedirs(os.path.dirname(cls.KNOWN_LIDS_FILE), exist_ok=True)
+            lock = FileLock(f"{cls.KNOWN_LIDS_FILE}.lock")
+            with lock:
+                with open(cls.KNOWN_LIDS_FILE, "w", encoding="utf-8") as f:
+                    json.dump([], f, indent=2)
+            logger.info("Cleared known Bot LIDs.")
+        except Exception as exc:
+            logger.error(f"Failed to clear known bot LIDs: {exc}")
 
 
 class Settings(BaseSettings):

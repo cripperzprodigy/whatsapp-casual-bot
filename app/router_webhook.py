@@ -107,10 +107,16 @@ def is_explicitly_tagged(
 
     # 1. Check native @mention via mentionedJids array
     if mentioned_jids:
+        from app.config import BotIdentityManager
+        known_ids = BotIdentityManager.load_known_bot_ids()
         for jid in mentioned_jids:
             if normalize_jid_for_comparison(jid) == bare_bot:
                 import logging
                 logging.getLogger(__name__).debug(f"Mention detected via JID match for bot {bot_number}")
+                return True
+            if jid in known_ids:
+                import logging
+                logging.getLogger(__name__).debug(f"Mention detected via known LID match: {jid}")
                 return True
 
     # 2. Check if bot's bare number is literally present in text
@@ -508,6 +514,27 @@ async def process_message(
 
             # Handle Commands (Pre-Split)
             if text.strip().startswith("!"):
+                command_text = text.strip()
+                if command_text.startswith("!whoami") or command_text.startswith("!forget-me"):
+                    from app.permissions import is_owner
+                    from app.config import BotIdentityManager
+                    if not await is_owner(db, sender_id):
+                        await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
+                        return
+
+                    if command_text.startswith("!whoami"):
+                        if mentioned_jids:
+                            bot_lid = mentioned_jids[0]
+                            BotIdentityManager.register_bot_id(bot_lid)
+                            await send_text_message(chat_id, f"✅ Bot identity registered successfully as: {bot_lid}")
+                        else:
+                            await send_text_message(chat_id, "⚠️ Please tag the bot when using !whoami to register its LID.")
+                        return
+                    elif command_text.startswith("!forget-me"):
+                        BotIdentityManager.clear_bot_ids()
+                        await send_text_message(chat_id, "🗑️ Known Bot identities (LIDs) have been cleared.")
+                        return
+                
                 await handle_command(text, chat_id, sender_id, db)
                 return  # Exits immediately, preventing fall-through to Chatty engine
 

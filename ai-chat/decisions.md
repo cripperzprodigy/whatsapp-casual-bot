@@ -1,5 +1,21 @@
 # Architectural Decisions
 
+## ADR-017 — Owner-Registered Bot Identity (LIDs)
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  WhatsApp uses unhydrated Local IDs (`@lid`) in multi-device group chats. The bot's mention detection logic failed because it strictly compared incoming JIDs to the configured phone number. Complex background resolution services were deemed too fragile and slow for the synchronous webhook router.
+
+Decision :
+  Implement an Owner-Registered Identity pattern where the bot learns its own runtime identity (LIDs) directly from user interactions. The `!whoami` and `!forget-me` commands allow the bot owner to tag the bot and save the resulting LID directly to persistent storage (`data/bot_known_lids.json`).
+
+Consequences :
+  + Solves the silent group chat mention failures securely without network overhead.
+  + Eliminates dependency on gateway LID-resolution for self-identity.
+  + Owner-only security enforces that bad actors cannot maliciously re-register the bot's identity to intercept commands.
+  - Requires a one-time manual registration step by the owner in group chats using LIDs.
+
 ## ADR-014 — Runtime Bot Identity Detection over Static Configuration
 
 Date    : 2026-06-24

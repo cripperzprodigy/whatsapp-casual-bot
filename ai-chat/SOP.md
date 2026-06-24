@@ -52,9 +52,10 @@ Strict adherence to the project's architecture is required.
 ### Runtime-Detected Identifiers
 For any system identity that is only known after a service connects
 (e.g., WhatsApp JIDs, OAuth client IDs returned at runtime), prefer
-runtime detection with caching over static ENV configuration. ENV
-variables MAY be used as fallbacks but MUST NOT be the primary source.
-See ADR-014 in decisions.md.
+runtime detection with caching over static ENV configuration. 
+For opaque multi-device identifiers like `@lid`, implement Owner-Registered 
+Identity flows (e.g., `!whoami`) to securely learn mapping contextually.
+See ADR-014 and ADR-017 in decisions.md.
 
 ### 6.4 Docker Installation
 - `start.sh` MUST check for Docker installation before attempting docker-compose operations

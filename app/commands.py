@@ -101,6 +101,8 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
             "├ `!admin grant|revoke <jid>` - Manage Admins",
             "├ `!owner|admin list` - List privileged users",
             "├ `!owner transfer <jid>` - Transfer ownership",
+            "├ `!whoami` - Register Bot Identity (tag bot)",
+            "├ `!forget-me` - Clear Bot Identity (LIDs)",
             "└ `!shutdown | !restart` - Lifecycle controls\n"
         ])
 
@@ -753,7 +755,8 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(
                     chat_id,
                     "👑 Ownership claimed successfully! You are now the bot Owner.\n"
-                    "Use `!help` to see all available commands."
+                    "Use `!help` to see all available commands.\n\n"
+                    "⚠️ *IMPORTANT*: If this bot will be used in group chats, please go to a group, tag the bot, and send `@Bot !whoami` to initialize its identity."
                 )
             else:
                 if is_group_chat:
