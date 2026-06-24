@@ -40,3 +40,7 @@ During session recovery loops in the Node.js gateway, synchronous retries often 
 **Context**: WhatsApp's multi-device protocol introduces Linked IDs (LIDs) that are required for outbound message routing. Sending to a raw `@c.us` JID fails with `No LID for user` if the user's mapping isn't fully hydrated in the store (e.g. only seen in groups, not DMs). Bypassing `client.getChatById` doesn't fix this since `client.sendMessage` internally uses the same LID lookup.
 **Decision**: Use `client.getNumberId(rawPhone)` to resolve the true serialized LID prior to sending a DM message.
 **Consequence**: Eliminates `No LID for user` as a failure class, preventing unnecessary retries. If `getNumberId()` returns null, we safely throw a `NUMBER_NOT_ON_WHATSAPP` hard-abort (HTTP 400).
+## Decision #11: Immediate Cleanups during Refactoring
+**Context**: Iterative refactoring leaves behind legacy fragments, dead comments, and duplicate entries, bloating the repository and adding cognitive load.
+**Decision**: Enforce an immediate cleanup of artifacts (such as dead comments and stale backup files like `*.bak` or `*.old`) within the refactoring phase itself instead of batching them up.
+**Consequence**: Maintain high repository hygiene without requiring separate hygiene-only sweeps.

@@ -68,3 +68,6 @@ Strict adherence to the project's architecture is required.
 - `start.sh` MUST check for Docker installation before attempting docker-compose operations
 - Docker installation MUST be automated with proper GPG key setup and repository configuration
 - Post-installation: user MUST be added to `docker` group and daemon MUST be started/enabled
+
+### Code Maintenance and Hygiene
+- **Dead code and backup files must be removed immediately upon refactoring, not batched.** Do not leave `*-backup.*`, `*.bak`, `*.old`, `*~`, or commented-out deprecated logic blocks in the codebase.
