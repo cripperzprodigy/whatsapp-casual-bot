@@ -1,4 +1,5 @@
 # Changelog
+- **Empty Context on Tag/Reply**: Resolved an issue where tagging or replying to the bot constructed a context introduction string ("User said:") but failed to actually concatenate the message content. `router_webhook.py` now passes the fully built sentence (e.g., "User @Name tagged you... and said: '{message}'") directly into `process_message`.
 - **JID Match Normalization**: Hardened the quoted sender identity checks in `router_webhook.py` to seamlessly normalize and match `@lid` and `@c.us` IDs, ensuring reply threading works even when WhatsApp shifts its internal ID routing.
 - **Gateway Visual Quoting Payload**: Adjusted the `whatsapp_gateway.py` payload to accurately pass `quotedMsgId` directly rather than through nested objects, restoring the native visual reply bubbles inside WhatsApp.
 - **Auto-Translation Scope Fix**: Resolved a `NameError` crash where `is_explicit_mention` was missing in scope for the auto-translation suppression logic.

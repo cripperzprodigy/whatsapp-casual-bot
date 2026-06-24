@@ -262,15 +262,13 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             pending_chatty_tasks[chat_id].cancel()
             del pending_chatty_tasks[chat_id]
 
-        context_type = None
-        context_text = None
+        final_user_input = text
         if context_tuple and context_tuple[0] == "reply":
-            context_type = "reply_thread"
-            context_text = f"User is replying to your previous message: '{context_tuple[1]}'. Their new message is:"
+            final_user_input = f"User is replying to your previous message: '{context_tuple[1]}'. Their new message is: '{text}'"
 
         # Process message WITH reply generation in the same request cycle
         logger.debug(f"DM: Calling process_message with generate_reply=True for {chat_id}")
-        ai_reply = await engine.process_message(text, media_path, generate_reply=True, context_type=context_type, context_text=context_text)
+        ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None)
         logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
             await send_text_message(
@@ -349,24 +347,20 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                     pending_chatty_tasks[chat_id].cancel()
                     del pending_chatty_tasks[chat_id]
 
-                context_type = None
-                context_text = None
+                final_user_input = text
                 
                 if trigger_reason == "REPLY" and is_text_mention:
                     quoted_text = context_tuple[1]
-                    context_type = "explicit_tag_and_reply"
-                    context_text = f"User @{sender_name} explicitly tagged you and is replying to your previous message: '{quoted_text}'. Their new message is:"
+                    final_user_input = f"User @{sender_name} explicitly tagged you and is replying to your previous message: '{quoted_text}'. Their new message is: '{text}'"
                 elif trigger_reason == "REPLY":
                     quoted_text = context_tuple[1]
-                    context_type = "reply_thread"
-                    context_text = f"User is replying to your previous message: '{quoted_text}'. Their new message is:"
+                    final_user_input = f"User is replying to your previous message: '{quoted_text}'. Their new message is: '{text}'"
                 elif trigger_reason == "TAG":
-                    context_type = "explicit_tag"
-                    context_text = f"User @{sender_name} tagged you in the group and said:"
+                    final_user_input = f"User @{sender_name} tagged you in the group and said: '{text}'"
 
-                logger.debug(f"Group: Context extracted - type={context_type}, text={context_text}")
+                logger.debug(f"Group: Context extracted - final_user_input={final_user_input}")
 
-                ai_reply = await engine.process_message(text, media_path, generate_reply=True, context_type=context_type, context_text=context_text)
+                ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None)
                 if ai_reply:
                     await send_text_message(
                         chat_id,
