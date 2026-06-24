@@ -199,6 +199,7 @@ router.post('/resolve-quote-id', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Missing shortId' });
         }
         
+        console.log(`[Resolve] Looking for ${shortId}`);
         const serializedId = messageCache.get(shortId);
         if (serializedId) {
             console.log(`[Resolve] Found ID for ${shortId}: ${serializedId}`);

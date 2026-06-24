@@ -1,5 +1,12 @@
 # Architectural Decisions
 
+# Key Decisions
+## Event-Driven Memory Cache (O(1) Quote ID Translation)
+Instead of using slow, IO-blocking calls to `chat.fetchMessages({ limit: 50 })` which regularly failed to locate IDs under load, we've opted for an **Event-Driven Memory Map** cache embedded natively into the Node.js `whatsapp-service/src/events.js` listener. 
+Because `whatsapp-web.js` operates asynchronously, we aggressively map and cache incoming `{msg.id.id}` (Short ID) directly to their strictly formatted composite counterparts (`{msg.id.remote}_{msg.id.id}`).
+- To prevent Memory Leaks, this `Map()` is strictly bounds-checked using `WHATSAPP_CACHE_MAX_SIZE` (default 5000) and explicitly dropped via `setTimeout` based on `WHATSAPP_CACHE_TTL_SECONDS` (default 300s).
+- Resolution calls from Python execute via an O(1) synchronous map lookup over the internal API. If the bot attempts to quote a message that has fallen out of bounds or expired due to TTL, it gracefully abandons the visual quote UI and falls back to plain text to ensure delivery stability.
+
 ### Global Event-Driven Cache for WhatsApp Message IDs
 **Decision**: In `whatsapp-service/src/events.js`, we intercept `client.on('message')` events and locally cache short message IDs against their full serialized IDs inside a standard `Map()` up to 1000 items. We expose `/message/resolve-quote-id` so Python can do an O(1) lookup.
 **Rationale**: `whatsapp-web.js` forces the usage of full serialized IDs (e.g., `false_1234@g.us_3EB0...`) when quoting a message in a reply. The Python backend only possesses the short message ID keys extracted from the webhook payload (`3EB0...`). The initial attempt to resolve this via `chat.fetchMessages({ limit: 50 })` was deemed highly inefficient and unreliable. A rolling LRU Map completely eliminates disk/network lookup time, returning the precise Serialized ID perfectly unless the target message has fallen out of the top 1000 queue (at which point the Python client will gracefully fall back to a non-quoted reply).

@@ -222,6 +222,8 @@ class Settings(BaseSettings):
     #  Internal WhatsApp Gateway config (Node.js microservice)
     # ------------------------------------------------------------------ #
     WHATSAPP_GATEWAY_URL: str = "http://whatsapp-gateway:3000"
+    WHATSAPP_CACHE_MAX_SIZE: int = 5000
+    WHATSAPP_CACHE_TTL_SECONDS: int = 300
 
     # ------------------------------------------------------------------ #
     #  Security Whitelist (Comma-separated chat IDs)

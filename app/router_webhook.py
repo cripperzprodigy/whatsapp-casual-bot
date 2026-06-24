@@ -230,13 +230,14 @@ def extract_context(message_content, bot_number: str | None, bot_known_ids: list
 
     quoted_numeric = normalize_jid(quoted_sender)
     bot_numerics = [normalize_jid(j) for j in bot_known_ids]
-    if bot_number:
-        bot_numerics.append(normalize_jid(bot_number))
+    normalized_bot = normalize_jid(bot_number) if bot_number else ""
+    if normalized_bot:
+        bot_numerics.append(normalized_bot)
 
-    logger.debug(f"Reply Check: {quoted_numeric} in {bot_numerics}")
-    is_bot = quoted_numeric in bot_numerics
+    is_reply_to_bot = quoted_numeric in bot_numerics
+    logger.debug(f"Reply Check: Quoted={quoted_sender} ({quoted_numeric}) vs Bot={bot_number} ({normalized_bot}). Match={is_reply_to_bot}")
 
-    if is_bot:
+    if is_reply_to_bot:
         quoted_text = quoted_msg.get("conversation", "")
         if not quoted_text and "extendedTextMessage" in quoted_msg:
             ext_text = quoted_msg["extendedTextMessage"]

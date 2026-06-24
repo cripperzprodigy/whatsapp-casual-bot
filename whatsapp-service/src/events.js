@@ -6,7 +6,8 @@ const PORT = process.env.PORT || 3000;
 const PYTHON_WEBHOOK_URL = process.env.PYTHON_WEBHOOK_URL || 'http://localhost:8000/webhook/whatsapp';
 
 const messageCache = new Map();
-const MAX_CACHE_SIZE = 1000;
+const MAX_CACHE_SIZE = parseInt(process.env.WHATSAPP_CACHE_MAX_SIZE) || 5000;
+const CACHE_TTL = parseInt(process.env.WHATSAPP_CACHE_TTL_SECONDS) || 300;
 
 function registerEvents(client) {
     client.on('qr', (qr) => {
@@ -55,9 +56,18 @@ function registerEvents(client) {
         // Store mapping: Short Key ID -> Correct Quote ID format
         if (msg.id && msg.id.id && msg.id.remote) {
             const correctQuoteId = `${msg.id.remote}_${msg.id.id}`;
-            console.log(`[Cache] Storing short ID: ${msg.id.id} -> ${correctQuoteId}`);
             messageCache.set(msg.id.id, correctQuoteId);
-            // Simple cleanup to prevent memory leaks
+            console.log(`[Cache] Storing short ID: ${msg.id.id} -> ${correctQuoteId}`);
+            
+            // TTL Cleanup
+            setTimeout(() => {
+                if (messageCache.get(msg.id.id) === correctQuoteId) {
+                    messageCache.delete(msg.id.id);
+                    console.log(`[Cache] TTL Expired for ${msg.id.id}`);
+                }
+            }, CACHE_TTL * 1000);
+
+            // Size Limit Cleanup
             if (messageCache.size > MAX_CACHE_SIZE) {
                 const firstKey = messageCache.keys().next().value;
                 messageCache.delete(firstKey);
