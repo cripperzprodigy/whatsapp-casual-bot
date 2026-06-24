@@ -28,6 +28,7 @@ Depending on the underlying gateway architecture (official Cloud API vs. reverse
 
 - **`@lid` (Linked Device)**
   - Used internally by WhatsApp for multi-device routing and sync protocols.
+  - *Note: Our webhook router explicitly accepts `@lid` suffixes for private Direct Messages to gracefully handle unhydrated multi-device accounts, bypassing the system domain guard rails.*
 
 ## Architectural Decision: Adapter Pattern
 

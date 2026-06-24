@@ -93,7 +93,7 @@ webhook_webhook() [router_webhook.py:476]
             │
             ├── 1. Create SessionLocal()
             ├── 2. Extract chat_id, sender_id, sender_name
-            ├── 3. System Domain Guard Rail (drop @broadcast, @newsletter, @lid)
+            ├── 3. System Domain Guard Rail (drop @broadcast, @newsletter)
             ├── 4. Whitelist check (ENFORCE_WHITELIST)
             ├── 5. Get chat_settings from DB
             ├── 6. Group metadata fetch (if new group)
