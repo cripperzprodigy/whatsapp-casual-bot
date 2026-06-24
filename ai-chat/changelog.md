@@ -1,7 +1,7 @@
 # Changelog
+- **JID Normalizer Helper**: Added a direct `normalize_jid` helper in `extract_context` to safely strip domain suffixes for robust `is_reply_to_bot` detection.
+- **Explicit QuotedMsgId Routing**: Completely standardized the `quoted_msg_id` naming convention from the router down to `whatsapp_gateway.py`'s payload generation to ensure Node.js correctly receives the parameter for visual quoting.
 - **Empty Context on Tag/Reply**: Resolved an issue where tagging or replying to the bot constructed a context introduction string ("User said:") but failed to actually concatenate the message content. `router_webhook.py` now passes the fully built sentence (e.g., "User @Name tagged you... and said: '{message}'") directly into `process_message`.
-- **JID Match Normalization**: Hardened the quoted sender identity checks in `router_webhook.py` to seamlessly normalize and match `@lid` and `@c.us` IDs, ensuring reply threading works even when WhatsApp shifts its internal ID routing.
-- **Gateway Visual Quoting Payload**: Adjusted the `whatsapp_gateway.py` payload to accurately pass `quotedMsgId` directly rather than through nested objects, restoring the native visual reply bubbles inside WhatsApp.
 - **Auto-Translation Scope Fix**: Resolved a `NameError` crash where `is_explicit_mention` was missing in scope for the auto-translation suppression logic.
 - **Native Reply Quoting**: The bot now correctly passes the `quoted_msg_id` back to the WhatsApp Gateway, meaning its responses to threaded conversations will visually quote the user's message in the chat interface.
 - **LLM API Response Format Fix**: Fixed an issue in `ai_client.py` where passing `{"type": "json_object"}` caused HTTP 400 errors with strict LLM providers during background summary generation. Switched to `{"type": "text"}`.

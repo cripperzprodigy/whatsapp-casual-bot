@@ -94,25 +94,24 @@ async def fetch_group_metadata(
 async def send_text_message(
     chat_id: str,
     text: str,
-    reply_to_msg_id: Optional[str] = None,
+    quoted_msg_id: Optional[str] = None,
     quoted_participant: Optional[str] = None,
 ) -> GatewaySendResult:
     """
     Sends a text message back to the WhatsApp group via the
     internal gateway HTTP API. Optionally quotes/replies to an
-    original message if `reply_to_msg_id` is provided.
+    original message if `quoted_msg_id` is provided.
     """
     url = f"{settings.WHATSAPP_GATEWAY_URL}/message/sendText"
     
     payload = {
-        "number": chat_id,
-        "textMessage": {
-            "text": text
-        }
+        "to": chat_id,
+        "message": text,
+        "type": "text"
     }
     
-    if reply_to_msg_id:
-        payload["quotedMsgId"] = reply_to_msg_id
+    if quoted_msg_id:
+        payload["quotedMsgId"] = quoted_msg_id
     
     import asyncio
     max_retries = 3

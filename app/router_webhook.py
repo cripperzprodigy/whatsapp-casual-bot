@@ -177,7 +177,7 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
             await send_text_message(
                 chat_id,
                 ai_reply,
-                reply_to_msg_id=None,
+                quoted_msg_id=None,
                 quoted_participant=None,
             )
             # Process bursts sequentially if > 1
@@ -187,7 +187,7 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
                     await send_text_message(
                         chat_id,
                         burst_reply,
-                        reply_to_msg_id=None,
+                        quoted_msg_id=None,
                         quoted_participant=None,
                     )
     except asyncio.CancelledError:
@@ -199,6 +199,10 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
         # Clean up the task from pending dict if it's still this one
         if pending_chatty_tasks.get(chat_id) == asyncio.current_task():
             del pending_chatty_tasks[chat_id]
+
+def normalize_jid(jid: str) -> str:
+    if not jid: return ""
+    return jid.split('@')[0] if '@' in jid else jid
 
 def extract_context(message_content, bot_number: str | None, bot_known_ids: list[str]) -> tuple[str | None, str | None]:
     """
@@ -224,11 +228,13 @@ def extract_context(message_content, bot_number: str | None, bot_known_ids: list
     if not quoted_msg or not isinstance(quoted_msg, dict):
         return None, None
 
-    is_bot = False
-    if bot_number and normalize_jid_for_comparison(quoted_sender) == normalize_jid_for_comparison(bot_number):
-        is_bot = True
-    elif any(normalize_jid_for_comparison(known_id) == normalize_jid_for_comparison(quoted_sender) for known_id in bot_known_ids):
-        is_bot = True
+    quoted_numeric = normalize_jid(quoted_sender)
+    bot_numerics = [normalize_jid(j) for j in bot_known_ids]
+    if bot_number:
+        bot_numerics.append(normalize_jid(bot_number))
+
+    logger.debug(f"Reply Check: {quoted_numeric} in {bot_numerics}")
+    is_bot = quoted_numeric in bot_numerics
 
     if is_bot:
         quoted_text = quoted_msg.get("conversation", "")
@@ -274,7 +280,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             await send_text_message(
                 chat_id,
                 ai_reply,
-                reply_to_msg_id=getattr(msg_key, 'id', None),
+                quoted_msg_id=getattr(msg_key, 'id', None),
                 quoted_participant=None,
             )
         else:
@@ -282,7 +288,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             await send_text_message(
                 chat_id,
                 "⚠️ I received your message but couldn't generate a response right now. Please try again.",
-                reply_to_msg_id=None,
+                quoted_msg_id=None,
                 quoted_participant=None,
             )
     except Exception as e:
@@ -365,7 +371,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                     await send_text_message(
                         chat_id,
                         ai_reply,
-                        reply_to_msg_id=getattr(msg_key, 'id', None),
+                        quoted_msg_id=getattr(msg_key, 'id', None),
                         quoted_participant=None,
                     )
                 return
@@ -439,7 +445,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
             await send_text_message(
                 chat_id,
                 translated,
-                reply_to_msg_id=msg_key.id,
+                quoted_msg_id=msg_key.id,
                 quoted_participant=msg_key.participant,
             )
 
