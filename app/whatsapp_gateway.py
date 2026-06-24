@@ -110,8 +110,13 @@ async def send_text_message(
         "type": "text"
     }
     
-    if quoted_msg_id:
+    if quoted_msg_id and isinstance(quoted_msg_id, str) and quoted_msg_id.strip():
         payload["quotedMsgId"] = quoted_msg_id
+        logger.debug(f"Including quote ID: {quoted_msg_id}")
+    else:
+        logger.debug("No valid quote ID provided, sending plain message.")
+
+    logger.debug(f"Sending payload to gateway: {payload}")
     
     import asyncio
     max_retries = 3

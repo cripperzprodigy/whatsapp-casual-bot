@@ -1,4 +1,5 @@
 # Changelog
+- **Node.js Gateway Validation (400 Bad Request)**: Resolved a critical edge case where `whatsapp_gateway.py` was generating a payload with invalid empty `quotedMsgId` keys, causing the strict Node.js backend to drop perfectly generated LLM texts. Payload bounds and `isinstance` checking have been fully implemented along with debug tracing.
 - **LLM Timeout Config**: Added `LLM_TIMEOUT_SECONDS` (default: 180s) to `app/config.py` and `.env.example` to ensure local LLMs with high latency do not trigger premature HTTP read timeouts before WhatsApp can fetch and attach the context.
 - **JID Normalizer Helper**: Added a direct `normalize_jid` helper in `extract_context` to safely strip domain suffixes for robust `is_reply_to_bot` detection.
 - **Explicit QuotedMsgId Routing**: Completely standardized the `quoted_msg_id` naming convention from the router down to `whatsapp_gateway.py`'s payload generation to ensure Node.js correctly receives the parameter for visual quoting.
