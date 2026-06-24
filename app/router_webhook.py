@@ -517,7 +517,6 @@ async def process_message(
                 command_text = text.strip()
                 if command_text.startswith("!whoami") or command_text.startswith("!forget-me"):
                     from app.permissions import is_owner
-                    from app.config import BotIdentityManager
                     if not await is_owner(db, sender_id):
                         await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
                         return
