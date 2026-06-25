@@ -251,6 +251,7 @@ class Settings(BaseSettings):
     SEARCH_PROVIDER_MODE: str = "hybrid"  # options: "hybrid", "searxng", "duckduckgo"
     SEARXNG_BASE_URL: Optional[str] = None
     SEARCH_MAX_RESULTS: int = 5
+    ENABLE_AGENTIC_SEARCH: bool = False
 
     # ------------------------------------------------------------------ #
     #  Internal Bot config

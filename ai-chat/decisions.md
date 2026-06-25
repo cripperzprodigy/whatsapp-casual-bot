@@ -254,3 +254,16 @@ Decision :
 Consequences :
   + Empowers the bot to comprehensively research deep topics.
   + Does not block the event loop or violate latency requirements due to graceful degradation.
+
+## ADR-025 — Feature Flag System & Dynamic Help
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  Experimental features like `!s` (Agentic Search) were deployed without a centralized way to safely toggle them off in production, or hide them from the help menu based on user roles, leading to potential resource exhaustion and bad UX.
+Decision :
+  - Created `FeatureFlagService` which stores runtime toggle states within the SQLite `GlobalSettings` table (to persist across restarts).
+  - Added the `!config toggle <feature> <on|off>` command, strictly restricted to the `OWNER` role.
+  - Refactored `!help` to dynamically build its text sections based on `FeatureFlagService.is_enabled` and `user_role`, maintaining clear separation of commands.
+Consequences :
+  + Experimental features can be turned off dynamically without downtime.
+  + Users only see the commands they have permission to execute or that are actively enabled.

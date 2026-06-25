@@ -70,3 +70,7 @@ See ADR-014 and ADR-017 in decisions.md.
 ### Agentic Workflows and Loop Guards
 - **Command Taxonomy**: New agentic commands like `!s` should live alongside existing commands (`!search`) as premium commands for deep research rather than replacing them. Quick lookups should remain accessible via low latency variants.
 - **Graceful Degradation**: All agentic loops must have hard iteration limits and timeout guards. If advanced reasoning logic fails (such as an LLM Gap Analysis phase), the system must log the failure but immediately fallback to synthesize a final answer using the available accumulated context, rather than completely failing.
+
+### Feature Flag Implementation Standards
+- **Runtime vs ENV Configuration Priority**: When implementing feature flags, the system should always prioritize a verified runtime database state first (e.g. via `FeatureFlagService`), and fall back to a strictly typed ENV default if no override exists.
+- **Experimental Features**: All experimental features must have an ENV kill-switch and RBAC guard. Do not deploy resource-heavy features universally without a means for the owner to toggle them off dynamically at runtime.

@@ -34,6 +34,7 @@ from app.permissions import (
 )
 from app.services.search_service import HybridSearchService
 from app.services.agentic_search_service import AgenticSearchOrchestrator
+from app.services.feature_flag_service import FeatureFlagService
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,6 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
         "💬 *General / AI*",
         "├ `!a <text>` - Ask the AI a question",
         "├ `!search <query>` - Quick search the web",
-        "├ `!s <query>` - Deep agentic search the web",
         "├ `!summary` - Summarize recent messages",
         "├ `!ping` - Check bot status",
         "└ `!help` - Show this menu\n"
@@ -71,7 +71,7 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     if role in {ADMIN_ROLE, OWNER_ROLE} or not is_group_chat:
         lines.extend([
             "🧠 *AI Memory & RAG*",
-            "└ `!chatty on|off` - Toggle continuous AI conversation",
+            "├ `!chatty on|off` - Toggle continuous AI conversation",
             "├ `!chatty_freq <val>` - Set frequency",
             "├ `!chatty_burst <val>` - Set burst count",
             "├ `!chatty_delay <min> <max>` - Set human-like delay",
@@ -79,6 +79,18 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
             "├ `!chatty_status` - View current settings",
             "├ `!lang set <code>` - DM Only: Set preferred language",
             "└ `!lang reset` - DM Only: Revert language\n"
+        ])
+
+    is_agentic_enabled = FeatureFlagService.is_enabled(db, "agentic_search")
+    if is_agentic_enabled:
+        lines.extend([
+            "🔍 *AI Tools*",
+            "└ `!s <query>` - Deep agentic search the web\n"
+        ])
+    elif role == OWNER_ROLE:
+        lines.extend([
+            "🔍 *AI Tools*",
+            "└ `!s (Currently Disabled)`\n"
         ])
 
     if role in {ADMIN_ROLE, OWNER_ROLE}:
@@ -98,6 +110,7 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     if role == OWNER_ROLE:
         lines.extend([
             "👑 *Owner Commands*",
+            "├ `!config toggle <feature> <on|off>` - Toggle features",
             "├ `!contacts global` - View all contacts globally",
             "├ `!pm global <text>` - DM all groups",
             "├ `!pm flood limit|interval <val>` - PM flood settings",
@@ -599,6 +612,28 @@ async def handle_command(  # Issue 13: added return type
                 )
                 await send_text_message(chat_id, msg)
 
+        elif command == "!config":
+            if len(args) >= 3 and args[0] == "toggle":
+                feature_name = args[1]
+                state_str = args[2].lower()
+
+                if state_str not in ["on", "off"]:
+                    await send_text_message(chat_id, "Usage: !config toggle <feature_name> <on|off>")
+                    return
+
+                state_bool = state_str == "on"
+
+                try:
+                    await FeatureFlagService.toggle_feature(db, feature_name, state_bool, sender_id)
+                    await send_text_message(chat_id, f"✅ Feature '{feature_name}' is now {state_str.upper()}.")
+                except PermissionError:
+                    await send_text_message(chat_id, "🚫 Unauthorized: Only Owner can toggle features.")
+                except Exception as e:
+                    logger.error(f"Error toggling feature: {e}")
+                    await send_text_message(chat_id, "⚠️ Error toggling feature.")
+            else:
+                await send_text_message(chat_id, "Usage: !config toggle <feature_name> <on|off>")
+
         elif command == "!owner":
             if not await is_owner(db, sender_id):
                 await send_text_message(
@@ -794,6 +829,10 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, "Usage: !search <query>")
 
         elif command == "!s":
+            if not FeatureFlagService.is_enabled(db, "agentic_search"):
+                await send_text_message(chat_id, "🚫 This feature is currently disabled by the administrator.")
+                return
+
             if len(args) > 0:
                 query = " ".join(args)
 
