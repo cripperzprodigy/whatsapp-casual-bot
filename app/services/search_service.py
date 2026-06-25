@@ -51,12 +51,18 @@ class DuckDuckGoProvider:
     def _sync_search(self, query: str, limit: int) -> List[SearchResult]:
         try:
             ddgs = DDGS()
+            # duckduckgo_search returns a generator of dicts with 'title', 'href', 'body'
             ddg_results = list(ddgs.text(query, max_results=limit))
             results = []
+            seen_urls = set()
             for item in ddg_results:
+                url = item.get("href", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
                 results.append(SearchResult(
                     title=item.get("title", ""),
-                    url=item.get("href", ""),
+                    url=url,
                     snippet=item.get("body", "")
                 ))
             return results
@@ -67,10 +73,15 @@ class DuckDuckGoProvider:
                 ddgs = DDGS()
                 ddg_results = list(ddgs.text(query, max_results=limit))
                 results = []
+                seen_urls = set()
                 for item in ddg_results:
+                    url = item.get("href", "")
+                    if url in seen_urls:
+                        continue
+                    seen_urls.add(url)
                     results.append(SearchResult(
                         title=item.get("title", ""),
-                        url=item.get("href", ""),
+                        url=url,
                         snippet=item.get("body", "")
                     ))
                 return results
