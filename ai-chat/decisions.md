@@ -122,6 +122,31 @@ Consequences :
 
 - **Token Limits for Reasoning Models:** Decided to use 8192 default tokens and strict prompting for high-context local reasoning models. This prevents models from exhausting tokens on verbose reasoning tracks.
 - **Custom Exceptions:** Introduced `TokenExhaustedError` and `TranslationError` instead of returning dataclasses from `ask_llm`. This enables precise error handling and clean retry mechanisms.
+
+## ADR-020 — Webhook contextInfo Forwarding for Reply Detection
+
+Date    : 2026-06-24
+Status  : Accepted
+Context :
+  The Node.js gateway (`whatsapp-service/src/events.js`) constructed the webhook payload
+  sent to Python but omitted `msg.contextInfo` — the field that contains reply context
+  (`stanzaId`, `participant`, `quotedMessage`) when a user uses the native WhatsApp
+  "Reply" feature. The gateway only populated `extendedTextMessage.contextInfo.mentionedJid`
+  for mention detection, leaving Python's `extract_context()` with `contextInfo=None` and
+  causing `ReplyContext=False` for all threaded replies.
+
+Decision :
+  Added `...(msg.contextInfo && { contextInfo: msg.contextInfo })` to the `message` object
+  in the webhook payload construction in `events.js`. This spreads the full contextInfo
+  object into the payload when present, allowing Python to detect reply context via the
+  existing `extract_context()` function which checks both `message.contextInfo` and
+  `message.extendedTextMessage.contextInfo`.
+
+Consequences :
+  + Native WhatsApp "Reply" feature now correctly triggers `ReplyContext=True` in Python.
+  + Threaded conversation context is preserved for AI responses.
+  + No breaking changes — `contextInfo` is optional and only included when present.
+  - None.
 -   * * S t r i c t   W h i t e l i s t i n g   f o r   T a r g e t   L a n g u a g e s : * *   I n s t e a d   o f   g r e e d i l y   t r e a t i n g   t h e   f i r s t   w o r d   a f t e r   ' ! t '   a s   a   l a n g u a g e   c o d e   i f   i t s   l e n g t h   i s   2 ,   t h e   s y s t e m   n o w   e n f o r c e s   a   s t r i c t   w h i t e l i s t   b a s e d   o n   2 0   k n o w n   I S O   c o d e s .   T h i s   a l l o w s   v a l i d   2 - l e t t e r   s l a n g   w o r d s   t o   f a l l   b a c k   s a f e l y   t o   t e x t   t r a n s l a t i o n .
  -   * * S e m a n t i c   C h u n k i n g : * *   T e x t   e x c e e d i n g   T R A N S L A T I O N _ C H U N K _ S I Z E   i s   s p l i t   h i e r a r c h i c a l l y   b y   p a r a g r a p h ,   l i n e ,   a n d   s e n t e n c e .   T h e   l a s t   s e n t e n c e   o f   c h u n k   N   i s   p a s s e d   a s   a   p r o m p t   p r e f i x   t o   c h u n k   N + 1   t o   m a i n t a i n   p r o n o u n   a n d   t o n e   c o n t i n u i t y .
 
