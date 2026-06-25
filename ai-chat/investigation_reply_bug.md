@@ -71,3 +71,58 @@ Status: **RESOLVED**. Quoting, Threaded Replies, Tags, and Payload Validation ar
 
 67. **Node.js Webhook Quoted Message Context Missing**: Discovered that the Node gateway was failing to append `quotedMessage` metadata inside `contextInfo` for the webhook payload. Fixed `whatsapp-service/src/events.js` to asynchronously fetch `msg.getQuotedMessage()` if `msg.hasQuotedMsg` is true, resolving the root cause of `ReplyContext=False` when users natively quoted the bot.
 68. **Node.js Gateway Message Cache Format**: Modified `whatsapp-service/src/events.js` to directly cache `msg.id._serialized` instead of building the composite ID manually.
+
+## 5. Visual Quoting and Reply Detection Architecture
+
+### 5.1 Flow of a Natively Quoted Message
+
+To understand why `ReplyContext=False` and visual quoting failed, here is the corrected architectural flow:
+
+```
+[User replies to Bot] -> (WhatsApp Network) -> [Node.js Gateway]
+                                                      |
+                                                      v
+                                        whatsapp-service/src/events.js
+                            1. Cache `msg.id.id` -> `msg.id._serialized`
+                            2. Check `msg.hasQuotedMsg`
+                            3. Fetch `getQuotedMessage()`
+                            4. Inject into `contextInfo` payload
+                                                      |
+                                                      v
+[Python Webhook Router] <- (POST /webhook/whatsapp) --+
+           |
+           v
+app/router_webhook.py
+  1. `extract_context()` reads `contextInfo.quotedMessage`
+  2. Parses `participant` JID.
+  3. `normalize_jid_for_comparison()` splits at `@` and strips `+`.
+  4. Matches against `bot_known_ids` -> Returns `ReplyContext=True`!
+           |
+           v
+[Python Chatty Engine] -> Generates response
+           |
+           v
+app/whatsapp_gateway.py
+  1. Calls `resolve_quote_id(msg.id)`
+  2. Pre-flights `POST /message/resolve-quote-id` to Node Gateway
+  3. Receives JSON `{"success": true, "serializedId": "false_..."}`
+  4. Returns ID to `send_text_message` payload
+           |
+           v
+[Node.js Gateway] <- (POST /message/sendText)
+           |
+           v
+whatsapp-service/src/routes/send.js
+  1. Parses `req.body.quotedMsgId`
+  2. Assigns to `sendOptions.quotedMessageId`
+  3. Calls `client.sendMessage(chatId, text, sendOptions)`
+           |
+           v
+[WhatsApp Network] -> (User sees a visual quote block!)
+```
+
+### 5.2 Technical Insights on the Fixes
+
+1.  **Node.js Webhook Quoted Message Propagation**: The previous implementation completely missed the step where `getQuotedMessage()` was called. `whatsapp-web.js` does not hydrate `msg.quotedMsg` automatically. It must be explicitly fetched using `await msg.getQuotedMessage()` when `msg.hasQuotedMsg` is true. We patched `events.js` to build a `quotedMsgPayload` and merge it into the `contextInfo` object so Python's Pydantic validation correctly ingests it.
+2.  **Message Cache Normalization**: Earlier versions tried to reverse-engineer `_serialized` strings manually by doing `${msg.id.remote}_${msg.id.id}`. `whatsapp-web.js` strictly requires the full `_serialized` representation (which includes `true_` or `false_`). We updated the Node.js cache to directly map `msg.id.id -> msg.id._serialized`.
+3.  **Python JID Splitting**: Using `jid.endswith(suffix)` looping is dangerous because `whatsapp-web.js` often appends random message IDs or device components to the JID string (e.g. `12345678@g.us_3EB...`). Stripping everything after `@` using `.split('@')[0]` is mathematically robust for identifying the pure phone number/group ID.

@@ -91,3 +91,8 @@
 - **Resolution**:
   - Updated `whatsapp-service/src/events.js` to correctly detect `msg.hasQuotedMsg`.
   - Added logic to fetch `getQuotedMessage()` and append `quotedMessage` and `participant` info dynamically to the `contextInfo` inside the outgoing webhook payload, restoring Python's ability to trigger `ReplyContext=True`.
+
+### Extended Visual Quoting and Reply Documentation
+- **Detailed Documentation**: Augmented `investigation_reply_bug.md` and `decisions.md` with in-depth technical analysis and ASCII architecture diagrams mapping out the full flow of Threaded Conversations (`ReplyContext`).
+- **Explanation of Node.js Webhook Quoted Message**: Added a clear rationale (ADR-021) for why `getQuotedMessage()` hydration is required in `whatsapp-web.js` (because it does not automatically populate quoted messages like Baileys).
+- **Explanation of `_serialized` IDs**: Added ADR-022 to explain the necessity of directly leveraging the `whatsapp-web.js` native `msg.id._serialized` property to guarantee visual quoting UI rendering instead of manual string construction.

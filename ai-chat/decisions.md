@@ -202,3 +202,27 @@ Decision :
   In `whatsapp-service/src/events.js`, when a message comes in with `hasQuotedMsg=true`, we manually fetch `getQuotedMessage()` and inject `quotedMessage.conversation` and `participant` into the outgoing `contextInfo` payload. We also updated the message caching logic to directly map `msg.id.id` to `msg.id._serialized` to perfectly emulate the visual quoting API string.
 Consequences :
   + The Python backend can natively detect `ReplyContext=True` without extra network API calls.
+
+## ADR-021 — Strict Webhook Quoted Message Hydration
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  The Python `extract_context` function expects Baileys-style `contextInfo.quotedMessage` to determine if a message is a reply to the bot. However, `whatsapp-web.js` does not automatically populate quoted messages into a single nested payload.
+Decision :
+  In `whatsapp-service/src/events.js`, when a message comes in with `hasQuotedMsg=true`, we manually execute an async `getQuotedMessage()`. We then format it into an object matching the Baileys API (`{ conversation: qMsg.body }`) and inject it into the `contextInfo.quotedMessage` field of the outgoing webhook payload, along with the `participant` field.
+Consequences :
+  + The Python backend can natively detect `ReplyContext=True` without needing extra API endpoints to fetch message context synchronously during the webhook cycle.
+  + Eliminates dropping Threaded Conversations (native replies) from Chatty Engine flow.
+
+## ADR-022 — Native Object Serialization for Quoted Message IDs
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  The Node.js gateway was attempting to manually reconstruct message IDs for caching using `${msg.id.remote}_${msg.id.id}` and Python was attempting to prepend `false_`. This approach failed because the `whatsapp-web.js` `sendMessage({ quotedMessageId })` API strictly requires the exact raw `_serialized` object format emitted by the library.
+Decision :
+  `whatsapp-service/src/events.js` now exclusively maps `msg.id.id` to `msg.id._serialized` in the internal LRU map. The Python backend fetches this exact string via `/message/resolve-quote-id` and passes it perfectly back through the `quotedMsgId` payload field during outbound requests.
+Consequences :
+  + Restores visual quoting functionality across Group chats and DMs.
+  + Eliminates hardcoded `false_` prefixes from the Python backend entirely.
