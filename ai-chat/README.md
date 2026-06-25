@@ -1,4 +1,6 @@
-# AI-CHAT Protocol Welcome Directive
+# AI-CHAT Protocol & Collaboration Hub
+
+The `ai-chat/` folder is the central nervous system for all autonomous agents operating in this repository. It serves as a strict **collaboration workspace** where agents exchange information, stay up-to-date with active implementation plans, track bugs, and document architectural decisions to drive progressive codebase improvements.
 
 Welcome. Any newly attached AI agent must read the workspace documents in this exact execution order before modifying any system code:
 

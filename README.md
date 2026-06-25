@@ -1,5 +1,9 @@
 # WhatsApp Casual Bot
 
+> [!IMPORTANT]
+> **🤖 AI AGENTS & COLLABORATION HUB:** If you are an AI assistant assigned to modify this codebase, you MUST read the master onboarding directive located at [`ai-chat/README.md`](./ai-chat/README.md) BEFORE making any changes. The `ai-chat` directory is our dedicated **AI Collaboration Workspace**. It is where information exchange, task plans, issues, bugs, and architectural decisions are continuously documented to ensure progressive, safe codebase improvements.
+
+
 A highly capable, passive WhatsApp bot built with Python and FastAPI, designed specifically for small private groups. It provides powerful AI translation, an assistant mode for tasks/notes, and silent contact synchronization to maintain an offline roster.
 
 ## Core Features
@@ -304,7 +308,7 @@ python3 backup_restore.py --mode backup
 # After git clone, place the ZIP in the root directory
 python3 backup_restore.py --mode restore --file <your_backup_file>.zip
 ```
-*The script will safely restore your environment and verify no data is unintentionally overwritten. See [ai-chat/BACKUP_RESTORE_FEATURE.md](ai-chat/BACKUP_RESTORE_FEATURE.md) for full architectural details.*
+*The script will safely restore your environment and verify no data is unintentionally overwritten. See [ai-chat/knowledge_base/BACKUP_RESTORE_FEATURE.md](ai-chat/knowledge_base/BACKUP_RESTORE_FEATURE.md) for full architectural details.*
 
 ---
 
