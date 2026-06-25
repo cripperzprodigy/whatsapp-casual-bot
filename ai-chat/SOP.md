@@ -3,7 +3,7 @@
 # Master Governance Document (SOP)
 
 ## Registration Protocol
-Any agents starting work in this repository must log their presence in `AGENT_REGISTRY.md` before executing any code changes.
+Any agents starting work in this repository must log their presence in `agents/AGENT_REGISTRY.md` before executing any code changes.
 
 ## Coding Constraints
 Strict adherence to the project's architecture is required.

@@ -3,9 +3,9 @@
 Welcome. Any newly attached AI agent must read the workspace documents in this exact execution order before modifying any system code:
 
 1. `SOP.md`
-2. `AGENT_REGISTRY.md`
+2. `agents/AGENT_REGISTRY.md`
 3. `chatpad.md`
-4. `ARCHITECTURE.md`
+4. `knowledge_base/ARCHITECTURE.md`
 5. `PROJECT_HISTORY.md`
 
 ---
@@ -22,7 +22,7 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 - Added a persistent Owner/Admin permissions system with dynamic `!help` output and bootstrap ownership claim flow.
 
 ## Chatty Feature
-We recently integrated a highly sophisticated long-term memory conversational assistant called `!chatty`. See [CHATTY_FEATURE.md](./CHATTY_FEATURE.md) for architectural details and execution flow.
+We recently integrated a highly sophisticated long-term memory conversational assistant called `!chatty`. See [CHATTY_FEATURE.md](./knowledge_base/CHATTY_FEATURE.md) for architectural details and execution flow.
 
 ## Backup & Restore Utilities
-For migrating the bot to new machines without losing active WhatsApp sessions or local RAG memory, see [BACKUP_RESTORE_FEATURE.md](./BACKUP_RESTORE_FEATURE.md).
+For migrating the bot to new machines without losing active WhatsApp sessions or local RAG memory, see [BACKUP_RESTORE_FEATURE.md](./knowledge_base/BACKUP_RESTORE_FEATURE.md).
