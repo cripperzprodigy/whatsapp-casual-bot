@@ -74,3 +74,6 @@ See ADR-014 and ADR-017 in decisions.md.
 ### Feature Flag Implementation Standards
 - **Runtime vs ENV Configuration Priority**: When implementing feature flags, the system should always prioritize a verified runtime database state first (e.g. via `FeatureFlagService`), and fall back to a strictly typed ENV default if no override exists.
 - **Experimental Features**: All experimental features must have an ENV kill-switch and RBAC guard. Do not deploy resource-heavy features universally without a means for the owner to toggle them off dynamically at runtime.
+
+### Agentic Feature Documentation Standards
+- **Knowledge Base Extensibility**: When introducing new large-scale architectural features (like RAG, Agentic Search, or Backup systems), create a dedicated markdown file in `ai-chat/knowledge_base/` and explicitly detail the ASCII flow, constraints, failovers, and feature toggle states, linking it back to the `ai-chat/README.md` hub.
