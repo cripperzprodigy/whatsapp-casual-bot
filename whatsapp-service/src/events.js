@@ -138,7 +138,11 @@ function registerEvents(client) {
                                 mentionedJid: msg.mentionedIds ? msg.mentionedIds.map(id => id.replace(/@c\.us$/, '@s.whatsapp.net')) : [],
                                 ...(quotedMsgPayload ? { quotedMessage: quotedMsgPayload, participant: quotedParticipant } : {})
                             }
-                        }
+                        },
+                        // Include contextInfo for reply detection (quoted message context).
+                        // This is separate from mentionedJid and is present when the user
+                        // uses the native WhatsApp "Reply" feature to reply to a message.
+                        ...(msg.contextInfo && { contextInfo: msg.contextInfo })
                     },
                     pushName: contact.pushname || contact.name || "Unknown",
                     media_data: mediaData
