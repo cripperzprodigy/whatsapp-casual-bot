@@ -240,3 +240,17 @@ Decision :
 Consequences :
   + Search queries execute natively over the web via external providers without slowing the application or UI.
   + Automatically protects users from 429 connection timeouts when one search backend goes down.
+
+## ADR-024 — Iterative Agentic Search (!s)
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  The existing `!search` command is linear, lacking the ability to evaluate findings, recognize missing context, and refine its search to gather comprehensive information.
+Decision :
+  - Developed `AgenticSearchOrchestrator` in `app/services/agentic_search_service.py` to facilitate iterative research using `HybridSearchService`.
+  - Added the `!s <query>` command alongside `!search`.
+  - Implemented a "Gap Analysis" LLM Prompt strategy: Prompt LLM at the end of each iteration to analyze findings and determine if `sufficient`, missing info, and suggest a `refined_query` to continue searching up to a maximum of 2 iterations.
+  - Hard loop limits (max 2 iterations) and time boundaries (14 seconds globally, 3-6 seconds locally per-step) enforce limits.
+Consequences :
+  + Empowers the bot to comprehensively research deep topics.
+  + Does not block the event loop or violate latency requirements due to graceful degradation.

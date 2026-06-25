@@ -33,6 +33,8 @@ from app.permissions import (
     is_claim_ownership_available,
 )
 from app.services.search_service import HybridSearchService
+from app.services.agentic_search_service import AgenticSearchOrchestrator
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,8 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     lines.extend([
         "💬 *General / AI*",
         "├ `!a <text>` - Ask the AI a question",
-        "├ `!search <query>` - Search the web",
+        "├ `!search <query>` - Quick search the web",
+        "├ `!s <query>` - Deep agentic search the web",
         "├ `!summary` - Summarize recent messages",
         "├ `!ping` - Check bot status",
         "└ `!help` - Show this menu\n"
@@ -789,6 +792,28 @@ async def handle_command(  # Issue 13: added return type
                     await send_text_message(chat_id, "⚠️ Search service encountered an error. Please try again later.")
             else:
                 await send_text_message(chat_id, "Usage: !search <query>")
+
+        elif command == "!s":
+            if len(args) > 0:
+                query = " ".join(args)
+
+                # Immediately send "Thinking..." if we anticipate it taking long, though
+                # AgenticSearchOrchestrator can take ~14s, so sending this right away is good UX.
+                await send_text_message(chat_id, f"🔍 *Agentic Search:* Thinking about '{query}'...")
+
+                mode = getattr(app_settings, "SEARCH_PROVIDER_MODE", "hybrid")
+                searxng_url = getattr(app_settings, "SEARXNG_BASE_URL", None)
+                search_service = HybridSearchService(mode, searxng_url)
+                orchestrator = AgenticSearchOrchestrator(search_service)
+
+                try:
+                    final_answer = await orchestrator.execute_iterative_search(query, sender_id)
+                    await send_text_message(chat_id, final_answer)
+                except Exception as e:
+                    logger.error(f"Agentic search failed for query '{query}': {e}")
+                    await send_text_message(chat_id, "⚠️ Agentic search service encountered an error. Please try again later.")
+            else:
+                await send_text_message(chat_id, "Usage: !s <query>")
 
         elif command == "!pm":
             if len(args) < 2:

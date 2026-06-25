@@ -66,3 +66,7 @@ See ADR-014 and ADR-017 in decisions.md.
 
 ### Code Maintenance and Hygiene
 - **Dead code and backup files must be removed immediately upon refactoring, not batched.** Do not leave `*-backup.*`, `*.bak`, `*.old`, `*~`, or commented-out deprecated logic blocks in the codebase.
+
+### Agentic Workflows and Loop Guards
+- **Command Taxonomy**: New agentic commands like `!s` should live alongside existing commands (`!search`) as premium commands for deep research rather than replacing them. Quick lookups should remain accessible via low latency variants.
+- **Graceful Degradation**: All agentic loops must have hard iteration limits and timeout guards. If advanced reasoning logic fails (such as an LLM Gap Analysis phase), the system must log the failure but immediately fallback to synthesize a final answer using the available accumulated context, rather than completely failing.

@@ -5,7 +5,7 @@ import warnings
 from typing import List, Optional, Protocol
 
 import aiohttp
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 
 logger = logging.getLogger(__name__)
 
