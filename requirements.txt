@@ -19,3 +19,5 @@ sentence-transformers
 pillow
 pdfplumber
 filelock
+ddgs
+aiohttp

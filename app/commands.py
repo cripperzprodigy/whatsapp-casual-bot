@@ -32,6 +32,7 @@ from app.permissions import (
     try_claim_ownership,
     is_claim_ownership_available,
 )
+from app.services.search_service import HybridSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -767,29 +768,27 @@ async def handle_command(  # Issue 13: added return type
         elif command == "!search":
             if len(args) > 0:
                 query = " ".join(args)
-                prompt = (
-                    "Answer this query concisely using internal knowledge "
-                    "and reasoning. Do not claim live web access is available. "
-                    "If the query asks for current news, weather, or live data, "
-                    "state that live access is unavailable and provide useful "
-                    "guidance on how the user can obtain the latest information."
-                    f"\n\nQuery: {query}"
-                )
-                answer = await ask_llm(
-                    prompt, task_type="search_answer"
-                )
-                if answer.lower().startswith(
-                    "i do not have access"
-                ) or "cannot access" in answer.lower():
-                    await send_text_message(
-                        chat_id,
-                        "This bot currently does not have live web search "
-                        "access. Please ask a different question or verify "
-                        "your search API configuration.",
-                    )
-                else:
-                    await send_text_message(
-                        chat_id, f"*Search Results:*\n{answer}")
+                mode = getattr(app_settings, "SEARCH_PROVIDER_MODE", "hybrid")
+                searxng_url = getattr(app_settings, "SEARXNG_BASE_URL", None)
+                max_results = getattr(app_settings, "SEARCH_MAX_RESULTS", 5)
+
+                search_service = HybridSearchService(mode, searxng_url)
+
+                try:
+                    results = await search_service.search(query, max_results)
+                    if not results:
+                        await send_text_message(chat_id, f"🔍 No results found for '{query}'. Try rephrasing or using different keywords.")
+                    else:
+                        response_lines = [f"🔍 *Search Results for '{query}':*"]
+                        for i, res in enumerate(results, 1):
+                            response_lines.append(f"\n{i}. *{res.title}*\n{res.url}\n_{res.snippet}_")
+
+                        await send_text_message(chat_id, "\n".join(response_lines))
+                except Exception as e:
+                    logger.error(f"Search failed for query '{query}': {e}")
+                    await send_text_message(chat_id, "⚠️ Search service encountered an error. Please try again later.")
+            else:
+                await send_text_message(chat_id, "Usage: !search <query>")
 
         elif command == "!pm":
             if len(args) < 2:

@@ -246,9 +246,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./bot.db"
 
     # ------------------------------------------------------------------ #
-    #  Optional APIs
+    #  Search Configuration
     # ------------------------------------------------------------------ #
-    WEB_SEARCH_API_KEY: Optional[str] = None
+    SEARCH_PROVIDER_MODE: str = "hybrid"  # options: "hybrid", "searxng", "duckduckgo"
+    SEARXNG_BASE_URL: Optional[str] = None
+    SEARCH_MAX_RESULTS: int = 5
 
     # ------------------------------------------------------------------ #
     #  Internal Bot config
@@ -371,6 +373,18 @@ class Settings(BaseSettings):
                 data["MAX_CONTEXT_MESSAGES"] = max(5, min(1000, val))
             except (ValueError, TypeError):
                 data.pop("MAX_CONTEXT_MESSAGES", None)
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_and_clamp_search_results(cls, data: dict) -> dict:
+        limit_val = data.get("SEARCH_MAX_RESULTS")
+        if limit_val is not None:
+            try:
+                val = int(limit_val)
+                data["SEARCH_MAX_RESULTS"] = max(1, min(20, val))
+            except (ValueError, TypeError):
+                data.pop("SEARCH_MAX_RESULTS", None)
         return data
 
     @model_validator(mode="before")

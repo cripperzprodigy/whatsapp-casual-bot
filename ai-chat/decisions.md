@@ -226,3 +226,17 @@ Decision :
 Consequences :
   + Restores visual quoting functionality across Group chats and DMs.
   + Eliminates hardcoded `false_` prefixes from the Python backend entirely.
+
+## ADR-023 — Hybrid Web Search and Fallback Strategy
+
+Date    : 2026-06-25
+Status  : Accepted
+Context :
+  The `!search` command lacked true web access and relied solely on LLM internal knowledge. We needed a robust real-time search component that could respect async event loop boundaries.
+Decision :
+  - Developed `HybridSearchService` in `app/services/search_service.py` with `SearXNGProvider` and `DuckDuckGoProvider`.
+  - Used `SEARCH_PROVIDER_MODE="hybrid"` configuration by default to attempt SearXNG first, gracefully catching errors (like 429 timeouts or connection errors), and falling back to DuckDuckGo search without bubbling errors to the user.
+  - `DuckDuckGoProvider` is wrapped using `asyncio.to_thread` because `ddgs` is synchronous and would block the FastAPI event loop.
+Consequences :
+  + Search queries execute natively over the web via external providers without slowing the application or UI.
+  + Automatically protects users from 429 connection timeouts when one search backend goes down.

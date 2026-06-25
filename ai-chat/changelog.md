@@ -92,6 +92,14 @@
   - Updated `whatsapp-service/src/events.js` to correctly detect `msg.hasQuotedMsg`.
   - Added logic to fetch `getQuotedMessage()` and append `quotedMessage` and `participant` info dynamically to the `contextInfo` inside the outgoing webhook payload, restoring Python's ability to trigger `ReplyContext=True`.
 
+### Implemented Hybrid Search Service
+- **Issue**: The `!search` command lacked live web access to retrieve relevant up-to-date data.
+- **Resolution**: Implemented a robust `HybridSearchService` supporting:
+  - Primary Provider: SearXNG.
+  - Fallback Provider: DuckDuckGo (using `ddgs` library).
+  - Offloaded DuckDuckGo to an async thread using `asyncio.to_thread` to maintain non-blocking I/O in the main event loop.
+  - Automatic DuckDuckGo failover on SearXNG failure (Hybrid Mode).
+
 ### Extended Visual Quoting and Reply Documentation
 - **Detailed Documentation**: Augmented `investigation_reply_bug.md` and `decisions.md` with in-depth technical analysis and ASCII architecture diagrams mapping out the full flow of Threaded Conversations (`ReplyContext`).
 - **Explanation of Node.js Webhook Quoted Message**: Added a clear rationale (ADR-021) for why `getQuotedMessage()` hydration is required in `whatsapp-web.js` (because it does not automatically populate quoted messages like Baileys).
