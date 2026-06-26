@@ -19,7 +19,7 @@ class AgenticSearchOrchestrator:
         try:
             return await asyncio.wait_for(
                 self._execute_search_loop(query),
-                timeout=14.0
+                timeout=120.0
             )
         except asyncio.TimeoutError:
             logger.warning(f"AgenticSearchOrchestrator global timeout for query '{query}'")
@@ -27,6 +27,7 @@ class AgenticSearchOrchestrator:
 
     async def _execute_search_loop(self, query: str) -> str:
         context_history = []
+        seen_urls = set()
         current_query = query
         iteration = 0
         reasoning_failed = False
@@ -38,11 +39,11 @@ class AgenticSearchOrchestrator:
                 # Search Step Timeout: 3.0 seconds
                 results = await asyncio.wait_for(
                     self.search_service.search(current_query),
-                    timeout=3.0
+                    timeout=15.0
                 )
 
                 # Format results and append
-                formatted_results = self._format_search_results(results)
+                formatted_results = self._format_search_results(results, seen_urls)
                 if formatted_results:
                      context_history.append(f"--- Search Results for '{current_query}' ---\n{formatted_results}")
             except asyncio.TimeoutError:
@@ -62,7 +63,7 @@ class AgenticSearchOrchestrator:
                 # LLM Gap Analysis Timeout: 5.0 seconds
                 analysis = await asyncio.wait_for(
                     self._analyze_gaps(query, context_history),
-                    timeout=5.0
+                    timeout=60.0
                 )
 
                 if analysis.get('sufficient', True):
@@ -72,6 +73,10 @@ class AgenticSearchOrchestrator:
                 refined_query = analysis.get('refined_query')
                 if not refined_query:
                     logger.warning("Gap analysis returned insufficient, but no refined_query.")
+                    break
+
+                if refined_query.lower().strip() == current_query.lower().strip():
+                    logger.info("Gap analysis returned identical query. Breaking loop to prevent duplicates.")
                     break
 
                 current_query = refined_query
@@ -92,7 +97,7 @@ class AgenticSearchOrchestrator:
             # LLM Synthesis Timeout: 6.0 seconds
             return await asyncio.wait_for(
                 self._synthesize_final_answer(query, context_history, reasoning_failed),
-                timeout=6.0
+                timeout=60.0
             )
         except asyncio.TimeoutError:
              logger.warning("Synthesis timed out.")
@@ -155,7 +160,7 @@ class AgenticSearchOrchestrator:
             system_override=system_instruction
         )
 
-    def _format_search_results(self, results: List[Any]) -> str:
+    def _format_search_results(self, results: List[Any], seen_urls: set) -> str:
         if not results:
             return ""
 
@@ -164,6 +169,10 @@ class AgenticSearchOrchestrator:
              title = getattr(res, 'title', 'No Title')
              snippet = getattr(res, 'snippet', 'No Snippet')
              url = getattr(res, 'url', '')
+             if url and url in seen_urls:
+                 continue
+             if url:
+                 seen_urls.add(url)
              formatted.append(f"{i}. {title}\nSnippet: {snippet}\nURL: {url}")
 
         return "\n\n".join(formatted)

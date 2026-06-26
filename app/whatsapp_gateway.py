@@ -107,6 +107,8 @@ async def resolve_quote_id(short_id: str) -> Optional[str]:
             if resp.status_code == 200 and resp_data.get("success"):
                 serialized_id = resp_data.get("serializedId")
                 if serialized_id:
+                    if not serialized_id.startswith("false_"):
+                        serialized_id = "false_" + serialized_id
                     logger.debug(f"Successfully resolved ID: {serialized_id}")
                     return serialized_id
             logger.warning(f"Failed to resolve ID: {resp_data.get('error', 'Unknown error')}")

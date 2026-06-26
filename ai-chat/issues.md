@@ -44,3 +44,8 @@
 
 - Issue: `!whoami` and explicit tags failing to detect `@bot` mentions if `bot_number` is missing.
   - Resolution: Updated `is_explicitly_tagged` to continue evaluating `@bot` pattern and `bot_name` if `bot_number` is None, and fixed literal bare number search with regex word boundaries `\b`.
+
+- Issue: Bot replies failed to natively quote original messages.
+  - Resolution: Updated `resolve_quote_id` to prepend `false_` to `serialized_id` as required by `whatsapp-web.js` WISP schema.
+- Issue: `!s` (Agentic Search) returned 3 identical sets of search results back-to-back and timed out on local LLMs.
+  - Resolution: Implemented deduplication across iterations using `seen_urls`, prevented the loop from continuing if the refined query was identical, and increased Agentic orchestration timeouts (e.g., synthesis to 60s, global to 120s).

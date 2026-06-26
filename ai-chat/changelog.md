@@ -111,3 +111,7 @@
 - Fixed `ModuleNotFoundError: No module named 'duckduckgo_search'` by updating `requirements.txt` to use the correct `duckduckgo-search` package instead of the deprecated `ddgs` package.
 
 - Fixed `@bot` mention detection in `app/router_webhook.py` by removing early return if `bot_number` is None and properly using word boundary `\b` regex checks.
+
+- Fixed WhatsApp native visual quoting bug by prefixing `false_` to the resolved gateway `serialized_id` in `whatsapp_gateway.py`.
+- Fixed Agentic Search (`!s`) returning duplicate identical search results by implementing `seen_urls` deduplication and breaking the iteration loop if the gap analysis proposes the exact same query.
+- Increased Agentic Search timeouts significantly (14s -> 120s global) to support slower local LLMs like LM Studio on laptops.

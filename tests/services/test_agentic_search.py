@@ -67,6 +67,32 @@ async def test_agentic_search_second_iteration(mock_search_service):
         assert result == "Final synthesized answer with more context"
 
 @pytest.mark.asyncio
+async def test_agentic_search_identical_query_break(mock_search_service):
+    class DummyResult:
+        def __init__(self, title, snippet, url):
+            self.title = title
+            self.snippet = snippet
+            self.url = url
+
+    mock_search_service.search.return_value = [DummyResult("A", "B", "C")]
+
+    orchestrator = AgenticSearchOrchestrator(mock_search_service)
+
+    with patch("app.services.agentic_search_service.ask_llm", new_callable=AsyncMock) as mock_ask_llm:
+        # First LLM call gap analysis returns insufficient but same query
+        # Second LLM call is synthesis
+        mock_ask_llm.side_effect = [
+            '{"sufficient": false, "missing_info": "need X", "refined_query": "test query"}',
+            "Final synthesized answer after breaking loop"
+        ]
+
+        result = await orchestrator.execute_iterative_search("test query", "user_1")
+
+        # Ensure search was called ONCE because it broke the loop on identical query
+        assert mock_search_service.search.call_count == 1
+        assert result == "Final synthesized answer after breaking loop"
+
+@pytest.mark.asyncio
 async def test_agentic_search_gap_analysis_failure(mock_search_service):
     class DummyResult:
         def __init__(self, title, snippet, url):
