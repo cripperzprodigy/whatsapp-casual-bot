@@ -41,3 +41,6 @@
 
 - Issue: `ModuleNotFoundError: No module named 'duckduckgo_search'` on startup.
   - Resolution: Replaced `ddgs` with `duckduckgo-search` in `requirements.txt`.
+
+- Issue: `!whoami` and explicit tags failing to detect `@bot` mentions if `bot_number` is missing.
+  - Resolution: Updated `is_explicitly_tagged` to continue evaluating `@bot` pattern and `bot_name` if `bot_number` is None, and fixed literal bare number search with regex word boundaries `\b`.

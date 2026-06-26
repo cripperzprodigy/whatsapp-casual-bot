@@ -86,12 +86,7 @@ def is_explicitly_tagged(
     Returns:
       bool
     """
-    if not bot_number:
-        return False
-
-    bare_bot = normalize_jid_for_comparison(bot_number)
-    if not bare_bot:
-        return False
+    bare_bot = normalize_jid_for_comparison(bot_number) if bot_number else None
 
     # 1. Check native @mention via mentionedJids array
     if mentioned_jids:
@@ -108,7 +103,7 @@ def is_explicitly_tagged(
                 return True
 
     # 2. Check if bot's bare number is literally present in text
-    if bare_bot and re.search(re.escape(bare_bot), text or ""):
+    if bare_bot and re.search(r'\b' + re.escape(bare_bot) + r'\b', text or ""):
         import logging
         logging.getLogger(__name__).debug(f"Mention detected via literal number match for bot {bot_number}")
         return True

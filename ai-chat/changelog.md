@@ -109,3 +109,5 @@
 - **Agentic Search Architecture Documentation**: Authored `ai-chat/knowledge_base/AGENTIC_SEARCH_FEATURE.md` encompassing the full flow of `!s` command including prompt architectures, feature toggles, and timeout constraints. Linked in `ai-chat/README.md`.
 
 - Fixed `ModuleNotFoundError: No module named 'duckduckgo_search'` by updating `requirements.txt` to use the correct `duckduckgo-search` package instead of the deprecated `ddgs` package.
+
+- Fixed `@bot` mention detection in `app/router_webhook.py` by removing early return if `bot_number` is None and properly using word boundary `\b` regex checks.
