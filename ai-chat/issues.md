@@ -38,3 +38,6 @@
 - [CLOSED] NO LID DM SEND FAILURE: DM routing failed when WhatsApp lacked `@c.us` LID mapping for users only seen in groups. Fixed by implementing `resolveWhatsAppId()` in `src/utils/jid.js` using `client.getNumberId(rawPhone)` to retrieve fully-qualified LIDs for private messages.
 - [CLOSED] STALE CODE ARTIFACTS: Refactoring left behind obsolete code. Resolved by sweeping for stale `.bak`, `.old`, `.temp` files, removing dead code comments, and creating a stricter standard for immediate cleanup in `ai-chat/SOP.md`.
 - [CLOSED] NO LID / MIGRATION FALLBACK: Catch `getNumberId` returning null on known valid JIDs due to LID account migration, allowing the send to proceed using the original ID.
+
+- Issue: `ModuleNotFoundError: No module named 'duckduckgo_search'` on startup.
+  - Resolution: Replaced `ddgs` with `duckduckgo-search` in `requirements.txt`.

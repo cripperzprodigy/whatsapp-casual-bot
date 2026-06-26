@@ -19,5 +19,5 @@ sentence-transformers
 pillow
 pdfplumber
 filelock
-ddgs
+duckduckgo-search
 aiohttp

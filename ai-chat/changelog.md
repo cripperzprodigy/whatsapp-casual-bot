@@ -107,3 +107,5 @@
 - **Iterative RAG Implementation**: Added `!s <query>` command mapped to the new `AgenticSearchOrchestrator` to perform iterative, multi-hop reasoning with a gap analysis phase, and a 15-second response constraint before final synthesis. The `!search` command remains in place for quick, simple factual lookup.
 - **Feature Flag System & Dynamic Help**: Added `FeatureFlagService` to manage runtime configuration toggles securely and dynamically via the DB `GlobalSettings`. The `!help` menu now dynamically adapts to the user's role and the active state of features (such as `agentic_search`), ensuring experimental features can be controlled in real-time by the Bot Owner without redeploying.
 - **Agentic Search Architecture Documentation**: Authored `ai-chat/knowledge_base/AGENTIC_SEARCH_FEATURE.md` encompassing the full flow of `!s` command including prompt architectures, feature toggles, and timeout constraints. Linked in `ai-chat/README.md`.
+
+- Fixed `ModuleNotFoundError: No module named 'duckduckgo_search'` by updating `requirements.txt` to use the correct `duckduckgo-search` package instead of the deprecated `ddgs` package.
