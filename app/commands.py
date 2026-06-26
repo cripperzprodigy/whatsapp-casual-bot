@@ -823,14 +823,17 @@ async def handle_command(  # Issue 13: added return type
 
                         await send_text_message(chat_id, "\n".join(response_lines))
                 except Exception as e:
-                    logger.error(f"Search failed for query '{query}': {e}")
-                    await send_text_message(chat_id, "⚠️ Search service encountered an error. Please try again later.")
+                    logger.error(f"Search failed for query '{query}': {e}", exc_info=True)
+                    err_msg = "⚠️ Search service encountered an error. Please try again later."
+                    if getattr(app_settings, "ENABLE_AGENTIC_SEARCH", False):
+                        err_msg += " (Consider trying !s for more complex queries if enabled)"
+                    await send_text_message(chat_id, err_msg)
             else:
                 await send_text_message(chat_id, "Usage: !search <query>")
 
         elif command == "!s":
             if not FeatureFlagService.is_enabled(db, "agentic_search"):
-                await send_text_message(chat_id, "🚫 This feature is currently disabled by the administrator.")
+                await send_text_message(chat_id, "🚫 Agentic search is disabled. Owner can enable via: !config toggle agentic_search on")
                 return
 
             if len(args) > 0:

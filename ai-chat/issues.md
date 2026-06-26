@@ -49,3 +49,6 @@
   - Resolution: Updated `resolve_quote_id` to prepend `false_` to `serialized_id` as required by `whatsapp-web.js` WISP schema.
 - Issue: `!s` (Agentic Search) returned 3 identical sets of search results back-to-back and timed out on local LLMs.
   - Resolution: Implemented deduplication across iterations using `seen_urls`, prevented the loop from continuing if the refined query was identical, and increased Agentic orchestration timeouts (e.g., synthesis to 60s, global to 120s).
+- [CLOSED] !search command returning "No results found" for server errors instead of indicating a failure. Fixed by catching all exceptions with full traceback logging and displaying a generic service error instead.
+- [CLOSED] Chatty not quoting @bot messages. Fixed by ensuring `quoted_msg_id` maps to the explicitly triggered original message correctly per ADR-022.
+- [CLOSED] Chatty not responding to reply-to-bot contexts. Fixed by updating the message payload parser and `extract_context` logic to reliably handle the mapped data, effectively resolving the missing `quotedMessage` bugs.

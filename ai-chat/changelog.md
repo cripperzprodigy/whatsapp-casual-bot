@@ -115,3 +115,9 @@
 - Fixed WhatsApp native visual quoting bug by prefixing `false_` to the resolved gateway `serialized_id` in `whatsapp_gateway.py`.
 - Fixed Agentic Search (`!s`) returning duplicate identical search results by implementing `seen_urls` deduplication and breaking the iteration loop if the gap analysis proposes the exact same query.
 - Increased Agentic Search timeouts significantly (14s -> 120s global) to support slower local LLMs like LM Studio on laptops.
+
+### Fixed
+- **Search Robustness**: Fixed `!search` to properly log errors with full stack traces (`exc_info=True`) while sending generic fallback messages to end users to not leak infrastructure info.
+- **Agentic Search**: Updated `!s` command response when disabled to include instructions for the owner on how to toggle the feature (`!config toggle agentic_search on`).
+- **Chatty Quoting Restoration**: Fixed `quoted_msg_id` logic to ensure compliance with ADR-022. Direct mentions and threaded replies now quote the user's message correctly, while unprompted responses gracefully fall back to natural conversation flow (no quote).
+- **Reply Context Mapping**: Fixed webhook parser logic dropping threaded conversations by robustly ensuring missing dictionaries are mapped over for string-only formats during WhatsApp native replies.

@@ -63,3 +63,7 @@ To prevent the WhatsApp Webhook from hanging indefinitely and getting terminated
 The `!help` command now intelligently parses the `FeatureFlagService` and the user's role.
 - **Regular Users**: If `agentic_search` is OFF, the command is completely hidden. If ON, it appears under "AI Tools".
 - **Owners/Admins**: If OFF, it appears as `!s (Currently Disabled)` so administrators know the command exists and can toggle it via `!config`.
+
+### Troubleshooting
+
+- **`!search` vs `!s`**: `!search` relies directly on the underlying `HybridSearchService` with standard latency and no refinement loop. If `!search` fails, a generic error is surfaced. `!s` utilizes the `AgenticSearchOrchestrator` to multi-hop. If `!s` returns "Feature Disabled", ensure you are the Bot Owner and run `!config toggle agentic_search on` to turn it on dynamically.

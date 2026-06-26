@@ -152,7 +152,7 @@ Objective: Strict wait from the first message, collecting subsequent context.
 **Note:** An explicit mention (text or native `@` UI tag) **always** selects Path A and overrides negative group chatty defaults. If a group has chatty disabled, the bot will still respond immediately to a direct tag. Any existing pending background task is also cancelled when a mention is detected.
 
 ### 🚫 Natural Quoting
-To maintain conversational realism, the `send_text_message` function is invoked with `reply_to_msg_id=None` during Chatty mode on both paths. The bot will interject naturally into the chat stream without using the WhatsApp 'reply' quote feature, identically to a human participant.
+To maintain conversational realism, random/unprompted responses use `reply_to_msg_id=None`. However, for direct triggers (such as explicitly mentioning `@bot` or replying natively to a bot's previous message), the bot must quote the original message in its response to ensure clear threaded context (per ADR-022).
 
 ---
 

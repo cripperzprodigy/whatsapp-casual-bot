@@ -204,8 +204,13 @@ def extract_context(message_content, bot_number: str | None, bot_known_ids: list
     quoted_sender = context_info.get("participant", "")
     quoted_msg = context_info.get("quotedMessage", {})
     
-    if not quoted_msg or not isinstance(quoted_msg, dict):
+    # We might have missing quotedMessage inside contextInfo if it wasn't populated
+    # properly. In some payload structures, quotedMessage is just text. Let's ensure
+    # we don't crash if quoted_msg is a string.
+    if not quoted_msg:
         return None, None
+    if not isinstance(quoted_msg, dict):
+        quoted_msg = {"conversation": str(quoted_msg)}
 
     quoted_numeric = normalize_jid_for_comparison(quoted_sender)
     bot_numerics = [normalize_jid_for_comparison(j) for j in bot_known_ids]
@@ -214,7 +219,7 @@ def extract_context(message_content, bot_number: str | None, bot_known_ids: list
         bot_numerics.append(normalized_bot)
 
     is_reply_to_bot = quoted_numeric in bot_numerics
-    logger.debug(f"Normalized Reply Check: {quoted_numeric} vs {normalized_bot}. Match={is_reply_to_bot}")
+    logger.debug(f"Normalized Reply Check: quoted_sender={quoted_sender}, quoted_numeric={quoted_numeric} vs normalized_bot={normalized_bot}, known_lids={bot_numerics}. Match={is_reply_to_bot}")
 
     if is_reply_to_bot:
         quoted_text = quoted_msg.get("conversation", "")
@@ -257,10 +262,14 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
         ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None)
         logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
+            quoted_msg_id = getattr(msg_key, 'id', None)
+            if not quoted_msg_id:
+                logger.warning("Triggered DM chatty but msg_key.id is missing")
+
             await send_text_message(
                 chat_id,
                 ai_reply,
-                quoted_msg_id=getattr(msg_key, 'id', None),
+                quoted_msg_id=quoted_msg_id,
                 quoted_participant=None,
             )
         else:
@@ -348,10 +357,14 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
 
                 ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None)
                 if ai_reply:
+                    quoted_msg_id = getattr(msg_key, 'id', None)
+                    if not quoted_msg_id:
+                        logger.warning("Triggered group chatty but msg_key.id is missing")
+
                     await send_text_message(
                         chat_id,
                         ai_reply,
-                        quoted_msg_id=getattr(msg_key, 'id', None),
+                        quoted_msg_id=quoted_msg_id,
                         quoted_participant=None,
                     )
                 return
