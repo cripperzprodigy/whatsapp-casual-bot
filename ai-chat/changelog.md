@@ -167,3 +167,15 @@
 - **Integration Points**: `!s` (agentic search), `!search` (results), `!a` (AI ask), DM chatty replies, and group chatty replies now use `send_long_message()`. Short command responses (help, errors, confirmations) remain on `send_text_message` since they're well under the limit.
 - **Gateway Timeout Fix**: Increased `httpx.AsyncClient` timeout from default 5s to 15s in `send_text_message()` to prevent `ReadTimeout` on individual chunks.
 - **Abort Logic**: If a chunk fails delivery, remaining chunks are aborted and user is notified (`⚠️ Message delivery interrupted at part X/Y`).
+
+### Fixed (!pm Command Silent Drop)
+- **Root Cause**: The `!pm` handler had a de-indentation error where the `send_text_message` call was nested inside the `else` branch of the target JID formatter. If a user provided a number without the `@` prefix, the message was never sent.
+- **Fix**: De-indented the send block in `commands.py` to function level so that PMs are sent correctly regardless of the `@` prefix logic.
+
+### Fixed (Group Path A `send_long_message` SOP Violation)
+- **Root Cause**: Path A (explicit mentions / tags) for group chats was still using `send_text_message` for AI replies, violating the SOP requirement to use chunking for potentially long text, which risks gateway timeouts.
+- **Fix**: Replaced `send_text_message` with `send_long_message` for group AI replies in `router_webhook.py`.
+
+### Fixed (Delayed Chatty Reply Missing Quotes)
+- **Root Cause**: The `_delayed_chatty_reply` function (Path B) received `msg_id` and `participant` parameters but never passed them to `send_long_message`, resulting in missing message attribution in group chats.
+- **Fix**: Updated `_delayed_chatty_reply` to explicitly pass `quoted_msg_id=msg_id` and `quoted_participant=participant` to `send_long_message`, ensuring proper visual quotes for frequency-triggered replies.

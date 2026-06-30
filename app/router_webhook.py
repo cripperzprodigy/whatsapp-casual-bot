@@ -160,8 +160,8 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
             await send_long_message(
                 chat_id,
                 ai_reply,
-                quoted_msg_id=None,
-                quoted_participant=None,
+                quoted_msg_id=msg_id,
+                quoted_participant=participant,
             )
             # Process bursts sequentially if > 1
             for _ in range(1, burst_count):
@@ -170,8 +170,8 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
                     await send_long_message(
                         chat_id,
                         burst_reply,
-                        quoted_msg_id=None,
-                        quoted_participant=None,
+                        quoted_msg_id=msg_id,
+                        quoted_participant=participant,
                     )
     except asyncio.CancelledError:
         # Task was cancelled (debounced) by a newer message
@@ -358,7 +358,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                     if not quoted_msg_id:
                         logger.warning("Triggered group chatty but msg_key.id is missing")
 
-                    await send_text_message(
+                    await send_long_message(
                         chat_id,
                         ai_reply,
                         quoted_msg_id=quoted_msg_id,

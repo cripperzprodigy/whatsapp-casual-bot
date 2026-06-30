@@ -76,4 +76,5 @@
 | Jules | $(date -u +'%Y-%m-%d %H:%M') UTC | Execution Agent - Codebase Hygiene & Cleanup | Active |
 | Jules | $(date -u +'%Y-%m-%d %H:%M') UTC | Execution Agent - Fix LID Migration Bug | Active |
 | Antigravity | 2026-06-24 10:11 UTC | Execution Agent - Apply remaining bugfixes for wabot-v2 (Fixes A-F) | Completed |
-| Antigravity | 2026-06-24 10:47 UTC | Execution Agent - Fix !claim_ownership silent failure cascade | Active |
+| Antigravity | 2026-06-24 10:47 UTC | Execution Agent - Fix !claim_ownership silent failure cascade | Completed |
+| Antigravity | 2026-06-30 11:27 UTC | Execution Agent - Fix three critical bugs: !pm silent drop, group Path A send_long_message violation, and delayed chatty reply missing quotes | Active |
