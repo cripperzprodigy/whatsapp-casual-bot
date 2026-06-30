@@ -154,6 +154,13 @@ Objective: Strict wait from the first message, collecting subsequent context.
 ### 🚫 Natural Quoting
 To maintain conversational realism, random/unprompted responses use `reply_to_msg_id=None`. However, for direct triggers (such as explicitly mentioning `@bot` or replying natively to a bot's previous message), the bot must quote the original message in its response to ensure clear threaded context (per ADR-022).
 
+### 👥 Group Chat Requirements
+When quoting a message in a **Group Chat**, the system REQUIRES both `quotedMsgId` AND `quotedParticipant` to be passed in the HTTP payload.
+- **Why?** The underlying `whatsapp-web.js` client cannot correctly attribute a quoted message to its original sender in a group context without the explicit participant JID.
+- **Example Usage:** The router must extract `msg_key.participant` and pass it to `send_text_message(..., quoted_participant=msg_key.participant)`. The payload then becomes: `{"to": "group_id", "message": "reply", "quotedMsgId": "id", "quotedParticipant": "user@s.whatsapp.net"}`.
+- **Direct Messages (DMs):** DMs do not have "participants" in the same way groups do. For DMs, `quoted_participant` MUST remain `None` (or `null` in the JSON payload).
+- **Reference:** See the `OutboundMessageRequest` schema in [WISP_PROTOCOL.md](./WISP_PROTOCOL.md) for full payload structure.
+
 ---
 
 ## 🔁 RAG Context Pipeline (Flow Diagram)

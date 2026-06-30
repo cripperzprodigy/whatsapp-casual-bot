@@ -128,3 +128,11 @@
   2. **Node.js Gateway** (`send.js`): Now extracts `quotedParticipant` from the request body and passes it into `sendOptions.quotedParticipant` for `whatsapp-web.js`.
   3. **Router Webhook** (`router_webhook.py`): Chatty group replies (explicit mentions/tags) now pass `msg_key.participant` instead of `None`, ensuring proper sender attribution. DM replies correctly remain `None`.
 - **WISP Protocol Schema Update**: Updated `WISP_PROTOCOL.md` to document the new `quotedParticipant` field in the `OutboundMessageRequest` schema.
+
+### Documentation (Group Reply Participant Attribution)
+- **Governance Updates**: Completed AI-Chat governance documentation for the `quotedParticipant` fix to prevent regressions and maintain protocol consistency:
+  - `CHATTY_FEATURE.md`: Added "Group Chat Requirements" section detailing the necessity of `quotedParticipant`.
+  - `SOP.md`: Enforced a mandatory group message attribution rule in Section 4.2.
+  - `decisions.md`: Authored ADR-026 formally documenting the architectural decision.
+  - `ARCHITECTURE.md`: Added an ASCII flow diagram depicting explicit `quotedParticipant` routing.
+  - `README.md`: Updated the summary feature list with links to the Chatty documentation.

@@ -20,7 +20,7 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 - Applied a timezone-aware fix for `ChatSettings.last_roster_export_at` to ensure contact roster export throttling compares UTC-aware timestamps consistently.
 - Updated auto-translation replies so the bot quotes the original WhatsApp message and provides only the translated text.
 - Added strict Chatty vs Auto-Translation mutual exclusion: messages processed by Chatty are now blocked from being auto-translated in the same webhook event.
-- Improved group reply quoting by passing participant metadata into the internal gateway when replying to quoted group messages.
+- **Group Reply Attribution (`quotedParticipant`)**: Fixed missing participant attribution in group chat replies. Group messages processed by `whatsapp-web.js` require both `quotedMessageId` and the `quotedParticipant` to correctly map the quote to the original sender. DMs correctly omit this. See [CHATTY_FEATURE.md](./knowledge_base/CHATTY_FEATURE.md) for flow details.
 - Added a persistent Owner/Admin permissions system with dynamic `!help` output and bootstrap ownership claim flow.
 
 ## Chatty Feature

@@ -267,3 +267,29 @@ Decision :
 Consequences :
   + Experimental features can be turned off dynamically without downtime.
   + Users only see the commands they have permission to execute or that are actively enabled.
+
+## ADR-026: Mandatory quotedParticipant for Group Chat Message Attribution
+Date: 2026-06-30
+Status: Accepted
+Authors: DEBUG-LEAD (orchestration), Antigravity (documentation)
+
+### Context
+Group message replies handled by `whatsapp-web.js` require both the `quotedMessageId` and the `quotedParticipant` (the original sender's JID) to correctly attribute the quote in the native WhatsApp UI. Previously, `quotedParticipant` was accepted by the Python gateway interface but silently dropped before HTTP serialization, causing missing attribution in group chat threaded replies (e.g., Chatty mentions or auto-translations).
+
+### Decision
+We mandate that all group chat replies MUST include the `quotedParticipant` parameter end-to-end. The Python payload must serialize it, the Node.js gateway must extract and map it into `sendOptions`, and all webhook routers must supply `msg_key.participant` when replying in groups.
+
+### Consequences
+- Positive: Proper message attribution in groups (UI displays "Replying to @user" correctly).
+- Negative: Slightly more complex payload construction and routing logic.
+- Neutral: DMs remain unchanged (participant remains `None` since DMs do not have multiple participants).
+
+### Implementation Details
+- Python layer: `whatsapp_gateway.py` includes `quotedParticipant` in the outbound JSON payload.
+- Node.js layer: `send.js` extracts and applies `quotedParticipant` to `sendOptions`.
+- Router layer: `router_webhook.py` explicitly passes `msg_key.participant` for group replies.
+
+### References
+- `ai-chat/changelog.md` (fix entry)
+- `ai-chat/issues.md` (issue log)
+- `ai-chat/knowledge_base/WISP_PROTOCOL.md` (schema)

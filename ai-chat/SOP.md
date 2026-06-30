@@ -28,6 +28,10 @@ Strict adherence to the project's architecture is required.
 - **Feature Interaction Suppression:** When a message is explicitly directed at the bot (detected via `is_explicitly_tagged`), background enhancement features (auto-translation, auto-summary, etc.) must be suppressed. Direct interactions take exclusive priority to prevent duplicate or conflicting output.
 
 - **Context-Aware Replies & Anti-Spoofing:** When processing Threaded Conversations (users replying to the bot via the WhatsApp "Reply" feature), the bot must extract `quotedMessage` context. To prevent malicious context injection/spoofing, the quoted `participant` JID MUST be securely validated against the `BotIdentityManager` (checking `BOT_NUMBER` and known LIDs) before injecting it into the AI's prompt. The context must be clearly prepended to the user's message string to guarantee the LLM attributes it correctly (e.g. `User is replying to your previous message: '{quoted}' "{message}"`).
+- **Group Message Attribution (MANDATORY):** All group message replies that quote a previous message MUST include the `quotedParticipant` parameter.
+  - **VALIDATION:** Code review checklist item for any message-sending changes.
+  - **TESTING:** Test plans must explicitly include both DM (where participant is `None`) and group scenarios to verify attribution.
+  - **REFERENCE:** See [CHATTY_FEATURE.md](knowledge_base/CHATTY_FEATURE.md) and [WISP_PROTOCOL.md](knowledge_base/WISP_PROTOCOL.md).
 
 - **Domain Separation:** Any new features affecting message processing MUST consider DM/Group domain separation and should be implemented within the respective dedicated handler (`_handle_dm_message` or `_handle_group_message`). The main webhook router should only contain shared early-exit guards.
 

@@ -139,6 +139,45 @@ The `router_webhook.py` handles inbound WhatsApp events using a strict "Domain S
                               [Delayed Task]
 ```
 
+### Complete Message Reply Flow with Participant Attribution
+
+```text
+       [WhatsApp Webhook]
+               |
+               v
+       router_webhook.py
+  Detects: chat_type, msg_key.id,
+           msg_key.participant
+               |
+               +---> [DM Chat?] ----[quoted_participant=None]---> send_text_message()
+               |                                                         |
+               |                                                         v
+               |                                                whatsapp_gateway.py
+               |                                                         |
+               |                                               quotedParticipant=null
+               |                                                         v
+               |                                                [Node.js Gateway]
+               |                                                         |
+               |                                                         v
+               |                                                  [WhatsApp API]
+               |
+               +---> [Group Chat?] --[quoted_participant=msg_key.participant]---> send_text_message()
+                                                                                         |
+                                                                                         v
+                                                                                whatsapp_gateway.py
+                                                                                         |
+                                                                              quotedParticipant="12345@g.us"
+                                                                                         v
+                                                                                [Node.js Gateway]
+                                                                                         |
+                                                                              sendOptions.quotedParticipant set
+                                                                                         v
+                                                                                client.sendMessage()
+                                                                                whatsapp-web.js attributes correctly
+                                                                                         v
+                                                                                  [WhatsApp API]
+```
+
 ## 5. Gateway Modularity (`whatsapp-service/src/`)
 
 To prevent monolithic state management and ease debugging, the Node.js Gateway microservice is broken down into specific operational concerns.
