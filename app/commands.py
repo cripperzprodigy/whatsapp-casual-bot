@@ -43,111 +43,89 @@ logger = logging.getLogger(__name__)
 
 
 async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
-    lines = ["🤖 *WhatsApp Casual Bot Commands*\n"]
-
-    lines.extend([
-        "💬 *General / AI*",
-        "├ `!a <text>` - Ask the AI a question",
-        "├ `!search <query>` - Quick search the web",
-        "├ `!summary` - Summarize recent messages",
-        "├ `!ping` - Check bot status",
-        "└ `!help` - Show this menu\n"
-    ])
-
-    lines.extend([
-        "🌐 *Translation*",
-        "├ `!t <lang> <text>` - Translate text",
-        "├ `!t auto <text>` - Translate to default",
-        "├ `!auto on|off` - Toggle auto-translate (this chat)",
-        "├ `!auto global` - Reset to global default",
-        "├ `!target <lang>` - Set target language",
-        "├ `!ignore add|remove <lang>` - Manage ignore list",
-        "└ `!ignore global` - Reset ignore list\n"
-    ])
+    # Role is one of "owner", "admin", "public"
+    display_role = "User" if role == PUBLIC_ROLE else role.capitalize()
     
-    lines.extend([
-        "📝 *Productivity*",
-        "├ `!task add <desc>` - Add a task",
-        "├ `!task list` - List tasks",
-        "├ `!task done <id>` - Complete a task",
-        "├ `!note add <text>` - Add a note",
-        "└ `!note list` - List notes\n"
-    ])
-
-
-    if role in {ADMIN_ROLE, OWNER_ROLE} or not is_group_chat:
-        lines.extend([
-            "🧠 *AI Memory & RAG*",
-            "├ `!chatty on|off` - Toggle continuous AI conversation",
-            "├ `!chatty_freq <val>` - Set frequency",
-            "├ `!chatty_burst <val>` - Set burst count",
-            "├ `!chatty_delay <min> <max>` - Set human-like delay",
-            "├ `!chatty_mode <debounce|throttle>` - Delay strategy",
-            "├ `!chatty_status` - View current settings",
-            "├ `!lang set <code>` - DM Only: Set preferred language",
-            "└ `!lang reset` - DM Only: Revert language\n"
-        ])
-
-    is_agentic_enabled = FeatureFlagService.is_enabled(db, "agentic_search")
-    if is_agentic_enabled:
-        lines.extend([
-            "🔍 *AI Tools*",
-            "├ `!s <query>` - Deep agentic search the web",
-        ])
-        if app_settings.deep_crawl_enabled:
-            lines.append("├ `!sc <query>` - Deep crawl search (reads full pages)")
-        lines.append("└ ...\n")
-    elif app_settings.deep_crawl_enabled:
-        lines.extend([
-            "🔍 *AI Tools*",
-            "└ `!sc <query>` - Deep crawl search (reads full pages)\n"
-        ])
-    elif role == OWNER_ROLE:
-        lines.extend([
-            "🔍 *AI Tools*",
-            "└ `!s (Currently Disabled)`\n"
-        ])
-
-    if role in {ADMIN_ROLE, OWNER_ROLE}:
-        lines.extend([
-            "⚙️ *Admin Commands*",
-            "├ `!contacts list` - View group contacts",
-            "├ `!pm group <text>` - DM current group",
-            "├ `!pm @user <text>` - DM specific user",
-            "├ `!export ledger` - Export group contacts",
-            "├ `!broadcast <msg>` - Message all chats",
-            "├ `!stats` - System statistics",
-            "├ `!botid` - Show bot identity status",
-            "├ `!auto global` - Reset auto-translate",
-            "└ `!ignore global` - Reset ignore list\n"
-        ])
-
-    if role == OWNER_ROLE:
-        lines.extend([
-            "👑 *Owner Commands*",
-            "├ `!config toggle <feature> <on|off>` - Toggle features",
-            "├ `!contacts global` - View all contacts globally",
-            "├ `!pm global <text>` - DM all groups",
-            "├ `!pm flood limit|interval <val>` - PM flood settings",
-            "├ `!owner grant|revoke <jid>` - Manage Owners",
-            "├ `!admin grant|revoke <jid>` - Manage Admins",
-            "├ `!owner|admin list` - List privileged users",
-            "├ `!owner transfer <jid>` - Transfer ownership",
-            "├ `!whoami` - Register Bot Identity (tag bot)",
-            "├ `!forget-me` - Clear Bot Identity (LIDs)",
-            "├ `!globaltrans on|off` - Toggle global auto-translate",
-            "├ `!sc_toggle on|off` - Toggle deep crawl search",
-            "└ `!shutdown | !restart` - Lifecycle controls\n"
-        ])
-
+    response = "🤖 *WhatsApp Casual Bot Commands*\n\n"
+    
+    # ---------------------------------------------------------
+    # 1. COMMON COMMANDS (Available to everyone)
+    # ---------------------------------------------------------
+    response += "*📢 Available to You:*\n"
+    response += "• `!a <text>`: Ask the AI a question\n"
+    response += "• `!search <query>`: Quick search the web\n"
+    response += "• `!s <query>`: Search the web with AI refinement\n"
+    response += "• `!summary`: Summarize replied text or chat history\n"
+    response += "• `!ping`: Check bot status\n"
+    response += "• `!help`: Show this menu\n"
+    
+    # Translation & Productivity
+    response += "• `!t <lang> <text>`: Translate text\n"
+    response += "• `!t auto <text>`: Translate to default\n"
+    if not is_group_chat:
+        response += "• `!lang set <code>`: (DM Only) Set preferred language\n"
+        response += "• `!lang reset`: (DM Only) Revert preferred language\n"
+    response += "• `!task add <desc>`: Add a task\n"
+    response += "• `!task list`: List tasks\n"
+    response += "• `!task done <id>`: Complete a task\n"
+    response += "• `!note add <text>`: Add a note\n"
+    response += "• `!note list`: List notes\n"
+    
+    # Setup for new bots (only shown if claim is available)
     if role == PUBLIC_ROLE and not is_group_chat:
         if is_claim_ownership_available(db):
-            lines.extend([
-                "🔑 *Setup*",
-                "└ `!claim_ownership` - Claim initial bot ownership\n"
-            ])
+            response += "• `!claim_ownership`: Claim initial bot ownership\n"
+            
+    # ---------------------------------------------------------
+    # 2. ADMIN COMMANDS (Available to admin and owner)
+    # ---------------------------------------------------------
+    if role in [ADMIN_ROLE, OWNER_ROLE]:
+        response += "\n*🛡️ Admin Commands:*\n"
+        response += "• `!chatty <on|off>`: Toggle continuous AI conversation\n"
+        response += "• `!chatty_freq <val>`: Set AI response frequency\n"
+        response += "• `!chatty_burst <val>`: Set AI burst count\n"
+        response += "• `!chatty_delay <min> <max>`: Set human-like delay\n"
+        response += "• `!chatty_mode <debounce|throttle>`: Set delay strategy\n"
+        response += "• `!chatty_status`: View current AI chatter settings\n"
+        response += "• `!auto on|off`: Toggle auto-translate for this chat\n"
+        response += "• `!auto global`: Reset auto-translate for this chat\n"
+        response += "• `!target <lang>`: Set target language\n"
+        response += "• `!ignore add|remove <lang>`: Manage translation ignore list\n"
+        response += "• `!ignore global`: Reset translation ignore list\n"
+        response += "• `!contacts list`: View group contacts\n"
+        response += "• `!pm group <text>`: DM current group\n"
+        response += "• `!pm @user <text>`: DM specific user\n"
+        response += "• `!export ledger`: Export group contacts\n"
+        response += "• `!broadcast <msg>`: Message all chats\n"
+        response += "• `!stats`: System statistics\n"
+        response += "• `!botid`: Show bot identity status\n"
 
-    return "\n".join(lines).strip()
+    # ---------------------------------------------------------
+    # 3. OWNER COMMANDS (Available to owner only)
+    # ---------------------------------------------------------
+    if role == OWNER_ROLE:
+        response += "\n*👑 Owner Commands:*\n"
+        response += "• `!sc <query>`: 🕷️ Deep Crawl Search: Fetches full content from top websites for detailed analysis\n"
+        response += "• `!sc_toggle <on|off>`: 🔒 Toggle Deep Crawl feature globally\n"
+        response += "• `!config toggle <feature> <state>`: ⚙️ Advanced configuration toggles\n"
+        response += "• `!contacts global`: View all contacts globally\n"
+        response += "• `!pm global <text>`: DM all groups\n"
+        response += "• `!pm flood limit|interval <val>`: PM flood settings\n"
+        response += "• `!owner grant|revoke <jid>`: Manage Owners\n"
+        response += "• `!admin grant|revoke <jid>`: Manage Admins\n"
+        response += "• `!owner|admin list`: List privileged users\n"
+        response += "• `!owner transfer <jid>`: Transfer ownership\n"
+        response += "• `!whoami`: 🆔 Registers the bot's current WhatsApp LID\n"
+        response += "• `!forget-me`: Clears the bot's known LIDs\n"
+        response += "• `!globaltrans on|off`: Toggle global auto-translate\n"
+        response += "• `!shutdown | !restart`: Lifecycle controls\n"
+
+    # ---------------------------------------------------------
+    # Footer
+    # ---------------------------------------------------------
+    response += f"\n_You are viewing help as [{display_role}]. Contact @owner for access._"
+    
+    return response
 
 
 async def handle_command(  # Issue 13: added return type
@@ -232,7 +210,7 @@ async def handle_command(  # Issue 13: added return type
             if not await is_owner(db, sender_id):
                 await send_text_message(
                     chat_id,
-                    "🚫 Access Denied: `!sc_toggle` requires Owner privileges.",
+                    "🚫 Access Denied: `!sc_toggle` requires Owner privileges. Type !help to see available commands.",
                 )
             elif len(args) == 1 and args[0] in ["on", "off"]:
                 new_state = args[0] == "on"
@@ -697,7 +675,7 @@ async def handle_command(  # Issue 13: added return type
                 try:
                     if feature_name == "agentic_search":
                         if not await is_owner(db, sender_id):
-                            await send_text_message(chat_id, "🚫 Unauthorized: Only Owner can toggle features.")
+                            await send_text_message(chat_id, "🚫 Unauthorized: Only Owner can toggle features. Type !help to see available commands.")
                             return
                         app_settings.enable_agentic_search = state_bool
                         from app.utils.config_persister import persist_global_config
@@ -707,7 +685,7 @@ async def handle_command(  # Issue 13: added return type
                         await FeatureFlagService.toggle_feature(db, feature_name, state_bool, sender_id)
                         await send_text_message(chat_id, f"✅ Feature '{feature_name}' is now {state_str.upper()}.")
                 except PermissionError:
-                    await send_text_message(chat_id, "🚫 Unauthorized: Only Owner can toggle features.")
+                    await send_text_message(chat_id, "🚫 Unauthorized: Only Owner can toggle features. Type !help to see available commands.")
                 except Exception as e:
                     logger.error(f"Error toggling feature: {e}")
                     await send_text_message(chat_id, "⚠️ Error toggling feature.")

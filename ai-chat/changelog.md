@@ -141,7 +141,8 @@
 - **Documentation**: Rewrote `LANGUAGE_DETECTION.md` with the sphere policy, updated flow diagram, and edge case table. Added ADR-028. Updated SOP with linguistic sphere rules.
 - **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
 
-### Added (Configurable Deep Crawl & Agentic Search limits)
+### Added
+- **Feature**: Role-based Help Menu dynamically filters commands based on the user's role (User, Admin, Owner) and adds inline permission hints.
 - **Fix**: Agentic Search config mapping & Settings fields. Resolves the mismatch between `FeatureFlagService` and `app_settings` for `.env` integration.
 - **Fix**: Config sync and removal of hardcoded search/crawl values.
 - **Bug Fix**: Added missing `Settings` fields for Deep Crawl & Agentic Search (e.g. `search_max_results`, `deep_crawl_timeout_seconds`, etc.) in lowercase formatting. Fixed Pydantic `ValidationError` ("Extra inputs are not permitted") on startup by properly defining these fields in `app/config.py`.

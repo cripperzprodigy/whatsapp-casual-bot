@@ -93,9 +93,11 @@ If you are using LM Studio:
 
 ---
 
-## 🛠 Commands Reference
+## 📚 Commands Reference
 
-Type `!help` in the WhatsApp chat to see the list of available commands.
+Type `!help` in the WhatsApp chat to see the list of available commands. The help menu is role-based and dynamically filters commands depending on whether you are a User, Admin, or Owner.
+
+For a full list of all commands across all roles, see the [Command Reference Guide](ai-chat/knowledge_base/COMMAND_REFERENCE.md).
 
 ### Translation & Language
 
