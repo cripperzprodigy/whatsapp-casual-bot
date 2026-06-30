@@ -1073,35 +1073,51 @@ async def handle_command(  # Issue 13: added return type
                         if not ledger_entries:
                             await send_text_message(chat_id, "📭 No active contacts found in the ledger.")
                             return
-
-                        all_contacts = {}  # Key: jid, Value: info dict
+                            
+                        # Extract all unique JIDs and group contacts by chat_id
+                        all_unique_jids = set()
+                        contacts_by_group = {}  # Key: chat_id, Value: list of dicts {"jid": jid, "phone": phone, "name": name}
+                        original_contacts_map = {}
                         
                         for entry in ledger_entries:
                             jid = entry.jid
-                            if not jid:
+                            c_id = entry.chat_id
+                            if not jid or not c_id:
                                 continue
                                 
-                            if jid not in all_contacts:
-                                all_contacts[jid] = {
-                                    "jid": jid,
-                                    "phone": entry.phone_number,
-                                    "name": entry.push_name
-                                }
+                            all_unique_jids.add(jid)
+                            
+                            if c_id not in contacts_by_group:
+                                contacts_by_group[c_id] = []
+                            contacts_by_group[c_id].append({
+                                "jid": jid,
+                                "phone": entry.phone_number,
+                                "name": entry.push_name
+                            })
+                            
+                            if jid not in original_contacts_map:
+                                original_contacts_map[jid] = {"phone": entry.phone_number, "name": entry.push_name}
                             else:
-                                # Merge info: prefer existing phone/name if new one is missing
-                                if not all_contacts[jid].get("phone") and entry.phone_number:
-                                    all_contacts[jid]["phone"] = entry.phone_number
-                                if not all_contacts[jid].get("name") and entry.push_name:
-                                    all_contacts[jid]["name"] = entry.push_name
+                                if not original_contacts_map[jid].get("phone") and entry.phone_number:
+                                    original_contacts_map[jid]["phone"] = entry.phone_number
+                                if not original_contacts_map[jid].get("name") and entry.push_name:
+                                    original_contacts_map[jid]["name"] = entry.push_name
                                     
-                        # Extract the unique JIDs for active resolution
-                        all_unique_jids = list(all_contacts.keys())
-                        total = len(all_unique_jids)
+                        # Fetch group names
+                        group_names = {}
+                        chat_settings = db.query(ChatSettings).filter(
+                            ChatSettings.chat_id.in_(list(contacts_by_group.keys()))
+                        ).all()
+                        for cs in chat_settings:
+                            group_names[cs.chat_id] = cs.group_name
+                            
+                        unique_jids_list = list(all_unique_jids)
+                        total = len(unique_jids_list)
                         
-                        await send_text_message(chat_id, f"🔄 Starting global resolution for {total} users... This will run in the background. Results will be sent to you via DM when complete.")
+                        await send_text_message(chat_id, f"🔄 Starting global resolution for {total} users across {len(contacts_by_group)} groups... This will run in the background. Results will be sent to you via DM when complete.")
                         
                         import asyncio
-                        async def run_global_resolution_bg(jids, recipient_id, original_contacts_map):
+                        async def run_global_resolution_bg(jids, recipient_id, group_map, group_names_map, orig_map):
                             from app.contact_sync import resolve_participant_info_batch
                             
                             async def send_progress(current, total_bg):
@@ -1110,29 +1126,66 @@ async def handle_command(  # Issue 13: added return type
                                     
                             resolved_contacts = await resolve_participant_info_batch(jids, send_progress)
                             
-                            formatted_list = []
-                            hidden_count = 0
-                            
+                            # Build a quick lookup dictionary for resolved info
+                            resolved_lookup = {}
                             for info in resolved_contacts:
                                 jid = info.get("jid")
-                                # If active resolution didn't find a phone, fallback to db phone if we had one
-                                original_info = original_contacts_map.get(jid, {})
-                                phone = info.get("phone") or original_info.get("phone")
-                                name = info.get("name") or original_info.get("name") or "Unknown User"
+                                orig = orig_map.get(jid, {})
+                                phone = info.get("phone") or orig.get("phone")
+                                name = info.get("name") or orig.get("name") or "Unknown User"
+                                resolved_lookup[jid] = {"phone": phone, "name": name}
                                 
-                                if phone:
-                                    formatted_list.append(f"• +{phone} ({name})")
-                                else:
-                                    formatted_list.append(f"• 🔒 Hidden (User has strict privacy settings) - {name}. Tip: Ask them to add your bot number as a contact to reveal their number.")
-                                    hidden_count += 1
+                            # Structure data by group
+                            formatted_output = ["📇 *Global Contacts by Group*\n"]
+                            
+                            # Sort groups alphabetically by name (fallback to chat_id)
+                            sorted_groups = sorted(
+                                group_map.items(), 
+                                key=lambda item: (group_names_map.get(item[0]) or item[0]).lower()
+                            )
+                            
+                            total_hidden = 0
+                            
+                            for c_id, members in sorted_groups:
+                                g_name = group_names_map.get(c_id) or "Unknown Group"
+                                formatted_output.append(f"🏷️ *{g_name}* ({c_id})")
+                                
+                                # Process and sort members
+                                processed_members = []
+                                seen_jids_in_group = set()
+                                
+                                for member in members:
+                                    jid = member["jid"]
+                                    if jid in seen_jids_in_group:
+                                        continue
+                                    seen_jids_in_group.add(jid)
                                     
-                            result = f"🌍 *Global Contacts Summary (Deduplicated)*\n\nResolved {len(formatted_list)-hidden_count}/{total} numbers.\n\n" + "\n".join(formatted_list)
-                            if hidden_count > 0:
-                                result += f"\n\nℹ️ {hidden_count} numbers hidden. These users likely have 'Who can see my phone number' set to 'Nobody' or 'My Contacts'."
+                                    r_info = resolved_lookup.get(jid, {"phone": None, "name": "Unknown User"})
+                                    phone = r_info["phone"]
+                                    name = r_info["name"]
+                                    processed_members.append({"jid": jid, "phone": phone, "name": name})
+                                    
+                                # Sort members alphabetically by name
+                                processed_members.sort(key=lambda x: x["name"].lower())
                                 
+                                for idx, member in enumerate(processed_members, 1):
+                                    phone = member["phone"]
+                                    name = member["name"]
+                                    if phone:
+                                        formatted_output.append(f"├─ {idx}. {name} (+{phone})")
+                                    else:
+                                        formatted_output.append(f"├─ {idx}. 🔒 Hidden (Privacy) - {name}")
+                                        total_hidden += 1
+                                        
+                                formatted_output.append("") # Empty line between groups
+                                
+                            if total_hidden > 0:
+                                formatted_output.append(f"ℹ️ {total_hidden} numbers hidden due to privacy settings.")
+                                
+                            result = "\n".join(formatted_output)
                             await send_long_message(recipient_id, result)
                             
-                        asyncio.create_task(run_global_resolution_bg(all_unique_jids, sender_id, all_contacts))
+                        asyncio.create_task(run_global_resolution_bg(unique_jids_list, sender_id, contacts_by_group, group_names, original_contacts_map))
                             
                 elif subcmd == "export":
                     if not await is_owner(db, sender_id):
