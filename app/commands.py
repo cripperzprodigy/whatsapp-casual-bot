@@ -1191,64 +1191,66 @@ async def handle_command(  # Issue 13: added return type
                     if not await is_owner(db, sender_id):
                         await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
                     else:
-                        ledger_rows = (
-                            db.query(GroupContactLedger)
+                        import os, csv
+                        from datetime import datetime
+                        
+                        # 1. Prepare Path
+                        export_dir = "data/exports/groups"
+                        os.makedirs(export_dir, exist_ok=True)
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"ledger_{timestamp}.csv"
+                        export_path = os.path.join(export_dir, filename)
+                        
+                        # 2. Enhanced Query with Join
+                        results = (
+                            db.query(GroupContactLedger, ChatSettings.group_name)
+                            .outerjoin(ChatSettings, GroupContactLedger.chat_id == ChatSettings.chat_id)
                             .filter(GroupContactLedger.is_active.is_(True))
                             .all()
                         )
-                        if not ledger_rows:
-                            await send_text_message(
-                                chat_id,
-                                "No active contact ledger entries to export.",
-                            )
+                        
+                        if not results:
+                            await send_text_message(chat_id, "📭 No active contact ledger entries to export.")
                         else:
-                            import os, csv
-                            os.makedirs(
-                                app_settings.CONTACTS_EXPORT_DIR,
-                                exist_ok=True,
-                            )
-                            export_path = os.path.join(
-                                app_settings.CONTACTS_EXPORT_DIR,
-                                "ledger.csv",
-                            )
-                            with open(
-                                export_path,
-                                "w",
-                                newline="",
-                                encoding="utf-8",
-                            ) as csvfile:
+                            # 3. Write Enriched CSV
+                            unique_groups = set()
+                            with open(export_path, "w", newline="", encoding="utf-8") as csvfile:
                                 writer = csv.writer(csvfile)
-                                writer.writerow(
-                                    [
-                                        "chat_id",
-                                        "phone_number",
-                                        "push_name",
-                                        "is_admin",
-                                        "is_active",
-                                        "first_seen_at",
-                                        "last_seen_at",
-                                    ]
-                                )
-                                for row in ledger_rows:
-                                    writer.writerow(
-                                        [
-                                            row.chat_id,
-                                            row.phone_number,
-                                            row.push_name or "",
-                                            row.is_admin,
-                                            row.is_active,
-                                            row.first_seen_at.isoformat()
-                                            if row.first_seen_at
-                                            else "",
-                                            row.last_seen_at.isoformat()
-                                            if row.last_seen_at
-                                            else "",
-                                        ]
-                                    )
-                            await send_text_message(
-                                chat_id,
-                                f"✅ Contacts exported to: {export_path}",
-                            )
+                                writer.writerow([
+                                    "Contact JID", 
+                                    "Group ID", 
+                                    "Group Name", 
+                                    "Phone Number",
+                                    "Push Name",
+                                    "Is Admin",
+                                    "Added At",
+                                    "Last Seen At"
+                                ])
+                                
+                                for row, group_name in results:
+                                    g_name = group_name or "Unknown Group"
+                                    added_at = row.first_seen_at.isoformat() if row.first_seen_at else ""
+                                    last_seen_at = row.last_seen_at.isoformat() if row.last_seen_at else ""
+                                    
+                                    writer.writerow([
+                                        row.jid,
+                                        row.chat_id,
+                                        g_name,
+                                        row.phone_number,
+                                        row.push_name or "",
+                                        row.is_admin,
+                                        added_at,
+                                        last_seen_at
+                                    ])
+                                    unique_groups.add(row.chat_id)
+                                    
+                            # 4. Detailed Feedback
+                            msg = (f"✅ Export Successful\n"
+                                   f"📄 File: {filename}\n"
+                                   f"👥 Contacts: {len(results)}\n"
+                                   f"📦 Groups: {len(unique_groups)}\n"
+                                   f"📂 Path: {export_path}")
+                            await send_text_message(chat_id, msg)
 
         elif command == "!resolve":
             if not await is_owner(db, sender_id):
