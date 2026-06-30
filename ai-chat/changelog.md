@@ -144,3 +144,11 @@
 - **LID Registry Auto-Creation**: `BotIdentityManager.load_known_bot_ids()` now creates `data/bot_known_lids.json` with an empty array on first access, ensuring the file always exists after startup.
 - **Mention Detection Logging**: Enhanced `is_explicitly_tagged()` with a debug dump of `mentioned_jids` vs `known_ids` for traceability when mention checks fail.
 - **Documentation**: Created `ai-chat/knowledge_base/LANGUAGE_DETECTION.md` detailing the hybrid detection algorithm. Added ADR-027, updated SOP, issues, and README.
+
+### Refactored (EN/ID/MS Linguistic Sphere — ADR-028)
+- **Linguistic Sphere Policy**: Re-architected auto-translation to treat English, Indonesian, and Malay as a single shared language group. No translation ever occurs between these three languages. Only truly foreign languages (Arabic, Chinese, Japanese, French, etc.) trigger translation.
+- **`GLOBAL_IGNORED_LANGUAGES` Default**: Changed from empty string to `"en,id,ms"` — the primary enforcement mechanism. Messages detected as any ignored language return `None` from `detect_language_safe()` immediately.
+- **`TRANSLATION_EQUIVALENT_LANGS` Expanded**: Changed from `"id,ms"` to `"en,id,ms"` — ensures all three are treated as mutually equivalent at the equivalence check layer.
+- **Keyword Heuristic Early-Exit**: The `_heuristic_ms_id_check()` now triggers an immediate skip (returns `None`) when the detected ms/id is in the ignored set, instead of returning `"ms"` which would proceed to translation.
+- **Removed 20-char Limit**: The keyword heuristic now fires on ALL text lengths, not just < 20 chars, providing consistent ms/id detection regardless of message length.
+- **Documentation**: Rewrote `LANGUAGE_DETECTION.md` with the sphere policy, updated flow diagram, and edge case table. Added ADR-028. Updated SOP with linguistic sphere rules.

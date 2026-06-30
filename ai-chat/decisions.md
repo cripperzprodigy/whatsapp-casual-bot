@@ -316,3 +316,31 @@ Implement a two-tier hybrid detection strategy in `detect_language_safe()`:
 ### References
 - `ai-chat/knowledge_base/LANGUAGE_DETECTION.md` (full algorithm documentation)
 - `app/translation.py` (implementation)
+
+## ADR-028: EN/ID/MS Linguistic Sphere — Shared Language Group Policy
+Date: 2026-06-30
+Status: Accepted
+Authors: DEBUG-LEAD (orchestration), Antigravity (implementation)
+
+### Context
+In multilingual WhatsApp groups where users naturally mix English, Malay, and Indonesian, the auto-translation feature was generating unnecessary translations between these three languages. Users consider EN/ID/MS as mutually intelligible within their social context. Additionally, `langdetect` frequently misidentified short ms/id texts as Finnish or Tagalog, triggering incorrect translations.
+
+### Decision
+Implement an EN/ID/MS Linguistic Sphere policy:
+1. `GLOBAL_IGNORED_LANGUAGES` defaults to `"en,id,ms"` — messages detected as any of these are **never translated**.
+2. `TRANSLATION_EQUIVALENT_LANGS` expanded to `"en,id,ms"` — all three are treated as mutually equivalent.
+3. The keyword heuristic (`COMMON_MS_ID_WORDS`) checks against the ignored set and returns `None` (skip) immediately.
+4. The `langdetect` result is checked against `GLOBAL_IGNORED_LANGUAGES` before any translation proceeds.
+5. Only truly foreign languages (Arabic, Chinese, Japanese, French, etc.) trigger translation.
+
+### Consequences
+- Positive: No unnecessary translations between EN/ID/MS in multilingual groups.
+- Positive: Eliminates all `langdetect` false positives for ms/id that previously leaked through.
+- Positive: Configurable — users can remove languages from the sphere via `.env`.
+- Negative: Code-switching sentences (e.g., "I nak go to school") are silently skipped. This is intentional — the user community considers these natural.
+- Neutral: Foreign languages (ar, zh, ja, fr, de, es, etc.) continue to be translated correctly.
+
+### References
+- `ai-chat/knowledge_base/LANGUAGE_DETECTION.md` (algorithm documentation)
+- `app/config.py` (configuration defaults)
+- `app/translation.py` (implementation)

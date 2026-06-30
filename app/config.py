@@ -275,13 +275,18 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     GLOBAL_AUTO_TRANSLATE: bool = False
     GLOBAL_TARGET_LANGUAGE: str = "en"
-    # Comma-separated list of language codes to ignore globally
-    GLOBAL_IGNORED_LANGUAGES: str = ""
+    # Comma-separated list of language codes to ignore globally.
+    # Messages detected as any of these languages will NEVER be translated.
+    # Default: EN/ID/MS linguistic sphere — these are treated as a single
+    # shared language group in multilingual groups. See ADR-028.
+    GLOBAL_IGNORED_LANGUAGES: str = "en,id,ms"
 
     # Auto-Translation Sensitivity
     TRANSLATION_MIN_LENGTH: int = 4
     TRANSLATION_CONFIDENCE_THRESHOLD: float = 0.70
-    TRANSLATION_EQUIVALENT_LANGS: str = "id,ms"
+    # Languages treated as mutually equivalent (no translation between them).
+    # Part of the EN/ID/MS linguistic sphere policy (ADR-028).
+    TRANSLATION_EQUIVALENT_LANGS: str = "en,id,ms"
 
     # ------------------------------------------------------------------ #
     #  Issue 8: Rate Limiting

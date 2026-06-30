@@ -1,42 +1,54 @@
 # Language Detection Strategy
 
-This document details the hybrid language detection algorithm used by the auto-translation feature in `app/translation.py`.
+This document details the hybrid language detection algorithm and the **EN/ID/MS Linguistic Sphere** policy used by the auto-translation feature in `app/translation.py`.
 
 ---
 
-## 1. Problem Statement
+## 1. Linguistic Sphere Policy (ADR-028)
 
-The `langdetect` library is unreliable for short texts (< 20 characters), particularly for Malay (`ms`) and Indonesian (`id`). Common conversational words like "mulai", "makan", "saya", and "tak" are frequently misidentified as Finnish (`fi`), Tagalog (`tl`), or English (`en`), causing auto-translation to skip when it should translate.
+English (`en`), Indonesian (`id`), and Malay (`ms`) are treated as a **single shared linguistic sphere**. Messages detected as any of these three languages are **NEVER translated**, regardless of the group's target language setting.
+
+This policy exists because:
+- Users in multilingual groups naturally mix EN, ID, and MS and consider them mutually intelligible.
+- `langdetect` is unreliable for short ms/id texts, causing false translations.
+- Code-switching sentences (e.g., "I nak go to school") are natural and should not trigger translation.
+
+**Configuration:**
+```env
+GLOBAL_IGNORED_LANGUAGES=en,id,ms
+TRANSLATION_EQUIVALENT_LANGS=en,id,ms
+```
+
+Only truly foreign languages (Arabic, Chinese, Japanese, French, German, Spanish, etc.) trigger translation.
 
 ## 2. Hybrid Detection Algorithm
 
-The `detect_language_safe()` function in `app/translation.py` uses a two-tier approach:
+The `detect_language_safe()` function uses a three-tier approach:
 
-### Tier 1: Keyword Heuristic (Short Texts < 20 chars)
+### Tier 1: Keyword Heuristic (All Text Lengths)
 
-Before invoking `langdetect`, the function checks if the text is short (< 20 characters). If so, it tokenizes the input and compares against `COMMON_MS_ID_WORDS` — a curated set of ~80 high-frequency Malay/Indonesian words spanning pronouns, verbs, nouns, particles, and adjectives.
+Before invoking `langdetect`, the function tokenizes the input and compares against `COMMON_MS_ID_WORDS` — a curated set of ~80 high-frequency Malay/Indonesian words spanning pronouns, verbs, nouns, particles, and adjectives.
 
 **Trigger condition:** ≥ 50% of tokens match the keyword set.
 
 ```text
 Input: "saya nak makan"
 Tokens: ["saya", "nak", "makan"]
-Matches: 3/3 = 100% → Detected as 'ms'
+Matches: 3/3 = 100% → Detected as ms/id
+→ ms/id is in GLOBAL_IGNORED_LANGUAGES → SKIP translation
 ```
 
-If the heuristic fires, `langdetect` is completely bypassed. The standard equivalence and exact-match guards still apply (e.g., if `target_lang` is `ms`, no translation is needed).
+If the heuristic fires and the detected language is in the ignored set, `langdetect` is completely bypassed and `None` is returned (translation skipped).
 
-### Tier 2: langdetect with False-Positive Guard (Longer Texts)
+### Tier 2: langdetect with False-Positive Guard
 
-For texts ≥ 20 characters, the standard `langdetect` library is used with confidence thresholds (`TRANSLATION_CONFIDENCE_THRESHOLD`, default 0.70).
+For texts where the keyword heuristic does NOT match, the standard `langdetect` library is used with confidence thresholds (`TRANSLATION_CONFIDENCE_THRESHOLD`, default 0.70).
 
-A **secondary guard** catches common `langdetect` false positives: if the detected language is in `_MS_ID_FALSE_POSITIVE_LANGS` (`fi`, `tl`, `so`, `sw`, `hr`, `ro`) AND the keyword heuristic also matches, the detection is overridden to `ms`.
+A **false-positive guard** catches common `langdetect` misidentifications: if the detected language is in `_MS_ID_FALSE_POSITIVE_LANGS` (`fi`, `tl`, `so`, `sw`, `hr`, `ro`) AND the keyword heuristic also matches, the detection is overridden to `ms`.
 
-```text
-Input: "saya pergi ke rumah makan hari ini"
-langdetect returns: 'fi' (confidence 0.85)
-Keyword check: 7/7 tokens match → Override to 'ms'
-```
+### Tier 3: Ignored Languages Check
+
+After `langdetect` returns a result, the detected language is checked against `GLOBAL_IGNORED_LANGUAGES`. If it's in the set, translation is skipped immediately. This catches cases where `langdetect` correctly identifies `en`, `id`, or `ms` on longer texts.
 
 ## 3. Detection Flow Diagram
 
@@ -51,32 +63,41 @@ Keyword check: 7/7 tokens match → Override to 'ms'
                 /       \
             [YES]      [NO]
               |          |
-           [SKIP]   Length < 20 chars?
+           [SKIP]   Keyword Heuristic
+                    (COMMON_MS_ID_WORDS)
                       /        \
-                  [YES]       [NO]
+                  [MATCH]    [NO MATCH]
                     |           |
-             Keyword Match    langdetect()
-             >= 50%?             |
+              ms/id in         langdetect()
+              ignored?             |
               /    \         Confidence OK?
           [YES]   [NO]        /       \
             |       |      [YES]     [NO]
-      Return 'ms'   |       |        |
-                     |   False-Positive  [SKIP]
-                     |   Guard (fi/tl?)
-                     |     /       \
-                     |  [YES]     [NO]
-                     |    |         |
-                     | Override   Standard
-                     | to 'ms'   Detection
-                     |    |         |
-                     +----+---------+
-                          |
-                    Equivalence Check
-                    (id ≈ ms skip)
-                          |
-                    Exact Match Check
-                          |
-                    Return detected code
+         [SKIP]  Return     |        |
+                 'ms'    False-Pos  [SKIP]
+                         Guard?
+                          /   \
+                       [YES] [NO]
+                         |     |
+                      Override Standard
+                      to 'ms' Detection
+                         |     |
+                         +--+--+
+                            |
+                    In IGNORED_LANGS?
+                      /          \
+                   [YES]        [NO]
+                     |            |
+                  [SKIP]    Equivalence?
+                              /      \
+                           [YES]    [NO]
+                             |        |
+                          [SKIP]   Exact match?
+                                    /     \
+                                 [YES]   [NO]
+                                   |       |
+                                [SKIP]  TRANSLATE
+                                        (foreign)
 ```
 
 ## 4. Configuration
@@ -85,20 +106,42 @@ All detection parameters are configurable via `.env`:
 
 | Variable | Default | Description |
 |---|---|---|
+| `GLOBAL_IGNORED_LANGUAGES` | `"en,id,ms"` | Languages that are NEVER translated (linguistic sphere) |
+| `TRANSLATION_EQUIVALENT_LANGS` | `"en,id,ms"` | Languages treated as mutually equivalent |
 | `TRANSLATION_MIN_LENGTH` | `4` | Minimum text length to attempt detection |
 | `TRANSLATION_CONFIDENCE_THRESHOLD` | `0.70` | Minimum langdetect confidence to accept |
-| `TRANSLATION_EQUIVALENT_LANGS` | `"id,ms"` | Comma-separated codes treated as equivalent |
 
-## 5. Keyword Set Maintenance
+## 5. Keyword Set
 
-The `COMMON_MS_ID_WORDS` set is defined at module level in `app/translation.py`. When adding new words:
+The `COMMON_MS_ID_WORDS` set is defined at module level in `app/translation.py`. Categories:
 
-1. Only add words that are **unambiguous** — they should not commonly appear in English or other target languages.
-2. Avoid single-letter words or words shorter than 2 characters.
-3. Group words by category (pronouns, verbs, nouns, particles, adjectives) for readability.
+| Category | Words |
+|---|---|
+| **Pronouns** | saya, aku, awak, kamu, dia, kami, kita, mereka |
+| **Verbs** | makan, minum, pergi, datang, buat, ambil, beli, jual, cari, mulai, kerja, tidur, bangun, duduk, baca, tulis, dengar, lihat, tahu, boleh, mahu |
+| **Nouns** | orang, rumah, hari, masa, waktu, tempat, air, nasi, ayam, ikan, duit, wang, kereta, jalan |
+| **Particles** | tak, tidak, nak, ke, di, dan, atau, ya, lah, kan, leh, pun, dah, ada, ini, itu, apa, mana, bila, siapa, kenapa, macam, dengan, untuk, dari, dalam, sudah, belum, akan, sedang |
+| **Adjectives** | baik, besar, kecil, banyak, sedikit, cantik, bagus, mahal, murah, cepat, lambat, panas, sejuk |
 
-## 6. References
+When adding new words:
+1. Only add words that are **unambiguous** — they should not commonly appear in English.
+2. Avoid single-letter words.
+3. Group words by category for readability.
 
-- ADR-027 in `ai-chat/decisions.md` — Documents the decision to use heuristic word-matching
+## 6. Edge Cases
+
+| Scenario | Behavior | Rationale |
+|---|---|---|
+| Code-switching: "I nak go to school" | SKIP | Keyword "nak" triggers heuristic → ms/id in sphere |
+| Proper nouns: "Budi pergi ke Jakarta" | SKIP | "pergi" and "ke" in keyword set |
+| Ambiguous: "bisa" (can/poison) | SKIP | In context with other keywords |
+| Pure Japanese: "こんにちは" | TRANSLATE | No keyword match, langdetect returns "ja" (not ignored) |
+| Pure Arabic: "مرحبا" | TRANSLATE | No keyword match, langdetect returns "ar" (not ignored) |
+| Short English: "ok" | SKIP | Length < MIN_LENGTH (4) |
+
+## 7. References
+
+- ADR-027 in `decisions.md` — Keyword heuristic decision
+- ADR-028 in `decisions.md` — Linguistic sphere policy
 - `app/translation.py` — Implementation source
 - `app/config.py` — Settings definitions

@@ -128,10 +128,18 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
     Determines if text should be translated based on length, emojis,
     and probabilistic language detection. Returns detected code or None if skipped.
 
-    For short texts (< 20 chars), uses a keyword heuristic for ms/id detection
-    since langdetect is unreliable at this length. For longer texts, uses
-    langdetect with a secondary guard against common false positives (fi, tl).
+    Implements the EN/ID/MS Linguistic Sphere policy (ADR-028):
+    - Languages in GLOBAL_IGNORED_LANGUAGES are NEVER translated.
+    - Short texts (< 20 chars) use a keyword heuristic for ms/id detection.
+    - langdetect false positives (fi/tl) are corrected via keyword override.
     """
+    # 0. Load the ignored languages set (EN/ID/MS sphere)
+    ignored_langs = {
+        lang.strip().lower()
+        for lang in settings.GLOBAL_IGNORED_LANGUAGES.split(',')
+        if lang.strip()
+    }
+
     # 1. Length Guard
     if len(text.strip()) < settings.TRANSLATION_MIN_LENGTH:
         logger.debug(f"Skipping translation: Length < {settings.TRANSLATION_MIN_LENGTH}")
@@ -143,24 +151,21 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         logger.debug("Skipping translation: Less than 2 alphanumeric characters")
         return None
 
-    # 3. Short-Text Heuristic for Malay/Indonesian
+    # 3. Short-Text Heuristic for Malay/Indonesian (Early Exit)
     stripped = text.strip()
-    if len(stripped) < 20 and _heuristic_ms_id_check(stripped):
-        code = "ms"
-        logger.debug(f"Short-text heuristic detected ms/id for: '{stripped}'")
-
-        # Still apply equivalence and exact match checks
-        equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
-        if code in equivalent_langs and target_lang in equivalent_langs:
-            logger.debug(f"Skipping translation: Equivalent languages ({code} -> {target_lang})")
+    if _heuristic_ms_id_check(stripped):
+        logger.debug(f"Keyword heuristic detected ms/id for: '{stripped}'")
+        # ms is in the ignored set → skip translation entirely
+        if "ms" in ignored_langs or "id" in ignored_langs:
+            logger.debug("Skipping translation: ms/id detected and is in ignored languages (linguistic sphere)")
             return None
-        if code == target_lang:
-            logger.debug(f"Skipping translation: Exact match ({code})")
-            return None
+        # If ms/id were somehow NOT ignored, return the code for translation
+        return "ms"
 
-        return code
+    # 4. Target language in ignored set — if target itself is ignored,
+    #    only translate if source is a truly foreign language (handled below)
 
-    # 4. Detection with Confidence (standard langdetect path)
+    # 5. Detection with Confidence (standard langdetect path)
     try:
         langs = detect_langs(text)
         if not langs:
@@ -170,30 +175,35 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         detected = langs[0]
         conf = detected.prob
 
-        # 5. Confidence Guard
+        # 6. Confidence Guard
         if conf < settings.TRANSLATION_CONFIDENCE_THRESHOLD:
             logger.debug(f"Skipping translation: Low confidence ({conf:.2f})")
             return None
 
         code = detected.lang
 
-        # 6. False-Positive Guard: langdetect returns fi/tl/so for ms/id text
+        # 7. False-Positive Guard: langdetect returns fi/tl/so for ms/id text
         if code in _MS_ID_FALSE_POSITIVE_LANGS and _heuristic_ms_id_check(stripped):
             logger.info(f"Overriding langdetect false positive: '{code}' -> 'ms' (keyword match)")
             code = "ms"
 
-        # 7. ID/MS Equivalence
+        # 8. Linguistic Sphere Check (GLOBAL_IGNORED_LANGUAGES)
+        if code in ignored_langs:
+            logger.debug(f"Skipping translation: Detected language '{code}' is in ignored languages (linguistic sphere)")
+            return None
+
+        # 9. Equivalence Check (backwards compat — also catches sphere langs)
         equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
         if code in equivalent_langs and target_lang in equivalent_langs:
             logger.debug(f"Skipping translation: Equivalent languages ({code} -> {target_lang})")
             return None
 
-        # 8. Exact Match
+        # 10. Exact Match
         if code == target_lang:
             logger.debug(f"Skipping translation: Exact match ({code})")
             return None
 
-        # 9. Confirmed Mismatch
+        # 11. Confirmed foreign language — proceed to translation
         return code
 
     except LangDetectException:
