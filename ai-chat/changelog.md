@@ -98,19 +98,6 @@
   - Primary Provider: SearXNG.
   - Fallback Provider: DuckDuckGo (using `ddgs` library).
   - Offloaded DuckDuckGo to an async thread using `asyncio.to_thread` to maintain non-blocking I/O in the main event loop.
-  - Automatic DuckDuckGo failover on SearXNG failure (Hybrid Mode).
-
-### Extended Visual Quoting and Reply Documentation
-- **Detailed Documentation**: Augmented `investigation_reply_bug.md` and `decisions.md` with in-depth technical analysis and ASCII architecture diagrams mapping out the full flow of Threaded Conversations (`ReplyContext`).
-- **Explanation of Node.js Webhook Quoted Message**: Added a clear rationale (ADR-021) for why `getQuotedMessage()` hydration is required in `whatsapp-web.js` (because it does not automatically populate quoted messages like Baileys).
-- **Explanation of `_serialized` IDs**: Added ADR-022 to explain the necessity of directly leveraging the `whatsapp-web.js` native `msg.id._serialized` property to guarantee visual quoting UI rendering instead of manual string construction.
-- **Iterative RAG Implementation**: Added `!s <query>` command mapped to the new `AgenticSearchOrchestrator` to perform iterative, multi-hop reasoning with a gap analysis phase, and a 15-second response constraint before final synthesis. The `!search` command remains in place for quick, simple factual lookup.
-- **Feature Flag System & Dynamic Help**: Added `FeatureFlagService` to manage runtime configuration toggles securely and dynamically via the DB `GlobalSettings`. The `!help` menu now dynamically adapts to the user's role and the active state of features (such as `agentic_search`), ensuring experimental features can be controlled in real-time by the Bot Owner without redeploying.
-- **Agentic Search Architecture Documentation**: Authored `ai-chat/knowledge_base/AGENTIC_SEARCH_FEATURE.md` encompassing the full flow of `!s` command including prompt architectures, feature toggles, and timeout constraints. Linked in `ai-chat/README.md`.
-
-- Fixed `ModuleNotFoundError: No module named 'duckduckgo_search'` by updating `requirements.txt` to use the correct `duckduckgo-search` package instead of the deprecated `ddgs` package.
-
-- Fixed `@bot` mention detection in `app/router_webhook.py` by removing early return if `bot_number` is None and properly using word boundary `\b` regex checks.
 
 - Fixed WhatsApp native visual quoting bug by prefixing `false_` to the resolved gateway `serialized_id` in `whatsapp_gateway.py`.
 - Fixed Agentic Search (`!s`) returning duplicate identical search results by implementing `seen_urls` deduplication and breaking the iteration loop if the gap analysis proposes the exact same query.
@@ -168,3 +155,8 @@
 - **Unconditional Persistence**: LID registration happens BEFORE any owner check. This ensures `bot_known_lids.json` is populated even when triggered by non-owners.
 - **Owner DM**: Owner receives a DM with full identity details (discovered LIDs, all known LIDs, .env BOT_NUMBER). Non-owners get a group reply confirming internal update.
 - **`!forget-me` unchanged**: Remains owner-only since it's destructive.
+
+### Fixed (Duplicate Fallback Messages in `!s` Command)
+- **Root Cause**: `execute_iterative_search()` only caught `asyncio.TimeoutError` but not other exceptions (e.g., `TranslationError` from OpenRouter 500). When an uncaught exception propagated to `commands.py`, the caller's `except` block sent an additional error message — producing duplicate messages.
+- **Fix**: Added catch-all `except Exception` in `execute_iterative_search()` that guarantees it ALWAYS returns a string, never raises. The caller's `except` block is now a defensive safety net only.
+- **Logging**: Added `"Fallback constructed"` and `"Sending single response"` log entries to trace exactly one send per command execution.

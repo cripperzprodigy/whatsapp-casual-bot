@@ -88,6 +88,7 @@ See ADR-014 and ADR-017 in decisions.md.
 ### Agentic Workflows and Loop Guards
 - **Command Taxonomy**: New agentic commands like `!s` should live alongside existing commands (`!search`) as premium commands for deep research rather than replacing them. Quick lookups should remain accessible via low latency variants.
 - **Graceful Degradation**: All agentic loops must have hard iteration limits and timeout guards. If advanced reasoning logic fails (such as an LLM Gap Analysis phase), the system must log the failure but immediately fallback to synthesize a final answer using the available accumulated context, rather than completely failing.
+- **Single-Response Contract (MANDATORY)**: Service functions that construct and return user-facing messages (e.g., `execute_iterative_search()`) MUST catch all exceptions internally and ALWAYS return a string. The caller MUST NOT have a separate error-message send in its `except` block that could fire when the service already returned a fallback. This prevents duplicate messages. If a safety-net `except` is kept in the caller, it must log `"this should not happen"` to flag contract violations.
 
 ### Feature Flag Implementation Standards
 - **Runtime vs ENV Configuration Priority**: When implementing feature flags, the system should always prioritize a verified runtime database state first (e.g. via `FeatureFlagService`), and fall back to a strictly typed ENV default if no override exists.

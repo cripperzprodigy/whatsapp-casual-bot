@@ -15,7 +15,13 @@ class AgenticSearchOrchestrator:
         self.max_iterations = 2
 
     async def execute_iterative_search(self, query: str, user_id: str) -> str:
-        # Global timeout of 14 seconds
+        """Top-level entry point.  ALWAYS returns a str — never raises.
+
+        This guarantee is critical: the caller (commands.py) sends whatever
+        string we return via send_text_message.  If we raise instead, the
+        caller's except block sends an *additional* error message, producing
+        the duplicate-message bug described in the issue tracker.
+        """
         try:
             return await asyncio.wait_for(
                 self._execute_search_loop(query),
@@ -24,6 +30,10 @@ class AgenticSearchOrchestrator:
         except asyncio.TimeoutError:
             logger.warning(f"AgenticSearchOrchestrator global timeout for query '{query}'")
             return "⚠️ I took too long to think about this query. Please try something simpler."
+        except Exception as exc:
+            # Catch-all: guarantee we return a string, never propagate.
+            logger.error(f"AgenticSearchOrchestrator unexpected error for query '{query}': {exc}")
+            return "⚠️ Something went wrong while processing your search. Please try again."
 
     async def _execute_search_loop(self, query: str) -> str:
         context_history = []
@@ -101,10 +111,14 @@ class AgenticSearchOrchestrator:
             )
         except asyncio.TimeoutError:
              logger.warning("Synthesis timed out.")
-             return "⚠️ I gathered information but took too long to write the final answer.\n\n" + self._get_raw_results(context_history)
+             fallback = "⚠️ I gathered information but took too long to write the final answer.\n\n" + self._get_raw_results(context_history)
+             logger.info("Fallback constructed (synthesis timeout). Returning single response.")
+             return fallback
         except Exception as e:
              logger.error(f"Synthesis failed: {e}")
-             return "⚠️ I encountered some retrieved information but couldn't synthesize a full report. Here are the raw findings:\n\n" + self._get_raw_results(context_history)
+             fallback = "⚠️ I encountered some retrieved information but couldn't synthesize a full report. Here are the raw findings:\n\n" + self._get_raw_results(context_history)
+             logger.info("Fallback constructed (synthesis error). Returning single response.")
+             return fallback
 
     async def _analyze_gaps(self, original_query: str, context: List[str]) -> Dict[str, Any]:
         context_str = "\n\n".join(context)

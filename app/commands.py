@@ -879,10 +879,16 @@ async def handle_command(  # Issue 13: added return type
                 orchestrator = AgenticSearchOrchestrator(search_service)
 
                 try:
+                    # execute_iterative_search ALWAYS returns a str — never raises.
+                    # This is by design to prevent duplicate messages: if it raised,
+                    # this except block would send a SECOND message.
                     final_answer = await orchestrator.execute_iterative_search(query, sender_id)
+                    logger.info(f"Agentic search completed for '{query}'. Sending single response.")
                     await send_text_message(chat_id, final_answer)
                 except Exception as e:
-                    logger.error(f"Agentic search failed for query '{query}': {e}")
+                    # Defensive safety net — should never fire since
+                    # execute_iterative_search catches all exceptions internally.
+                    logger.error(f"Agentic search unexpected exception for '{query}': {e} (this should not happen)")
                     await send_text_message(chat_id, "⚠️ Agentic search service encountered an error. Please try again later.")
             else:
                 await send_text_message(chat_id, "Usage: !s <query>")
