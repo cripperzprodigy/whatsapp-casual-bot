@@ -1,5 +1,68 @@
 # Architectural Decisions
 
+## ADR-030 — Active RAG Ingestion Pipeline
+
+Date    : 2026-07-01
+Status  : Accepted
+Context :
+  The ChromaDB + SentenceTransformer RAG infrastructure existed in
+  `ai_memory_engine.py` but the ingestion path was dormant in two ways:
+  (1) The `_append_history()` call that writes to ChromaDB was synchronous —
+      `SentenceTransformer.encode()` is a CPU-bound operation that blocked
+      the FastAPI asyncio event loop on every incoming message.
+  (2) The "Silent Observer" and "Path B (delayed)" code paths in
+      `router_webhook.py` used `await engine.process_message(generate_reply=False)`
+      which blocked the webhook response cycle while computing embeddings, even
+      though no reply was generated.
+  There was no `ingest_message()` public API, no `ENABLE_RAG_INGESTION` kill-switch,
+  no `RAG_TOP_K` configuration, and no way to backfill historical data.
+
+Decision :
+  1. Introduce a public `ingest_message(text, media_path, sender_id, message_type)`
+     async method on `AIMemoryEngine`. It writes to `.jsonl` synchronously (for
+     generate_delayed_reply() continuity) and schedules ChromaDB writes via
+     `asyncio.create_task(_rag_ingest_async())` which runs inside
+     `asyncio.to_thread()` to avoid blocking the event loop.
+  2. Expose `ENABLE_RAG_INGESTION` (default: True) and `RAG_TOP_K` (default: 5)
+     in `app/config.py` and `.env`. All ChromaDB writes and reads are guarded by
+     the ENABLE_RAG_INGESTION flag. .jsonl writes are unconditional.
+  3. Add `skip_user_ingestion=False` parameter to `process_message()`. Router
+     callers set this to `True` after calling `ingest_message()` to prevent
+     double-writing the user message to history.
+  4. At all four message entry points in `router_webhook.py`, replace the blocking
+     `await engine.process_message(generate_reply=False)` pattern with
+     `asyncio.create_task(engine.ingest_message(...))`. This is consistent with
+     ADR-013 (always use asyncio.create_task for fire-and-forget async work).
+  5. Make RAG retrieval in `process_message()` and `generate_delayed_reply()` fully
+     async via `asyncio.to_thread()` for both the encode and query steps.
+  6. Update both system prompts to use an explicit `[CONTEXT MEMORY]` section with
+     a continuity INSTRUCTION clause to improve LLM adherence to retrieved context.
+  7. Provide `scripts/backfill_rag.py` for one-time historical ingestion.
+
+Ingestion strategy :
+  - Synchronous : .jsonl file write (fast I/O, < 1ms).
+  - Asynchronous: SentenceTransformer encode + ChromaDB add, via
+    asyncio.create_task → asyncio.to_thread (thread-pool, non-blocking).
+  - Fire-and-forget: The webhook response is NOT delayed by ChromaDB writes.
+  - Context isolation: Each chat_id maps to a separate `data/contacts/<safe_id>/`
+    directory with its own ChromaDB PersistentClient and collection. DM data
+    never leaks into group context.
+
+Consequences :
+  + Long-term memory is now genuinely active — all messages are indexed.
+  + Event loop no longer blocks on embedding computation during ingestion.
+  + Configurable kill-switch prevents runaway disk usage if ChromaDB causes issues.
+  + `generate_delayed_reply()` still works correctly (reads from .jsonl which is
+    always written before the async embedding task is scheduled).
+  - Two async tasks are created per message (ingest + potential delayed reply).
+    Both are lightweight and complete within the 5-10 second delay window.
+  - Backfill of pre-existing data requires running `scripts/backfill_rag.py` once.
+
+Latency impact :
+  Ingestion path: ~0ms added to webhook response time (pure task scheduling).
+  Retrieval path: encode + query moved off event loop, estimated 20-80ms added
+  to LLM response time depending on ChromaDB collection size and hardware.
+
 # Key Decisions
 ## Event-Driven Memory Cache (O(1) Quote ID Translation)
 Instead of using slow, IO-blocking calls to `chat.fetchMessages({ limit: 50 })` which regularly failed to locate IDs under load, we've opted for an **Event-Driven Memory Map** cache embedded natively into the Node.js `whatsapp-service/src/events.js` listener. 

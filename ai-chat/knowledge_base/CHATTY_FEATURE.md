@@ -32,9 +32,11 @@ Privacy and context separation are fundamental. All user data is stringently iso
 - `CHATTY_DEFAULT_BURST` (int): Responses yielded per threshold activation (default: 1).
 - `CHATTY_DELAY_MIN` (int): Minimum seconds to simulate typing/reading before a reply.
 - `CHATTY_DELAY_MAX` (int): Maximum seconds to simulate typing/reading before a reply.
-- `CHATTY_DELAY_MODE` (str): 'debounce' (resets timer if user keeps typing) or 'throttle' (strict wait).
+- `CHATTY_DEFAULT_DELAY_MODE` (str): 'debounce' (resets timer if user keeps typing) or 'throttle' (strict wait).
 - `DEFAULT_GROUP_LANGUAGE` (str): Backup resolution if detection fails (default: 'en').
 - `DEFAULT_DM_LANGUAGE` (str): Backup resolution for DMs.
+- `ENABLE_RAG_INGESTION` (bool): Master kill-switch for ChromaDB writes and retrieval (default: `true`). When `false`, only `.jsonl` history is written — no vector embeddings.
+- `RAG_TOP_K` (int): Number of past messages retrieved from ChromaDB per query (default: `5`). Configurable without code changes.
 
 ### Local Contact Profile (`profile.json`)
 - `chatty_status`: Overrides the `.env` default on a per-chat basis.
@@ -125,9 +127,9 @@ Once `TRIGGER` is set, the system selects one of two execution paths based on ho
                          └────────────────┘
 ```
 
-**Path A (Explicit Mention):** The reply is generated and sent **within the same HTTP request cycle**. No background task is created. This guarantees sub-2-second response times and eliminates the race condition where a fire-and-forget `asyncio.create_task` could silently fail.
+**Path A (Explicit Mention):** The reply is generated and sent **within the same HTTP request cycle**. No background task is created. This guarantees sub-2-second response times and eliminates the race condition where a fire-and-forget `asyncio.create_task` could silently fail. A fire-and-forget `asyncio.create_task(engine.ingest_message(...))` is dispatched first (storing the raw text), then `process_message(..., skip_user_ingestion=True)` retrieves RAG context and calls the LLM.
 
-**Path B (Frequency-Based):** The message is first saved to RAG context (with `generate_reply=False`), then a background `asyncio.Task` is created with a randomized human-like delay. The task gathers all pending user messages from history and generates a single consolidated reply.
+**Path B (Frequency-Based):** A fire-and-forget `asyncio.create_task(engine.ingest_message(...))` is dispatched to store the message to `.jsonl` and schedule the async ChromaDB write. Then a background `asyncio.Task` is created with a randomized human-like delay. Because `.jsonl` is written synchronously inside `ingest_message()`, `generate_delayed_reply()` will always find the pending message when it fires 5–10 seconds later. See [RAG_MEMORY_ENGINE.md](./RAG_MEMORY_ENGINE.md) for full timing analysis.
 
 ### Task Delay Strategy (Debounce vs Throttle)
 
@@ -190,11 +192,12 @@ When quoting a message in a **Group Chat**, the system REQUIRES both `quotedMsgI
 │     => sentence-transformers encodes    │
 │     => text into local SQLite DB        │
 │                                         │
-│  D. RAG Retrieval                       │
-│     => Queries top 5 similar messages   │
-│                                         │
-│  E. Prompt Construction                 │
-│     => Joins Profile + Memory + RAG     │
+│  D. RAG Retrieval (async, non-blocking)         │
+│     => asyncio.to_thread(collection.query)      │
+│     => Top-K similar messages (RAG_TOP_K=5)     │
+│                                                 │
+│  E. Prompt Construction                         │
+│     => Joins Profile + [CONTEXT MEMORY] + RAG  │
 └───────────────┬─────────────────────────┘
                 │
                 ▼ (Unified Generation)
@@ -217,4 +220,4 @@ When quoting a message in a **Group Chat**, the system REQUIRES both `quotedMsgI
 
 1. **Local Embeddings (Privacy):** Vector embeddings are generated locally using `sentence-transformers` rather than the main Chat LLM endpoints. This ensures absolute privacy (no data leak during indexing) and eliminates embedding latency issues if a slow local LLM is used.
 2. **Node.js Media Pass-through:** To prevent double-fetching media chunks, the `whatsapp-web.js` microservice captures the binary blob, converts it to Base64, and pushes it up to the Python FastAPI via webhook. FastAPI handles the local file saving synchronously.
-3. **Rolling Summary vs Generic Context:** Instead of feeding raw Chat History back to the LLM (which exceeds max context and gets expensive), the system leverages a combination of **Top-K RAG Matching** and a **Rolling JSON State Summary**. This allows the bot to remember specific instructions from weeks ago without hallucinating current conversation flow.
+3. **Rolling Summary vs Generic Context:** Instead of feeding raw Chat History back to the LLM (which exceeds max context and gets expensive), the system leverages a combination of **Top-K RAG Matching** (configurable via `RAG_TOP_K`) and a **Rolling JSON State Summary**. This allows the bot to remember specific instructions from weeks ago without hallucinating current conversation flow. See [RAG_MEMORY_ENGINE.md](./RAG_MEMORY_ENGINE.md) for the full active ingestion architecture.

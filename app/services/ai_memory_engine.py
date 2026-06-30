@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -176,23 +177,85 @@ class AIMemoryEngine:
         return f"[Unsupported media uploaded: {media_path}]"
 
     def _embed_text(self, text: str) -> List[float]:
+        """Synchronous embedding — use asyncio.to_thread() when calling from async context."""
         return self.embedding_model.encode(text).tolist()
 
-    def _append_history(self, role: str, content: str):
-        msg = {"role": role, "content": content, "timestamp": int(time.time())}
+    def _append_history(self, role: str, content: str, extra_meta: dict = None):
+        """
+        Write to .jsonl synchronously (required for generate_delayed_reply).
+        Schedule async ChromaDB write when ENABLE_RAG_INGESTION=True.
+        """
+        ts = int(time.time())
+        entry = {"role": role, "content": content, "timestamp": ts}
+        if extra_meta:
+            entry.update(extra_meta)
         with open(self.history_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(msg) + "\n")
+            f.write(json.dumps(entry) + "\n")
 
-        # Ingest to RAG if it's user message or assistant message
-        if content.strip():
-            doc_id = f"msg_{int(time.time() * 1000)}"
-            embedding = self._embed_text(content)
-            self.collection.add(
-                documents=[content],
-                embeddings=[embedding],
-                metadatas=[{"role": role, "timestamp": int(time.time())}],
-                ids=[doc_id]
+        # Non-blocking ChromaDB write, guarded by feature flag
+        if settings.ENABLE_RAG_INGESTION and content.strip():
+            meta = {"role": role, "timestamp": ts, "chat_id": self.chat_id}
+            if extra_meta:
+                meta.update({k: v for k, v in extra_meta.items() if k != "content"})
+            try:
+                asyncio.create_task(self._rag_ingest_async(content, meta))
+            except RuntimeError:
+                # No running event loop (e.g., sync test context) — skip silently
+                pass
+
+    async def _rag_ingest_async(self, content: str, meta: dict) -> None:
+        """Async ChromaDB write executed in thread pool to avoid blocking the event loop."""
+        try:
+            doc_id = f"msg_{self.safe_id}_{int(time.time() * 1000)}_{os.urandom(4).hex()}"
+            embedding = await asyncio.to_thread(
+                lambda: self.embedding_model.encode(content).tolist()
             )
+            await asyncio.to_thread(
+                lambda: self.collection.add(
+                    documents=[content],
+                    embeddings=[embedding],
+                    metadatas=[meta],
+                    ids=[doc_id]
+                )
+            )
+        except Exception as e:
+            logger.error(f"[RAG] Async ingest error for {self.chat_id}: {e}")
+
+    async def ingest_message(
+        self,
+        text: str,
+        media_path: Optional[str] = None,
+        sender_id: str = "unknown",
+        message_type: str = "dm",
+    ) -> None:
+        """
+        Fire-and-forget ingestion entry point. Call via asyncio.create_task().
+
+        Always persists message to the .jsonl conversation history so that
+        generate_delayed_reply() can find pending messages regardless of the
+        ENABLE_RAG_INGESTION flag. ChromaDB vector write is guarded by that flag.
+
+        Context isolation: chat_id scopes all data to this chat only — DM messages
+        never appear in a group's ChromaDB collection and vice versa.
+        """
+        media_desc = await self._process_media(media_path)
+        full_text = text
+        if media_desc:
+            full_text += f"\n\n{media_desc}"
+
+        extra_meta: dict = {
+            "sender_id": sender_id,
+            "type": message_type,
+            "chat_id": self.chat_id,
+        }
+        # _append_history writes .jsonl unconditionally;
+        # the ChromaDB task is only scheduled when ENABLE_RAG_INGESTION=True.
+        self._append_history("user", full_text, extra_meta=extra_meta)
+        logger.debug(
+            f"[RAG Ingest] chat={self.chat_id}, type={message_type}, "
+            f"sender={sender_id}, text_len={len(full_text)}, "
+            f"rag_enabled={settings.ENABLE_RAG_INGESTION}"
+        )
 
     async def _update_summary(self):
         if not settings.DYNAMIC_SYSTEM_PROMPT:
@@ -233,7 +296,7 @@ Output ONLY valid JSON."""
         except Exception as e:
             logger.error(f"Failed to update summary: {e}")
 
-    async def process_message(self, text: str, media_path: Optional[str] = None, is_burst: bool = False, generate_reply: bool = True, context_type: str | None = None, context_text: str | None = None) -> Optional[str]:
+    async def process_message(self, text: str, media_path: Optional[str] = None, is_burst: bool = False, generate_reply: bool = True, context_type: str | None = None, context_text: str | None = None, skip_user_ingestion: bool = False) -> Optional[str]:
         # 1. Process Language
         lang = await self._detect_language(text)
 
@@ -243,26 +306,34 @@ Output ONLY valid JSON."""
         if media_desc:
             full_text += f"\n\n{media_desc}"
 
-        # 3. Save to history & RAG
-        if not is_burst:
+        # 3. Save to history & RAG (skip when ingest_message() was already called)
+        if not is_burst and not skip_user_ingestion:
             self._append_history("user", full_text)
 
         if not generate_reply:
             return None
 
-        # 4. Retrieve RAG Context
+        # 4. Retrieve RAG Context (async, non-blocking; guarded by ENABLE_RAG_INGESTION)
         retrieved_context = ""
-        try:
-            if self.collection.count() > 0:
-                query_embedding = self._embed_text(full_text)
-                results = self.collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=min(5, self.collection.count())
-                )
-                if results['documents'] and results['documents'][0]:
-                    retrieved_context = "\n".join(results['documents'][0])
-        except ValueError as e:
-            logger.error(f"RAG retrieval error: {e}")
+        if settings.ENABLE_RAG_INGESTION:
+            try:
+                count = await asyncio.to_thread(lambda: self.collection.count())
+                if count > 0:
+                    query_embedding = await asyncio.to_thread(
+                        lambda: self.embedding_model.encode(full_text).tolist()
+                    )
+                    results = await asyncio.to_thread(
+                        lambda: self.collection.query(
+                            query_embeddings=[query_embedding],
+                            n_results=min(settings.RAG_TOP_K, count)
+                        )
+                    )
+                    if results["documents"] and results["documents"][0]:
+                        retrieved_context = "\n".join(results["documents"][0])
+            except ValueError as e:
+                logger.error(f"RAG retrieval error: {e}")
+            except Exception as e:
+                logger.error(f"RAG retrieval unexpected error: {e}")
 
         # 5. Build System Prompt
         base_prompt_path = Path("./data/system_prompts/default.txt")
@@ -274,6 +345,7 @@ Output ONLY valid JSON."""
         custom_instructions = self.profile.get("system_prompt") or "None"
         summary = self.profile.get("conversation_summary") or "{}"
 
+        context_section = retrieved_context if retrieved_context else "No relevant past memories found."
         system_prompt = f"""[Global Instructions]
 {base_prompt}
 
@@ -282,8 +354,13 @@ Name: {self.profile.get('name', 'Unknown')}
 Preferred Language: {lang}
 Custom Instructions: {custom_instructions}
 
-[Long Term Memory (RAG)]
-{retrieved_context}
+[CONTEXT MEMORY]
+The following relevant past conversations have been retrieved:
+{context_section}
+
+INSTRUCTION: Use this context to maintain continuity. If the user refers to
+previous topics, use the information above to answer accurately.
+If the context is irrelevant, ignore it.
 
 [Recent Context Summary]
 {summary}
@@ -347,19 +424,27 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         # 2. Process Language
         lang = await self._detect_language(full_text)
 
-        # 3. Retrieve RAG Context
+        # 3. Retrieve RAG Context (async, non-blocking; guarded by ENABLE_RAG_INGESTION)
         retrieved_context = ""
-        try:
-            if self.collection.count() > 0:
-                query_embedding = self._embed_text(full_text)
-                results = self.collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=min(5, self.collection.count())
-                )
-                if results['documents'] and results['documents'][0]:
-                    retrieved_context = "\n".join(results['documents'][0])
-        except ValueError as e:
-            logger.error(f"RAG retrieval error: {e}")
+        if settings.ENABLE_RAG_INGESTION:
+            try:
+                count = await asyncio.to_thread(lambda: self.collection.count())
+                if count > 0:
+                    query_embedding = await asyncio.to_thread(
+                        lambda: self.embedding_model.encode(full_text).tolist()
+                    )
+                    results = await asyncio.to_thread(
+                        lambda: self.collection.query(
+                            query_embeddings=[query_embedding],
+                            n_results=min(settings.RAG_TOP_K, count)
+                        )
+                    )
+                    if results["documents"] and results["documents"][0]:
+                        retrieved_context = "\n".join(results["documents"][0])
+            except ValueError as e:
+                logger.error(f"RAG retrieval error in delayed reply: {e}")
+            except Exception as e:
+                logger.error(f"RAG retrieval unexpected error in delayed reply: {e}")
 
         # 4. Build System Prompt
         base_prompt_path = Path("./data/system_prompts/default.txt")
@@ -371,6 +456,7 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         custom_instructions = self.profile.get("system_prompt") or "None"
         summary = self.profile.get("conversation_summary") or "{}"
 
+        context_section = retrieved_context if retrieved_context else "No relevant past memories found."
         system_prompt = f"""[Global Instructions]
 {base_prompt}
 
@@ -379,8 +465,13 @@ Name: {self.profile.get('name', 'Unknown')}
 Preferred Language: {lang}
 Custom Instructions: {custom_instructions}
 
-[Long Term Memory (RAG)]
-{retrieved_context}
+[CONTEXT MEMORY]
+The following relevant past conversations have been retrieved:
+{context_section}
+
+INSTRUCTION: Use this context to maintain continuity. If the user refers to
+previous topics, use the information above to answer accurately.
+If the context is irrelevant, ignore it.
 
 [Recent Context Summary]
 {summary}

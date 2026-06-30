@@ -480,14 +480,20 @@ with FileLock(lock_path):
 
 ### RAG Pipeline
 ```
-1. Language detection (langdetect)
+1. Language detection (langdetect + 3-tier fallback for groups)
 2. Media analysis (PDF via pdfplumber / Vision via LLM)
-3. Vector embedding (sentence-transformers → ChromaDB)
-4. RAG retrieval (top 5 similar messages)
-5. Prompt construction (profile + rolling summary + RAG context)
+3. Fire-and-forget ingestion: asyncio.create_task(engine.ingest_message())
+   ├─ .jsonl write: SYNCHRONOUS (required for generate_delayed_reply)
+   └─ ChromaDB embed+add: asyncio.to_thread (off event loop, non-blocking)
+4. RAG retrieval: asyncio.to_thread(collection.query(n_results=RAG_TOP_K))
+5. Prompt construction (profile + [CONTEXT MEMORY] + rolling summary)
 6. LLM generation (ai_client.ask_llm)
 7. Rolling summary update (every 5 messages)
 ```
+
+> **ENABLE_RAG_INGESTION** (bool, default: True) — master kill-switch for ChromaDB writes and retrieval.  
+> **RAG_TOP_K** (int, default: 5) — number of similar messages retrieved per query.  
+> See [RAG_MEMORY_ENGINE.md](./RAG_MEMORY_ENGINE.md) for full flow diagrams, latency analysis, and backfill instructions.
 
 ### Privacy Guarantees
 - Vector embeddings generated **locally** (not sent to cloud)

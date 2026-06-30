@@ -344,6 +344,14 @@ class Settings(BaseSettings):
     RAG_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     VISION_ENABLED: bool = True
 
+    # ------------------------------------------------------------------ #
+    #  RAG (Retrieval-Augmented Generation) Configuration
+    # ------------------------------------------------------------------ #
+    # Master toggle: set False to disable all ChromaDB writes and retrieval
+    ENABLE_RAG_INGESTION: bool = True
+    # Number of past messages retrieved from ChromaDB per query
+    RAG_TOP_K: int = 5
+
     # Chatty Frequency Control Defaults
     CHATTY_DEFAULT_FREQUENCY: int = 10
     CHATTY_DEFAULT_BURST: int = 1

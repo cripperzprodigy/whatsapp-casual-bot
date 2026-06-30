@@ -14,6 +14,7 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 
 ## Latest ai-chat Updates (2026-07-01)
 
+- **RAG Active Ingestion Pipeline (ADR-030)**: The RAG engine is now fully active. All messages (DM and Group, all 4 paths) are asynchronously ingested via `asyncio.create_task(engine.ingest_message(...))`. ChromaDB embedding writes run in a thread pool via `asyncio.to_thread()`. New config flags: `ENABLE_RAG_INGESTION` and `RAG_TOP_K`. System prompt upgraded with explicit `[CONTEXT MEMORY]` section. Backfill script at `scripts/backfill_rag.py`. See [RAG_MEMORY_ENGINE.md](./knowledge_base/RAG_MEMORY_ENGINE.md).
 - **Contact Sync Architecture Overhaul**: `!contacts list`, `!contacts global`, and `!contacts export` now query `GroupContactLedger` DB instead of filesystem. Live WhatsApp network resolution via batch endpoint, hierarchical group-sorted output, timestamped CSV exports with group name enrichment. See [CONTACT_SYNC_ARCHITECTURE.md](./knowledge_base/CONTACT_SYNC_ARCHITECTURE.md).
 - **Group AI Language Detection Fix**: `_detect_language()` in `ai_memory_engine.py` now performs live detection on the incoming message text for group chats instead of returning a static default. 3-tier fallback: langdetect → LLM → group default.
 - **SOP Cleanup**: Removed full duplicate content block, added new mandatory standards for AI Engine Language Detection and Contact Management.
@@ -32,6 +33,7 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 | [ARCHITECTURE.md](./knowledge_base/ARCHITECTURE.md) | System-wide architecture overview |
 | [WISP_PROTOCOL.md](./knowledge_base/WISP_PROTOCOL.md) | WhatsApp Inter-Service Protocol (Python ↔ Node.js gateway) |
 | [CHATTY_FEATURE.md](./knowledge_base/CHATTY_FEATURE.md) | Long-term memory conversational AI (`!chatty`) |
+| [RAG_MEMORY_ENGINE.md](./knowledge_base/RAG_MEMORY_ENGINE.md) | Active RAG ingestion pipeline, async flow, config flags, backfill |
 | [AGENTIC_SEARCH_FEATURE.md](./knowledge_base/AGENTIC_SEARCH_FEATURE.md) | Multi-hop agentic search (`!s`) workflow and architecture |
 | [MESSAGE_CHUNKING.md](./knowledge_base/MESSAGE_CHUNKING.md) | Outbound message splitting algorithm and `send_long_message()` |
 | [WHOAMI_LID_REGISTRATION.md](./knowledge_base/WHOAMI_LID_REGISTRATION.md) | Bot identity discovery, `!whoami`, and LID persistence |

@@ -80,3 +80,4 @@
 | Antigravity | 2026-06-30 11:27 UTC | Execution Agent - Fix three critical bugs: !pm silent drop, group Path A send_long_message violation, and delayed chatty reply missing quotes | Active |
 | DEBUG-LEAD | 2026-06-30 00:00 UTC | Lead Orchestrator - Multi-branch audit, SOP enforcement, task generation | Active |
 | Antigravity | 2026-06-30 13:32 UTC | Feature Dev - Implement !sc Deep Crawl Search with dual-layer config | Active |
+| GitHub Copilot | 2026-07-01 00:00 UTC | Feature Dev - Activate RAG ingestion pipeline: ingest_message(), async ChromaDB writes, ENABLE_RAG_INGESTION flag, backfill script | Active |

@@ -257,9 +257,15 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
         if context_tuple and context_tuple[0] == "reply":
             final_user_input = f"User is replying to your previous message: '{context_tuple[1]}'. Their new message is: '{text}'"
 
+        # Fire-and-forget ingestion: persists raw text to history and schedules
+        # async ChromaDB write. Runs concurrently with LLM generation.
+        asyncio.create_task(
+            engine.ingest_message(text, media_path, sender_id=sender_id, message_type="dm")
+        )
+
         # Process message WITH reply generation in the same request cycle
         logger.debug(f"DM: Calling process_message with generate_reply=True for {chat_id}")
-        ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None)
+        ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None, skip_user_ingestion=True)
         logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
             # DMs should never quote; natural chat flow per SOP 4.2
@@ -352,7 +358,11 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
 
                 logger.debug(f"Group: Context extracted - final_user_input={final_user_input}")
 
-                ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None)
+                # Fire-and-forget ingestion of the raw message before reply generation
+                asyncio.create_task(
+                    engine.ingest_message(text, media_path, sender_id=sender_id, message_type="group")
+                )
+                ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None, skip_user_ingestion=True)
                 if ai_reply:
                     quoted_msg_id = getattr(msg_key, 'id', None)
                     if not quoted_msg_id:
@@ -367,7 +377,12 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                 return
             else:
                 # ── Path B: Frequency-Based ── Delayed background task ──
-                await engine.process_message(text, media_path, generate_reply=False, context_type=None, context_text=None)
+                # Fire-and-forget ingestion replaces the blocking process_message(generate_reply=False).
+                # The .jsonl write is synchronous inside ingest_message(), so generate_delayed_reply()
+                # will always find pending messages before the delay elapses (5-10 seconds).
+                asyncio.create_task(
+                    engine.ingest_message(text, media_path, sender_id=sender_id, message_type="group")
+                )
 
                 d_min = updated_profile.get("chatty_delay_min", settings.CHATTY_DELAY_MIN)
                 d_max = updated_profile.get("chatty_delay_max", settings.CHATTY_DELAY_MAX)
@@ -388,7 +403,9 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
         else:
             # Still save to RAG context for future retrieval (Silent Observer)
             # Even if chatty is disabled entirely, we log it to memory context
-            await engine.process_message(text, media_path, generate_reply=False, context_type=None, context_text=None)
+            asyncio.create_task(
+                engine.ingest_message(text, media_path, sender_id=sender_id, message_type="group")
+            )
 
             # If chatty was supposed to trigger but didn't, or was evaluated,
             # we should still mark it as consumed ONLY IF chatty_status is True.
