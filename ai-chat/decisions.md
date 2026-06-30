@@ -369,3 +369,76 @@ The translation skip keywords were hardcoded in `translation.py` as `COMMON_MS_I
 - `data/translation_skip_keywords.txt` (keyword dictionary)
 - `app/config.py` (loader and persistence)
 - `app/commands.py` (`!globaltrans` handler)
+
+## ADR-030: Message Chunking & Sequential Sending for Long Responses
+Date: 2026-06-30
+Status: Accepted
+Authors: DEBUG-LEAD (orchestration), Antigravity (implementation)
+
+### Context
+Long bot responses (LLM synthesis, search results, AI replies) were sent as a single HTTP payload to the WhatsApp gateway. Payloads exceeding ~3000 chars caused `ReadTimeout` errors (default httpx timeout = 5s). The retry mechanism re-sent the same oversized payload, often failing again or causing duplicate delivery.
+
+### Decision
+1. **Smart Splitter**: New module `app/utils/message_splitter.py` with hierarchical splitting (paragraphs → sentences → words → hard cut). Max 2500 chars per chunk.
+2. **`send_long_message()`**: Wrapper around `send_text_message()` that auto-chunks, adds part headers (`📄 Part 1/3`), sends sequentially with 1s delay. Short messages (≤2500) pass through directly.
+3. **Selective Integration**: Only code paths producing potentially long text use `send_long_message()`. Short fixed messages stay on `send_text_message()`.
+4. **Timeout Increase**: `httpx.AsyncClient` timeout raised from 5s to 15s.
+
+### Consequences
+- Positive: No more ReadTimeout on long responses.
+- Positive: Users receive properly formatted multi-part messages.
+- Positive: Zero overhead for short messages.
+- Negative: Multi-part messages take N seconds longer (1s delay between chunks).
+
+### References
+- KB: `ai-chat/knowledge_base/MESSAGE_CHUNKING.md`
+- `app/utils/message_splitter.py`
+
+## ADR-031: Bot Identity Self-Identification via Sender Exclusion
+Date: 2026-06-30
+Status: Accepted
+Authors: DEBUG-LEAD (orchestration), Antigravity (implementation)
+
+### Context
+The bot's `.env` phone number (e.g., `6587481374`) has a completely different numeric base than its WhatsApp LID (e.g., `68728804868116@lid`). Direct matching is impossible. The `!whoami` command had two bugs: (1) owner gate ran before registration, blocking non-owner saves, and (2) all `mentioned_jids` were registered blindly without identifying which JID belongs to the bot.
+
+### Decision
+1. **Sender Exclusion**: Identify the bot's JID by excluding the sender's JID from `mentioned_jids`. Whatever remains is the bot.
+2. **Unconditional Registration**: Save the LID before any ownership check.
+3. **Two-Mode Handler**: Mode A (already registered) = owner-only status check, silently ignore non-owners. Mode B (first registration) = save unconditionally, only respond to owner.
+4. **`!forget-me`**: Remains owner-only (destructive operation).
+
+### Consequences
+- Positive: `bot_known_lids.json` is reliably populated by any user tagging the bot.
+- Positive: Owner gets full identity details via DM.
+- Positive: Non-owners cannot probe bot identity once registered.
+- Negative: If someone tags both the bot and another user in `!whoami`, the other user's JID is excluded by sender check but might still be registered if they're not the sender.
+
+### References
+- KB: `ai-chat/knowledge_base/WHOAMI_LID_REGISTRATION.md`
+- `app/router_webhook.py` (!whoami handler)
+- `app/config.py` (BotIdentityManager)
+
+## ADR-032: Single-Response Contract for Duplicate Prevention
+Date: 2026-06-30
+Status: Accepted
+Authors: DEBUG-LEAD (orchestration), Antigravity (implementation)
+
+### Context
+When OpenRouter API returned HTTP 500, `execute_iterative_search()` only caught `asyncio.TimeoutError`. Other exceptions (e.g., `TranslationError`) propagated to `commands.py`, where the caller's `except` block sent an additional error message — producing duplicate messages in the group chat.
+
+### Decision
+1. **Catch-all Contract**: Service functions that return user-facing messages MUST catch all exceptions internally and ALWAYS return a string. Never raise.
+2. **Safety Net**: Callers may keep a defensive `except` block but must log `"this should not happen"` to flag contract violations.
+3. **Logging**: Breadcrumb log entries at each fallback construction point.
+
+### Consequences
+- Positive: Exactly one message sent per command execution.
+- Positive: Contract is easy to enforce and verify via log monitoring.
+- Negative: Catch-all suppresses unexpected exceptions; must rely on logging to detect them.
+
+### References
+- KB: `ai-chat/knowledge_base/ERROR_HANDLING_DUPLICATE_PREVENTION.md`
+- `app/services/agentic_search_service.py`
+- `app/commands.py`
+- SOP.md (Single-Response Contract rule)

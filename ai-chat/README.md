@@ -12,21 +12,25 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 
 ---
 
-## Latest ai-chat Updates (2026-06-21)
+## Latest ai-chat Updates (2026-06-30)
 
-- **Chatty Human-Simulation**: Integrated async debouncing and throttling into the Chatty webhook to simulate human typing delays, completely configurable via `.env` and `!chatty_delay`.
-- **Dynamic Token Boundaries**: Lifted hardcoded token limits across `translation.py` and `ai_client.py` allowing proper utilization of high-context 131k local models.
-- **Robustness Upgrades**: Added hierarchical semantic chunking for massive translation texts to prevent data loss.
-- Applied a timezone-aware fix for `ChatSettings.last_roster_export_at` to ensure contact roster export throttling compares UTC-aware timestamps consistently.
-- Updated auto-translation replies so the bot quotes the original WhatsApp message and provides only the translated text.
-- Added strict Chatty vs Auto-Translation mutual exclusion: messages processed by Chatty are now blocked from being auto-translated in the same webhook event.
-- **Group Reply Attribution (`quotedParticipant`)**: Fixed missing participant attribution in group chat replies. Group messages processed by `whatsapp-web.js` require both `quotedMessageId` and the `quotedParticipant` to correctly map the quote to the original sender. DMs correctly omit this. See [CHATTY_FEATURE.md](./knowledge_base/CHATTY_FEATURE.md) for flow details.
-- Added a persistent Owner/Admin permissions system with dynamic `!help` output and bootstrap ownership claim flow.
+- **Message Chunking & Sequential Sending**: Long bot responses (>2500 chars) are now automatically split at natural boundaries and sent as sequential parts. See [MESSAGE_CHUNKING.md](./knowledge_base/MESSAGE_CHUNKING.md).
+- **Bot Identity (`!whoami`) Self-Identification**: Fixed critical LID registration bug. Bot now dynamically discovers its own WhatsApp LID using sender-exclusion heuristic. See [WHOAMI_LID_REGISTRATION.md](./knowledge_base/WHOAMI_LID_REGISTRATION.md).
+- **Error Handling & Duplicate Prevention**: Established the Single-Response Contract to prevent duplicate messages when LLM calls fail. See [ERROR_HANDLING_DUPLICATE_PREVENTION.md](./knowledge_base/ERROR_HANDLING_DUPLICATE_PREVENTION.md).
 
-## Chatty Feature
-We recently integrated a highly sophisticated long-term memory conversational assistant called `!chatty`. See [CHATTY_FEATURE.md](./knowledge_base/CHATTY_FEATURE.md) for architectural details and execution flow.
+## Knowledge Base
 
-## Backup & Restore Utilities
-For migrating the bot to new machines without losing active WhatsApp sessions or local RAG memory, see [BACKUP_RESTORE_FEATURE.md](./knowledge_base/BACKUP_RESTORE_FEATURE.md).
-\n- [AGENTIC_SEARCH_FEATURE.md](knowledge_base/AGENTIC_SEARCH_FEATURE.md): Deep dive into the multi-hop Agentic Search (!s) workflow, architecture, and feature toggles.
-- [LANGUAGE_DETECTION.md](knowledge_base/LANGUAGE_DETECTION.md): Hybrid language detection strategy with keyword heuristic for short Malay/Indonesian texts.
+| Document | Description |
+|---|---|
+| [ARCHITECTURE.md](./knowledge_base/ARCHITECTURE.md) | System-wide architecture overview |
+| [WISP_PROTOCOL.md](./knowledge_base/WISP_PROTOCOL.md) | WhatsApp Inter-Service Protocol (Python ↔ Node.js gateway) |
+| [CHATTY_FEATURE.md](./knowledge_base/CHATTY_FEATURE.md) | Long-term memory conversational AI (`!chatty`) |
+| [AGENTIC_SEARCH_FEATURE.md](./knowledge_base/AGENTIC_SEARCH_FEATURE.md) | Multi-hop agentic search (`!s`) workflow and architecture |
+| [MESSAGE_CHUNKING.md](./knowledge_base/MESSAGE_CHUNKING.md) | Outbound message splitting algorithm and `send_long_message()` |
+| [WHOAMI_LID_REGISTRATION.md](./knowledge_base/WHOAMI_LID_REGISTRATION.md) | Bot identity discovery, `!whoami`, and LID persistence |
+| [ERROR_HANDLING_DUPLICATE_PREVENTION.md](./knowledge_base/ERROR_HANDLING_DUPLICATE_PREVENTION.md) | Single-Response Contract and duplicate message prevention |
+| [LANGUAGE_DETECTION.md](./knowledge_base/LANGUAGE_DETECTION.md) | Hybrid language detection with keyword heuristic for Malay/Indonesian |
+| [BOT_IDENTITY_AND_ROUTING.md](./knowledge_base/BOT_IDENTITY_AND_ROUTING.md) | JID normalization, LID routing, and identity management |
+| [BACKUP_RESTORE_FEATURE.md](./knowledge_base/BACKUP_RESTORE_FEATURE.md) | Migration and backup utilities |
+| [translation_architecture.md](./knowledge_base/translation_architecture.md) | Translation pipeline and semantic chunking |
+
