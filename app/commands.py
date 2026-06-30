@@ -942,15 +942,22 @@ async def handle_command(  # Issue 13: added return type
             if len(args) > 0:
                 query = " ".join(args)
 
-                await send_text_message(chat_id, f"🔍🕷️ *Deep Crawl Search:* Crawling the web for '{query}'... This may take up to 30 seconds.")
+                max_urls = getattr(app_settings, "DEEP_CRAWL_MAX_URLS", 5)
+                crawl_timeout = float(getattr(app_settings, "DEEP_CRAWL_TIMEOUT_SECONDS", 10))
+                est_seconds = max_urls * crawl_timeout
+                await send_text_message(
+                    chat_id,
+                    f"🔍🕷️ *Deep Crawl Search:* Crawling up to {max_urls} sites for '{query}'... "
+                    f"Estimated time: ~{int(est_seconds)}s."
+                )
 
                 mode = getattr(app_settings, "SEARCH_PROVIDER_MODE", "hybrid")
                 searxng_url = getattr(app_settings, "SEARXNG_BASE_URL", None)
                 search_service = HybridSearchService(mode, searxng_url)
                 deep_crawl = DeepCrawlService(
                     search_service=search_service,
-                    max_urls=getattr(app_settings, "DEEP_CRAWL_MAX_URLS", 5),
-                    timeout=float(getattr(app_settings, "DEEP_CRAWL_TIMEOUT_SECONDS", 10)),
+                    max_urls=max_urls,
+                    timeout=crawl_timeout,
                 )
 
                 try:

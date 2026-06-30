@@ -131,6 +131,37 @@ send_long_message() -> WhatsApp User
 | Search Source | SearXNG/DDG Snippets | SearXNG/DDG Snippets | Full Page Content |
 | LLM Iterations | 0 (raw results) | Up to 2 (gap analysis) | 1 (synthesis only) |
 | Toggle | Always on | `!config toggle agentic_search` | `!sc_toggle on\|off` |
-| Speed | Fast (~2s) | Medium (~15s) | Slow (~30s) |
+| Speed | Fast (~2s) | Medium (~15s) | Configurable (~N*10s) |
 | Depth | Shallow | Medium | Deep |
+| URL Count | N/A | Top 5 (fixed) | 1-20 (configurable) |
 
+### Security: SSRF Protection
+
+The `is_safe_url()` function in `deep_crawl_service.py` prevents Server-Side Request Forgery:
+
+1. **Scheme Check**: Only `http://` and `https://` allowed.
+2. **DNS Resolution**: Hostname resolved to IP via `socket.getaddrinfo()`.
+3. **IP Blocking**: Uses Python's `ipaddress` module to check:
+   - `is_private` (10/8, 172.16/12, 192.168/16)
+   - `is_loopback` (127/8, ::1)
+   - `is_link_local` (169.254/16, fe80::/10)
+   - `is_multicast` (224/4, ff00::/8)
+   - `is_reserved`
+4. **Logging**: All blocked URLs logged as `SECURITY WARNING`.
+
+### Dynamic Context Budgeting
+
+To prevent LLM context overflow when crawling many URLs, the per-page character limit is calculated dynamically:
+
+```
+chars_per_page = TOTAL_BUDGET (15,000) // MAX_URLS
+```
+
+| `DEEP_CRAWL_MAX_URLS` | Chars Per Page | Total Context |
+|---|---|---|
+| 3 | 5,000 | ~15,000 |
+| 5 (default) | 3,000 | ~15,000 |
+| 10 | 1,500 | ~15,000 |
+| 20 | 750 | ~15,000 |
+
+This ensures the final aggregated context always fits within the LLM's token window regardless of how many URLs are crawled.

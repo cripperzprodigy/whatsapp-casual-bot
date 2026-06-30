@@ -404,6 +404,16 @@ class Settings(BaseSettings):
                 data["SEARCH_MAX_RESULTS"] = max(1, min(20, val))
             except (ValueError, TypeError):
                 data.pop("SEARCH_MAX_RESULTS", None)
+
+        # Clamp DEEP_CRAWL_MAX_URLS between 1 and 20
+        dc_val = data.get("DEEP_CRAWL_MAX_URLS")
+        if dc_val is not None:
+            try:
+                val = int(dc_val)
+                data["DEEP_CRAWL_MAX_URLS"] = max(1, min(20, val))
+            except (ValueError, TypeError):
+                data.pop("DEEP_CRAWL_MAX_URLS", None)
+
         return data
 
     @model_validator(mode="before")

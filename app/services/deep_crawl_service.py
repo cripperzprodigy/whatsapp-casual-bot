@@ -1,6 +1,9 @@
 import asyncio
+import ipaddress
 import logging
-from typing import List, Tuple, Optional
+import socket
+from typing import List, Tuple
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -17,11 +20,66 @@ _JUNK_TAGS = [
     "aside", "form", "iframe", "noscript", "svg",
 ]
 
-# Maximum characters kept per crawled page
-_MAX_CHARS_PER_PAGE = 2000
+# Total character budget for ALL pages combined (LLM context ceiling)
+_TOTAL_CONTEXT_BUDGET = 15000
 
-# Maximum total context chars sent to LLM (safety ceiling)
-_MAX_TOTAL_CONTEXT = 12000
+
+# ------------------------------------------------------------------ #
+#  SSRF Protection
+# ------------------------------------------------------------------ #
+
+def is_safe_url(url: str) -> bool:
+    """Validate that a URL does not point to internal/private infrastructure.
+
+    Blocks:
+    - Non-HTTP(S) schemes (file://, ftp://, etc.)
+    - Private IP ranges (10/8, 172.16/12, 192.168/16)
+    - Loopback (127/8, ::1)
+    - Link-local (169.254/16, fe80::/10)
+    - Multicast (224/4, ff00::/8)
+    - Unspecified (0.0.0.0, ::)
+    """
+    try:
+        parsed = urlparse(url)
+
+        # 1. Scheme check
+        if parsed.scheme not in ("http", "https"):
+            logger.warning(f"SECURITY WARNING: Blocked non-HTTP scheme: {url}")
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            logger.warning(f"SECURITY WARNING: Blocked URL with no hostname: {url}")
+            return False
+
+        # 2. Resolve hostname to IP(s)
+        try:
+            addr_infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        except socket.gaierror:
+            # DNS resolution failed — block to be safe
+            logger.warning(f"SECURITY WARNING: DNS resolution failed for {hostname}, blocking: {url}")
+            return False
+
+        for addr_info in addr_infos:
+            ip_str = addr_info[4][0]
+            try:
+                ip = ipaddress.ip_address(ip_str)
+            except ValueError:
+                logger.warning(f"SECURITY WARNING: Invalid IP '{ip_str}' for {hostname}, blocking: {url}")
+                return False
+
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+                logger.warning(
+                    f"SECURITY WARNING: Blocked private/internal IP {ip} "
+                    f"(resolved from {hostname}): {url}"
+                )
+                return False
+
+        return True
+
+    except Exception as e:
+        logger.warning(f"SECURITY WARNING: URL validation error for '{url}': {e}")
+        return False
 
 
 class DeepCrawlService:
@@ -42,6 +100,8 @@ class DeepCrawlService:
         self.search_service = search_service
         self.max_urls = max_urls
         self.timeout = timeout
+        # Dynamic budget: distribute total budget evenly across pages
+        self._chars_per_page = _TOTAL_CONTEXT_BUDGET // max(1, max_urls)
         # Limit concurrent outbound fetches to 3 to avoid overwhelming network
         self._semaphore = asyncio.Semaphore(3)
 
@@ -81,11 +141,23 @@ class DeepCrawlService:
         if not results:
             return f"🔍 No results found for '{query}'."
 
-        # 2. Fetch and parse pages concurrently (bounded by semaphore)
+        # 2. SSRF filter — only crawl safe URLs
+        safe_results = []
+        for r in results:
+            if r.url and is_safe_url(r.url):
+                safe_results.append(r)
+            elif r.url:
+                logger.info(f"Skipping unsafe URL: {r.url}")
+
+        if not safe_results:
+            logger.warning("All URLs blocked by SSRF filter. Falling back to snippet synthesis.")
+            snippet_context = self._format_snippets(results)
+            return await self._synthesize(query, snippet_context, snippet_fallback=True)
+
+        # 3. Fetch and parse pages concurrently (bounded by semaphore)
         tasks = [
             self._fetch_and_parse(r.url, r.title)
-            for r in results
-            if r.url
+            for r in safe_results
         ]
         fetched: List[Tuple[str, str, str]] = await asyncio.gather(*tasks)
 
@@ -98,10 +170,10 @@ class DeepCrawlService:
             snippet_context = self._format_snippets(results)
             return await self._synthesize(query, snippet_context, snippet_fallback=True)
 
-        # 3. Aggregate context
+        # 4. Aggregate context with dynamic budget
         context = self._aggregate_context(contents)
 
-        # 4. Synthesize via LLM
+        # 5. Synthesize via LLM
         return await self._synthesize(query, context, snippet_fallback=False)
 
     # -------------------------------------------------------------- #
@@ -146,8 +218,11 @@ class DeepCrawlService:
     # -------------------------------------------------------------- #
 
     def _clean_html(self, html: str) -> str:
-        """Strip non-content elements and extract readable text."""
-        soup = BeautifulSoup(html, "html.parser")
+        """Strip non-content elements and extract readable text.
+
+        Uses dynamic per-page budget calculated from TOTAL_BUDGET // MAX_URLS.
+        """
+        soup = BeautifulSoup(html, "lxml")
 
         # Remove junk tags
         for tag in soup(_JUNK_TAGS):
@@ -158,9 +233,9 @@ class DeepCrawlService:
         # Collapse multiple whitespace
         text = " ".join(text.split())
 
-        # Truncate to per-page limit
-        if len(text) > _MAX_CHARS_PER_PAGE:
-            text = text[:_MAX_CHARS_PER_PAGE] + "…"
+        # Truncate to dynamic per-page limit
+        if len(text) > self._chars_per_page:
+            text = text[:self._chars_per_page] + "…"
 
         return text
 
@@ -169,15 +244,18 @@ class DeepCrawlService:
     # -------------------------------------------------------------- #
 
     def _aggregate_context(self, contents: List[Tuple[str, str, str]]) -> str:
-        """Format crawled pages into a single context string for the LLM."""
+        """Format crawled pages into a single context string for the LLM.
+
+        Enforces ``_TOTAL_CONTEXT_BUDGET`` as a hard ceiling.
+        """
         sections = []
         total_chars = 0
 
         for title, url, text in contents:
             section = f"--- Content from: {title} ({url}) ---\n{text}\n"
-            if total_chars + len(section) > _MAX_TOTAL_CONTEXT:
+            if total_chars + len(section) > _TOTAL_CONTEXT_BUDGET:
                 # Truncate this section to fit within budget
-                remaining = _MAX_TOTAL_CONTEXT - total_chars
+                remaining = _TOTAL_CONTEXT_BUDGET - total_chars
                 if remaining > 200:
                     section = section[:remaining] + "\n[Truncated]"
                     sections.append(section)

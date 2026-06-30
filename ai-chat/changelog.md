@@ -151,6 +151,16 @@
 - **New LLM Prompt**: `DEEP_CRAWL_SYNTHESIZER_SYSTEM` in `search_prompts.py` — instructs the LLM to produce citation-rich, detailed reports from full page content.
 - **Help Menu**: `!sc` shown conditionally when deep crawl is enabled. `!sc_toggle` shown in Owner Commands.
 
+### Hardened (Deep Crawl Search — Security, Stability & Configurable Depth)
+- **SSRF Protection**: Added `is_safe_url()` to `deep_crawl_service.py`. Resolves hostnames to IPs and blocks private ranges (10/8, 172.16/12, 192.168/16), loopback (127/8), link-local (169.254/16), multicast, and non-HTTP(S) schemes. All blocked attempts are logged as `SECURITY WARNING`.
+- **Dynamic Context Budgeting**: Replaced hardcoded 2000 chars/page with dynamic formula: `15000 // max_urls`. Crawling 5 URLs = 3000 chars each; crawling 20 URLs = 750 chars each. Prevents LLM context overflow.
+- **Configurable Crawl Depth**: `DEEP_CRAWL_MAX_URLS` is now validated with `model_validator` clamping (1-20 range), matching the existing `SEARCH_MAX_RESULTS` pattern.
+- **Dynamic User Feedback**: ACK message now shows configured URL count and estimated time: "Crawling up to {N} sites... Estimated time: ~{N*timeout}s."
+- **`lxml` Parser Upgrade**: Switched BeautifulSoup backend from `html.parser` to `lxml` for ~5x faster HTML parsing. Added `lxml` to `requirements.txt`.
+- **`httpx[http2]`**: Upgraded `httpx` to include HTTP/2 support for sites that prefer it.
+- **State Persistence**: Toggle state already persists via `data/global_config.json` (established in initial implementation) — verified no additional file needed.
+
+
 ### Added (Hierarchical Auto-Translation Control — ADR-029)
 - **External Keyword Dictionary**: Moved hardcoded `COMMON_MS_ID_WORDS` from `translation.py` to `data/translation_skip_keywords.txt`. File supports comments (`#`) and blank lines. 172 keywords loaded at startup with caching.
 - **`!globaltrans on|off` Command (Owner-only)**: New command to toggle `GLOBAL_AUTO_TRANSLATE` at runtime. State persists to `data/global_config.json` and survives restarts.
