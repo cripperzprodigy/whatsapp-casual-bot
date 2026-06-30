@@ -1066,51 +1066,91 @@ async def handle_command(  # Issue 13: added return type
                     if not await is_owner(db, sender_id):
                         await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
                     else:
-                        all_unique_jids = set()
-                        contacts_dir = "data/contacts"
-                        
                         import os, json
+                        from pathlib import Path
                         from filelock import FileLock
-                        if os.path.exists(contacts_dir):
-                            for group_folder in os.listdir(contacts_dir):
-                                if "_g_us" in group_folder:
-                                    profile_path = os.path.join(contacts_dir, group_folder, "profile.json")
-                                    if os.path.exists(profile_path):
-                                        try:
-                                            with FileLock(f"{profile_path}.lock", timeout=5):
-                                                with open(profile_path, "r", encoding="utf-8") as f:
-                                                    data = json.load(f)
-                                                    for jid in data.get("participants", {}).keys():
-                                                        all_unique_jids.add(jid)
-                                        except Exception as e:
-                                            logger.error(f"Failed to read {group_folder}: {e}")
-                                            
-                        if not all_unique_jids:
-                            await send_text_message(chat_id, "📭 No contacts found in any group profiles.")
-                        else:
-                            await send_text_message(chat_id, "⏳ Resolving contact info from gateway... this may take a moment.")
+                        
+                        base_dir = Path("data/contacts")
+                        all_contacts = {}  # Key: jid, Value: info dict
+                        
+                        if not base_dir.exists():
+                            await send_text_message(chat_id, "📭 No contact data directory found.")
+                            return
                             
+                        for subdir in base_dir.iterdir():
+                            if subdir.is_dir() and subdir.name.endswith("_g_us"):
+                                profile_path = subdir / "profile.json"
+                                if profile_path.exists():
+                                    try:
+                                        with FileLock(f"{profile_path}.lock", timeout=5):
+                                            with open(profile_path, "r", encoding="utf-8") as f:
+                                                data = json.load(f)
+                                                # Handle both list and dict formats for participants
+                                                raw_participants = data.get("participants", [])
+                                                if isinstance(raw_participants, dict):
+                                                    # Convert dict to list of dicts holding jid
+                                                    participants = [{"jid": k, **v} for k, v in raw_participants.items()]
+                                                else:
+                                                    participants = raw_participants
+                                                    
+                                                for p in participants:
+                                                    jid = p.get("jid")
+                                                    if jid:
+                                                        # Merge info: prefer existing phone/name if new one is missing
+                                                        if jid not in all_contacts:
+                                                            all_contacts[jid] = p
+                                                        else:
+                                                            # Update if new info has phone but old didn't
+                                                            if not all_contacts[jid].get("phone") and p.get("phone"):
+                                                                all_contacts[jid]["phone"] = p["phone"]
+                                                            if not all_contacts[jid].get("name") and p.get("name"):
+                                                                all_contacts[jid]["name"] = p["name"]
+                                    except Exception as e:
+                                        logger.warning(f"Failed to load {profile_path}: {e}")
+                                        
+                        if not all_contacts:
+                            await send_text_message(chat_id, "📭 No contacts found in any group profiles.")
+                            return
+                            
+                        # Extract the unique JIDs for active resolution
+                        all_unique_jids = list(all_contacts.keys())
+                        total = len(all_unique_jids)
+                        
+                        await send_text_message(chat_id, f"🔄 Starting global resolution for {total} users... This will run in the background. Results will be sent to you via DM when complete.")
+                        
+                        import asyncio
+                        async def run_global_resolution_bg(jids, recipient_id, original_contacts_map):
                             from app.contact_sync import resolve_participant_info_batch
                             
-                            async def send_progress(current, total):
-                                if current > 0 and current % 50 == 0:
-                                    await send_text_message(chat_id, f"🔄 Resolving {current}/{total}...")
+                            async def send_progress(current, total_bg):
+                                if current > 0 and current % 100 == 0:
+                                    await send_text_message(recipient_id, f"⏳ Progress: Resolving {current}/{total_bg} users...")
                                     
-                            resolved_contacts = await resolve_participant_info_batch(list(all_unique_jids), send_progress)
-                            hidden_count = sum(1 for info in resolved_contacts if not info.get("phone"))
-                                    
-                            def format_contact_entry(info: dict) -> str:
-                                if info.get("phone"):
-                                    return f"• +{info['phone']} ({info.get('name', 'Unknown')})"
-                                else:
-                                    name_val = info.get("name", "Unknown User")
-                                    return f"• 🔒 Hidden (User has strict privacy settings) - {name_val}. Tip: Ask them to add your bot number as a contact to reveal their number."
-                                    
-                            lines = [format_contact_entry(c) for c in resolved_contacts]
-                            output = "🌍 *Global Contacts Summary (Deduplicated)*\n\n" + "\n".join(lines)
-                            output += f"\n\nℹ️ {hidden_count} numbers hidden. These users likely have 'Who can see my phone number' set to 'Nobody' or 'My Contacts'."
+                            resolved_contacts = await resolve_participant_info_batch(jids, send_progress)
                             
-                            await send_long_message(chat_id, output)
+                            formatted_list = []
+                            hidden_count = 0
+                            
+                            for info in resolved_contacts:
+                                jid = info.get("jid")
+                                # If active resolution didn't find a phone, fallback to profile.json phone if we had one
+                                original_info = original_contacts_map.get(jid, {})
+                                phone = info.get("phone") or original_info.get("phone")
+                                name = info.get("name") or original_info.get("name", "Unknown User")
+                                
+                                if phone:
+                                    formatted_list.append(f"• +{phone} ({name})")
+                                else:
+                                    formatted_list.append(f"• 🔒 Hidden (User has strict privacy settings) - {name}. Tip: Ask them to add your bot number as a contact to reveal their number.")
+                                    hidden_count += 1
+                                    
+                            result = f"🌍 *Global Contacts Summary (Deduplicated)*\n\nResolved {len(formatted_list)-hidden_count}/{total} numbers.\n\n" + "\n".join(formatted_list)
+                            if hidden_count > 0:
+                                result += f"\n\nℹ️ {hidden_count} numbers hidden. These users likely have 'Who can see my phone number' set to 'Nobody' or 'My Contacts'."
+                                
+                            await send_long_message(recipient_id, result)
+                            
+                        asyncio.create_task(run_global_resolution_bg(all_unique_jids, sender_id, all_contacts))
                             
                 elif subcmd == "export":
                     if not await is_owner(db, sender_id):

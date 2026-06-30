@@ -69,7 +69,14 @@ async def resolve_participant_info(jid: str) -> dict:
                     try:
                         with open(profile_path, "r", encoding="utf-8") as f:
                             data = json.load(f)
-                            for p_jid, info in data.get("participants", {}).items():
+                            raw_participants = data.get("participants", [])
+                            if isinstance(raw_participants, dict):
+                                participants = [{"jid": k, **v} for k, v in raw_participants.items()]
+                            else:
+                                participants = raw_participants
+                                
+                            for info in participants:
+                                p_jid = info.get("jid")
                                 if p_jid == jid:
                                     phone = info.get("phone") or (jid.split("@")[0] if jid.split("@")[0].isdigit() else None)
                                     name = info.get("pushName") or info.get("name") or jid

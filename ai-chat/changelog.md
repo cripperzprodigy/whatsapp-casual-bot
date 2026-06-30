@@ -142,6 +142,7 @@
 - **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
 
 ### Fixed
+- **Fix**: `!contacts global` now correctly aggregates across all groups. Fixed a bug where dictionary and list participant formats were handled incorrectly causing the command to mistakenly report no contacts found. Implemented an intelligent dictionary-based aggregation that preserves the best available phone data across all group profiles.
 - **Fix**: Contact resolution stability & permissions. Addressed async mismatches, added missing `/participant/info` gateway endpoint, introduced `FileLock` for profile reads to fix race conditions, and corrected `!sc` permission inversion.
 - **Optimization**: Caching & Batching for Contacts. Added `data/contact_resolution_cache.json` with 24h TTL to skip redundant gateway hits. Implemented `POST /participant/info/batch` in Node.js gateway to process JIDs in batches of 10. `!resolve global` now executes in the background and sends a DM upon completion. Enhanced privacy formatting UX to guide users.
 
