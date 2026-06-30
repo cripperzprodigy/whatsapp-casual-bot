@@ -142,6 +142,8 @@
 - **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
 
 ### Added
+- **Feature**: Active Contact Resolution & `!resolve` command. Owners can now use `!resolve @mention` or `!resolve global` to actively query the gateway and bypass local cache privacy restrictions. `!contacts global` also utilizes this feature.
+- **Feature**: Hybrid Display Formatting. Contact lists now gracefully handle WhatsApp privacy limits, displaying real numbers when available and providing a summary of hidden numbers.
 - **Feature**: Role-based Help Menu dynamically filters commands based on the user's role (User, Admin, Owner) and adds inline permission hints.
 - **Fix**: `!contacts global` now aggregates and deduplicates contacts across all groups by scanning filesystem profiles.
 - **Fix**: `!sc` (Deep Crawl Search) is now public when enabled; toggle remains owner-only.

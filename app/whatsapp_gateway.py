@@ -91,6 +91,21 @@ async def fetch_group_metadata(
         logger.error(f"Failed to fetch group metadata for {chat_id}: {e}")
         return None
 
+async def resolve_contact_info(jid: str) -> Optional[Dict[str, Any]]:
+    """
+    Resolves a contact's phone number and name via the Node.js gateway live lookup.
+    """
+    url = f"{settings.WHATSAPP_GATEWAY_URL}/contact/info"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params={"jid": jid}, timeout=5.0)
+            if response.status_code == 200:
+                return response.json()
+    except Exception as e:
+        logger.error(f"Failed to resolve contact info for {jid}: {e}")
+    return None
+
 async def resolve_quote_id(short_id: str) -> Optional[str]:
     """
     Resolves a short message ID to its full serialized format using the Node.js gateway cache.

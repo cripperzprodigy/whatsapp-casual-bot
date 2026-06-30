@@ -7,6 +7,7 @@ const statusRouter = require('./src/routes/status');
 const sessionRouter = require('./src/routes/session');
 const groupRouter = require('./src/routes/group');
 const sendRouter = require('./src/routes/send');
+const contactRouter = require('./src/routes/contact');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -20,6 +21,7 @@ app.use('/whatsapp', statusRouter);
 app.use('/whatsapp', sessionRouter);
 app.use('/group', groupRouter);
 app.use('/message', sendRouter);
+app.use('/contact', contactRouter);
 
 // Graceful Shutdown
 const shutdown = async () => {

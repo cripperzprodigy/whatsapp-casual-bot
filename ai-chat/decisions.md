@@ -384,6 +384,16 @@ Long bot responses (LLM synthesis, search results, AI replies) were sent as a si
 3. **Selective Integration**: Only code paths producing potentially long text use `send_long_message()`. Short fixed messages stay on `send_text_message()`.
 4. **Timeout Increase**: `httpx.AsyncClient` timeout raised from 5s to 15s.
 
+### 2. Message Splitting Standard
+- **Decision:** The Single-Response Contract necessitates chunking inside the send boundary.
+- **Rule:** Use `app.utils.message_splitter` for any response longer than `MAX_MESSAGE_LENGTH`.
+- **Reasoning:** Keeps business logic clean while respecting WhatsApp protocol limits.
+
+### 3. Contact Privacy & Active Resolution
+- **Decision:** WhatsApp webhooks often obfuscate users' real phone numbers into `@lid` hashes due to strict privacy settings.
+- **Rule:** When displaying global contacts, the bot actively falls back to the Node.js Gateway `/contact/info` endpoint to query the live `wwebjs` client. If a real number still cannot be found, it gracefully degrades to displaying the `@lid` with an explanatory footer.
+- **Reasoning:** Maximizes the utility of the bot for Owners while honoring unavoidable WhatsApp platform limitations without crashing.
+
 ### Consequences
 - Positive: No more ReadTimeout on long responses.
 - Positive: Users receive properly formatted multi-part messages.

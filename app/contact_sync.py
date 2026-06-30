@@ -1,13 +1,57 @@
 import os
 import csv
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from app.state import GroupContactLedger, get_chat_settings
 from app.config import settings
+from app.whatsapp_gateway import resolve_contact_info
 
 logger = logging.getLogger(__name__)
+
+async def resolve_participant_info(jid: str) -> dict:
+    """Resolves phone number and name for a participant by checking local DB then Gateway API."""
+    # Step 1: Check Local DB (data/contacts/)
+    contacts_dir = "data/contacts"
+    if os.path.exists(contacts_dir):
+        for group_folder in os.listdir(contacts_dir):
+            if "_g_us" in group_folder:
+                profile_path = os.path.join(contacts_dir, group_folder, "profile.json")
+                if os.path.exists(profile_path):
+                    try:
+                        with open(profile_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            for p_jid, info in data.get("participants", {}).items():
+                                if p_jid == jid:
+                                    phone = info.get("phone") or (jid.split("@")[0] if jid.split("@")[0].isdigit() else None)
+                                    name = info.get("pushName") or info.get("name") or jid
+                                    return {
+                                        "jid": jid,
+                                        "phone": phone,
+                                        "name": name,
+                                        "source": "cache"
+                                    }
+                    except Exception:
+                        pass
+                        
+    # Step 2: Query Gateway API
+    gateway_info = await resolve_contact_info(jid)
+    if gateway_info:
+        return {
+            "jid": jid,
+            "phone": gateway_info.get("phone"),
+            "name": gateway_info.get("name") or jid,
+            "source": "gateway"
+        }
+        
+    return {
+        "jid": jid,
+        "phone": None,
+        "name": jid,
+        "source": "unknown"
+    }
 
 def process_active_sweep(  # Issue 13: added return type
     db: Session,
