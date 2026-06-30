@@ -18,7 +18,7 @@ from app.translation import translate_text, detect_language
 from app.pm_service import start_batched_pm_task
 from app.whatsapp_gateway import send_text_message
 from app.ai_client import ask_llm
-from app.config import settings as app_settings
+from app.config import settings as app_settings, persist_global_config
 from app.permissions import (
     ADMIN_ROLE,
     OWNER_ROLE,
@@ -55,7 +55,12 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     lines.extend([
         "🌐 *Translation*",
         "├ `!t <lang> <text>` - Translate text",
-        "└ `!t auto <text>` - Translate to default\n"
+        "├ `!t auto <text>` - Translate to default",
+        "├ `!auto on|off` - Toggle auto-translate (this chat)",
+        "├ `!auto global` - Reset to global default",
+        "├ `!target <lang>` - Set target language",
+        "├ `!ignore add|remove <lang>` - Manage ignore list",
+        "└ `!ignore global` - Reset ignore list\n"
     ])
     
     lines.extend([
@@ -120,6 +125,7 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
             "├ `!owner transfer <jid>` - Transfer ownership",
             "├ `!whoami` - Register Bot Identity (tag bot)",
             "├ `!forget-me` - Clear Bot Identity (LIDs)",
+            "├ `!globaltrans on|off` - Toggle global auto-translate",
             "└ `!shutdown | !restart` - Lifecycle controls\n"
         ])
 
@@ -186,6 +192,30 @@ async def handle_command(  # Issue 13: added return type
                             "Auto-translate for this chat reset to "
                             "GLOBAL configuration.",
                         )
+
+        elif command == "!globaltrans":
+            if not await is_owner(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: `!globaltrans` requires Owner privileges.",
+                )
+            elif len(args) == 1 and args[0] in ["on", "off"]:
+                new_state = args[0] == "on"
+                app_settings.GLOBAL_AUTO_TRANSLATE = new_state
+                persist_global_config("GLOBAL_AUTO_TRANSLATE", new_state)
+                state_label = "ON ✅" if new_state else "OFF ❌"
+                await send_text_message(
+                    chat_id,
+                    f"🌐 Global auto-translation is now *{state_label}*.\n\n"
+                    f"{'Groups with auto-translate enabled will now process translations.' if new_state else 'All auto-translation is disabled globally. Group settings are overridden.'}",
+                )
+            else:
+                current = "ON ✅" if app_settings.GLOBAL_AUTO_TRANSLATE else "OFF ❌"
+                await send_text_message(
+                    chat_id,
+                    f"🌐 Global auto-translation is currently: *{current}*\n"
+                    f"Usage: `!globaltrans on` or `!globaltrans off`",
+                )
 
         elif command == "!target":
             if not await is_admin(db, sender_id):

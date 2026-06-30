@@ -5,7 +5,7 @@ from langdetect.lang_detect_exception import LangDetectException
 import re
 from typing import Optional
 import logging
-from app.config import settings
+from app.config import settings, load_skip_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -36,32 +36,6 @@ FULL_NAME_TO_CODE: dict[str, str] = {
 
 VALID_TARGET_LANGUAGES = set(FULL_NAME_TO_CODE.values())
 
-# ------------------------------------------------------------------ #
-#  Heuristic Keyword Set for Short Malay/Indonesian Text Detection
-#  langdetect is unreliable for texts < 20 chars in ms/id, often
-#  returning 'fi' (Finnish), 'tl' (Tagalog), or 'en' (English).
-#  This curated set provides a fast O(1) fallback.
-# ------------------------------------------------------------------ #
-COMMON_MS_ID_WORDS: set[str] = {
-    # Pronouns & address
-    "saya", "aku", "awak", "kamu", "dia", "kami", "kita", "mereka",
-    # Common verbs
-    "makan", "minum", "pergi", "datang", "buat", "ambil", "beli",
-    "jual", "cari", "mulai", "kerja", "tidur", "bangun", "duduk",
-    "baca", "tulis", "dengar", "lihat", "tahu", "boleh", "mahu",
-    # Common nouns
-    "orang", "rumah", "hari", "masa", "waktu", "tempat", "air",
-    "nasi", "ayam", "ikan", "duit", "wang", "kereta", "jalan",
-    # Particles & connectors
-    "tak", "tidak", "nak", "ke", "di", "dan", "atau", "ya",
-    "lah", "kan", "leh", "pun", "dah", "ada", "ini", "itu",
-    "apa", "mana", "bila", "siapa", "kenapa", "macam", "dengan",
-    "untuk", "dari", "dalam", "sudah", "belum", "akan", "sedang",
-    # Common adjectives
-    "baik", "besar", "kecil", "banyak", "sedikit", "cantik",
-    "bagus", "mahal", "murah", "cepat", "lambat", "panas", "sejuk",
-}
-
 # Languages that langdetect commonly confuses with ms/id on short texts
 _MS_ID_FALSE_POSITIVE_LANGS = {"fi", "tl", "so", "sw", "hr", "ro"}
 
@@ -69,12 +43,16 @@ _MS_ID_FALSE_POSITIVE_LANGS = {"fi", "tl", "so", "sw", "hr", "ro"}
 def _heuristic_ms_id_check(text: str) -> bool:
     """
     Returns True if the text is likely Malay/Indonesian based on keyword matching.
-    Used as a fast heuristic for short texts where langdetect is unreliable.
+    Keywords are loaded from the external file (data/translation_skip_keywords.txt).
+    Uses ≥50% token-ratio matching to avoid false positives.
     """
+    skip_keywords = load_skip_keywords()
+    if not skip_keywords:
+        return False
     tokens = re.findall(r'[a-zA-Z]+', text.lower())
     if not tokens:
         return False
-    match_count = sum(1 for t in tokens if t in COMMON_MS_ID_WORDS)
+    match_count = sum(1 for t in tokens if t in skip_keywords)
     return match_count / len(tokens) >= 0.5
 
 

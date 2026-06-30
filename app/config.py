@@ -288,6 +288,10 @@ class Settings(BaseSettings):
     # Part of the EN/ID/MS linguistic sphere policy (ADR-028).
     TRANSLATION_EQUIVALENT_LANGS: str = "en,id,ms"
 
+    # External keyword file for linguistic sphere detection.
+    # One keyword per line, # for comments. See ADR-029.
+    TRANSLATION_SKIP_KEYWORDS_FILE: str = "data/translation_skip_keywords.txt"
+
     # ------------------------------------------------------------------ #
     #  Issue 8: Rate Limiting
     # ------------------------------------------------------------------ #
@@ -447,6 +451,85 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# ------------------------------------------------------------------ #
+#  Global Config Persistence (runtime overrides via !globaltrans)
+# ------------------------------------------------------------------ #
+GLOBAL_CONFIG_FILE = "data/global_config.json"
+
+def _apply_persisted_global_config() -> None:
+    """Applies persisted runtime config overrides from global_config.json."""
+    global settings
+    try:
+        if os.path.exists(GLOBAL_CONFIG_FILE):
+            with open(GLOBAL_CONFIG_FILE, "r", encoding="utf-8") as f:
+                overrides = json.load(f)
+            if "GLOBAL_AUTO_TRANSLATE" in overrides:
+                settings.GLOBAL_AUTO_TRANSLATE = overrides["GLOBAL_AUTO_TRANSLATE"]
+                logger.info(f"Applied persisted global config: GLOBAL_AUTO_TRANSLATE={settings.GLOBAL_AUTO_TRANSLATE}")
+    except Exception as exc:
+        logger.error(f"Failed to load persisted global config: {exc}")
+
+def persist_global_config(key: str, value) -> None:
+    """Persists a runtime config override to data/global_config.json."""
+    try:
+        os.makedirs(os.path.dirname(GLOBAL_CONFIG_FILE), exist_ok=True)
+        lock = FileLock(f"{GLOBAL_CONFIG_FILE}.lock")
+        existing = {}
+        with lock:
+            if os.path.exists(GLOBAL_CONFIG_FILE):
+                with open(GLOBAL_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            existing[key] = value
+            with open(GLOBAL_CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(existing, f, indent=2)
+        logger.info(f"Persisted global config: {key}={value}")
+    except Exception as exc:
+        logger.error(f"Failed to persist global config: {exc}")
+
+# Apply persisted overrides on import
+_apply_persisted_global_config()
+
+
+# ------------------------------------------------------------------ #
+#  External Keyword File Loader (Cached)
+# ------------------------------------------------------------------ #
+_skip_keywords_cache: frozenset[str] | None = None
+
+def load_skip_keywords() -> frozenset[str]:
+    """
+    Loads and caches the translation skip keywords from the external file.
+    Supports comments (#) and blank lines. Returns a frozenset for O(1) lookup.
+    """
+    global _skip_keywords_cache
+    if _skip_keywords_cache is not None:
+        return _skip_keywords_cache
+
+    keywords = set()
+    filepath = settings.TRANSLATION_SKIP_KEYWORDS_FILE
+
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        keywords.add(stripped.lower())
+            logger.info(f"Loaded {len(keywords)} skip keywords from {filepath}")
+        else:
+            logger.warning(f"Skip keywords file not found: {filepath}. Using empty set.")
+    except Exception as exc:
+        logger.error(f"Failed to load skip keywords from {filepath}: {exc}")
+
+    _skip_keywords_cache = frozenset(keywords)
+    return _skip_keywords_cache
+
+def invalidate_skip_keywords_cache() -> None:
+    """Forces the next call to reload from disk."""
+    global _skip_keywords_cache
+    _skip_keywords_cache = None
+    logger.debug("Skip keywords cache invalidated.")
+
+
 def safe_reload_settings():
     """
     Re-reads .env file, re-validates all settings, invalidates BotIdentityManager cache.
@@ -455,6 +538,8 @@ def safe_reload_settings():
     try:
         settings = Settings()
         BotIdentityManager.invalidate_cache()
+        invalidate_skip_keywords_cache()
+        _apply_persisted_global_config()
         logger.info("Settings reloaded successfully.")
     except Exception as exc:
         logger.error(f"Failed to reload settings: {exc}")

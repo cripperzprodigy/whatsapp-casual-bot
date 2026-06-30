@@ -110,23 +110,30 @@ All detection parameters are configurable via `.env`:
 | `TRANSLATION_EQUIVALENT_LANGS` | `"en,id,ms"` | Languages treated as mutually equivalent |
 | `TRANSLATION_MIN_LENGTH` | `4` | Minimum text length to attempt detection |
 | `TRANSLATION_CONFIDENCE_THRESHOLD` | `0.70` | Minimum langdetect confidence to accept |
+| `TRANSLATION_SKIP_KEYWORDS_FILE` | `"data/translation_skip_keywords.txt"` | External keyword dictionary file path |
 
-## 5. Keyword Set
+## 5. Keyword Set (External File)
 
-The `COMMON_MS_ID_WORDS` set is defined at module level in `app/translation.py`. Categories:
+Keywords are stored in `data/translation_skip_keywords.txt` (one per line, `#` for comments). The file is loaded at startup by `load_skip_keywords()` in `config.py` and cached as a `frozenset` for O(1) lookup.
 
-| Category | Words |
+**Current count:** ~172 keywords across these categories:
+
+| Category | Examples |
 |---|---|
-| **Pronouns** | saya, aku, awak, kamu, dia, kami, kita, mereka |
-| **Verbs** | makan, minum, pergi, datang, buat, ambil, beli, jual, cari, mulai, kerja, tidur, bangun, duduk, baca, tulis, dengar, lihat, tahu, boleh, mahu |
-| **Nouns** | orang, rumah, hari, masa, waktu, tempat, air, nasi, ayam, ikan, duit, wang, kereta, jalan |
-| **Particles** | tak, tidak, nak, ke, di, dan, atau, ya, lah, kan, leh, pun, dah, ada, ini, itu, apa, mana, bila, siapa, kenapa, macam, dengan, untuk, dari, dalam, sudah, belum, akan, sedang |
-| **Adjectives** | baik, besar, kecil, banyak, sedikit, cantik, bagus, mahal, murah, cepat, lambat, panas, sejuk |
+| **Pronouns** | saya, aku, awak, kamu, dia, kami, kita, mereka, anda, beliau |
+| **Verbs** | makan, minum, pergi, datang, buat, ambil, beli, jual, cari, mulai, kerja, tidur, bangun, tolong, tunggu |
+| **Nouns** | orang, rumah, hari, masa, waktu, tempat, nasi, ayam, ikan, duit, wang, kereta, jalan, sekolah, kawan |
+| **Particles** | tak, tidak, nak, ke, di, dan, atau, ya, lah, kan, leh, pun, dah, ada, ini, itu, jer, je, kot, gak, dong, sih |
+| **Adjectives** | baik, besar, kecil, banyak, cantik, bagus, mahal, murah, cepat, lambat, sedap |
+| **Greetings** | selamat, pagi, petang, malam, terima, kasih, maaf, sorry, hai |
+| **Time** | sekarang, nanti, semalam, esok, lusa, tadi |
+| **Location** | sini, situ, sana, dekat, jauh, atas, bawah, depan, belakang |
 
-When adding new words:
-1. Only add words that are **unambiguous** — they should not commonly appear in English.
-2. Avoid single-letter words.
-3. Group words by category for readability.
+To expand the keyword set:
+1. Edit `data/translation_skip_keywords.txt` directly
+2. Add words under the appropriate category comment header
+3. Restart the bot (keywords are cached at startup)
+4. Only add words that are **unambiguous** — avoid words common in non-target languages
 
 ## 6. Edge Cases
 
@@ -143,5 +150,7 @@ When adding new words:
 
 - ADR-027 in `decisions.md` — Keyword heuristic decision
 - ADR-028 in `decisions.md` — Linguistic sphere policy
+- ADR-029 in `decisions.md` — Hierarchical control and external keyword dictionary
+- `data/translation_skip_keywords.txt` — External keyword dictionary
 - `app/translation.py` — Implementation source
-- `app/config.py` — Settings definitions
+- `app/config.py` — Settings definitions and keyword loader

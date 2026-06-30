@@ -344,3 +344,28 @@ Implement an EN/ID/MS Linguistic Sphere policy:
 - `ai-chat/knowledge_base/LANGUAGE_DETECTION.md` (algorithm documentation)
 - `app/config.py` (configuration defaults)
 - `app/translation.py` (implementation)
+
+## ADR-029: Hierarchical Auto-Translation Control with External Keyword Dictionary
+Date: 2026-06-30
+Status: Accepted
+Authors: DEBUG-LEAD (orchestration), Antigravity (implementation)
+
+### Context
+The translation skip keywords were hardcoded in `translation.py` as `COMMON_MS_ID_WORDS`, making it impossible for users to expand the dictionary without code changes. Additionally, there was no Owner-only global toggle command — only per-group `!auto on/off` existed. The `.env.example` defaults were misaligned with code defaults, creating confusion.
+
+### Decision
+1. **External Keyword File**: Move keywords to `data/translation_skip_keywords.txt` (one per line, `#` for comments). Loaded at startup with `frozenset` caching.
+2. **Global Toggle Command**: Add `!globaltrans on/off` (Owner-only) that persists state to `data/global_config.json`.
+3. **Hierarchy**: Global OFF → all translation disabled. Global ON → per-group `!auto on/off` controls individual groups.
+4. **Safe Defaults**: `GLOBAL_AUTO_TRANSLATE=False` in both code and `.env.example`.
+
+### Consequences
+- Positive: Users can expand keywords without code changes.
+- Positive: Owner has runtime control over global translation state.
+- Positive: Hierarchy is clear: Global → Group → Keyword → Sphere → Translate.
+- Negative: Keyword file changes require restart (no hot-reload yet).
+
+### References
+- `data/translation_skip_keywords.txt` (keyword dictionary)
+- `app/config.py` (loader and persistence)
+- `app/commands.py` (`!globaltrans` handler)

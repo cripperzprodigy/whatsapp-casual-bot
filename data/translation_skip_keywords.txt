@@ -1,0 +1,217 @@
+# ==============================================================================
+# Translation Skip Keywords — EN/ID/MS Linguistic Sphere
+# ==============================================================================
+# This file contains common Malay (ms), Indonesian (id), and English (en)
+# colloquial words used to detect and SKIP translation for messages that
+# belong to the shared EN/ID/MS linguistic sphere.
+#
+# FORMAT:
+#   - One keyword per line (case-insensitive matching)
+#   - Lines starting with # are comments (ignored)
+#   - Blank lines are ignored
+#   - Matching uses ≥50% token-ratio: if half or more of the words in a
+#     message match keywords in this file, the message is classified as
+#     ms/id and translation is skipped.
+#
+# HOW TO EXPAND:
+#   1. Add new words below under the appropriate category
+#   2. Restart the bot (or run !reload if available)
+#   3. Only add words that are UNAMBIGUOUS — avoid words that commonly
+#      appear in non-target languages (e.g., don't add "air" as it's
+#      also English)
+#
+# REFERENCE: ADR-027, ADR-028, ADR-029 in ai-chat/decisions.md
+# ==============================================================================
+
+# --- Pronouns & Address ---
+saya
+aku
+awak
+kamu
+anda
+dia
+kami
+kita
+mereka
+engkau
+beliau
+
+# --- Common Verbs ---
+makan
+minum
+pergi
+datang
+buat
+ambil
+beli
+jual
+cari
+mulai
+mula
+kerja
+tidur
+bangun
+duduk
+baca
+tulis
+dengar
+lihat
+tahu
+boleh
+mahu
+bisa
+dapat
+hendak
+ingin
+mau
+cuba
+tolong
+tunggu
+ikut
+masuk
+keluar
+balik
+hantar
+simpan
+pakai
+
+# --- Common Nouns ---
+orang
+rumah
+hari
+masa
+waktu
+tempat
+air
+nasi
+ayam
+ikan
+duit
+wang
+kereta
+jalan
+sekolah
+kerja
+makan
+pasar
+kampung
+kedai
+budak
+abang
+kakak
+adik
+emak
+ayah
+kawan
+
+# --- Particles & Connectors ---
+tak
+tidak
+nak
+ke
+di
+dan
+atau
+ya
+lah
+kan
+leh
+pun
+dah
+ada
+ini
+itu
+apa
+mana
+bila
+siapa
+kenapa
+macam
+dengan
+untuk
+dari
+dalam
+sudah
+belum
+akan
+sedang
+bukan
+tiada
+jer
+je
+kot
+gak
+dong
+sih
+nih
+deh
+kah
+tah
+nah
+weh
+wei
+
+# --- Common Adjectives ---
+baik
+besar
+kecil
+banyak
+sedikit
+cantik
+bagus
+mahal
+murah
+cepat
+lambat
+panas
+sejuk
+elok
+sedap
+best
+okay
+
+# --- Greetings & Responses ---
+selamat
+pagi
+petang
+malam
+siang
+terima
+kasih
+maaf
+sorry
+tolong
+hai
+hey
+
+# --- Time & Action Words ---
+sekarang
+nanti
+semalam
+esok
+lusa
+tadi
+lepas
+sebelum
+selepas
+
+# --- Negation & Confirmation ---
+yes
+no
+ok
+yep
+yup
+betul
+salah
+benar
+
+# --- Demonstratives & Location ---
+sini
+situ
+sana
+dekat
+jauh
+atas
+bawah
+depan
+belakang

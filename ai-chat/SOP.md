@@ -41,6 +41,10 @@ Strict adherence to the project's architecture is required.
 
 - **DM Reply Quoting Prohibition (MANDATORY):** Direct Message (DM) chatty replies MUST NOT include `quotedMsgId` in the send payload. DMs should appear as natural conversational messages without WhatsApp quote bubbles. Only group replies triggered by explicit `@bot` tags or threaded reply contexts should use quoted messages.
 
+- **External Keyword Dictionary (MANDATORY):** Translation skip keywords MUST reside in `data/translation_skip_keywords.txt`, NOT hardcoded in source. The file format supports comments (`#`) and blank lines. Keywords are loaded at startup and cached. Any expansion to the keyword set MUST be done by editing this file, not by modifying `translation.py`. See ADR-029.
+
+- **Hierarchical Translation Control (MANDATORY):** Translation follows a strict hierarchy: (1) Global toggle (`GLOBAL_AUTO_TRANSLATE` / `!globaltrans`) must be ON. (2) Group toggle (`!auto on/off`) must be ON. (3) Keyword heuristic must NOT match. (4) Detected language must NOT be in `GLOBAL_IGNORED_LANGUAGES`. Only if all four checks pass does translation proceed. Global OFF overrides all group settings.
+
 ## 4.3 Session Storage Paths
 - All session/authentication files MUST use absolute paths resolved via `path.resolve(__dirname, '...')` in Node.js
 - Python services MUST use `Path(__file__).resolve().parent` for relative path resolution

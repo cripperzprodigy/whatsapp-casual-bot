@@ -152,3 +152,12 @@
 - **Keyword Heuristic Early-Exit**: The `_heuristic_ms_id_check()` now triggers an immediate skip (returns `None`) when the detected ms/id is in the ignored set, instead of returning `"ms"` which would proceed to translation.
 - **Removed 20-char Limit**: The keyword heuristic now fires on ALL text lengths, not just < 20 chars, providing consistent ms/id detection regardless of message length.
 - **Documentation**: Rewrote `LANGUAGE_DETECTION.md` with the sphere policy, updated flow diagram, and edge case table. Added ADR-028. Updated SOP with linguistic sphere rules.
+
+### Added (Hierarchical Auto-Translation Control — ADR-029)
+- **External Keyword Dictionary**: Moved hardcoded `COMMON_MS_ID_WORDS` from `translation.py` to `data/translation_skip_keywords.txt`. File supports comments (`#`) and blank lines. 172 keywords loaded at startup with caching.
+- **`!globaltrans on|off` Command (Owner-only)**: New command to toggle `GLOBAL_AUTO_TRANSLATE` at runtime. State persists to `data/global_config.json` and survives restarts.
+- **Global Config Persistence**: Added `data/global_config.json` mechanism for runtime config overrides. Applied on startup via `_apply_persisted_global_config()`.
+- **`.env.example` Alignment**: Fixed `GLOBAL_AUTO_TRANSLATE` default from `True` to `False`, `GLOBAL_IGNORED_LANGUAGES` from `en,id` to `en,id,ms`, `TRANSLATION_EQUIVALENT_LANGS` from `id,ms` to `en,id,ms`. Added `TRANSLATION_SKIP_KEYWORDS_FILE`.
+- **Help Menu Restructure**: Translation section now shows all hierarchy commands (`!auto on|off`, `!auto global`, `!target`, `!ignore`). `!globaltrans` added to Owner Commands.
+- **Keyword File Loader**: `load_skip_keywords()` in `config.py` reads external file with comment support, returns `frozenset` for O(1) lookup. Cache invalidated on `safe_reload_settings()`.
+- **Documentation**: Added ADR-029, updated SOP, LANGUAGE_DETECTION.md, issues.
