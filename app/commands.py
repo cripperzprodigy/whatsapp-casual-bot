@@ -1053,14 +1053,61 @@ async def handle_command(  # Issue 13: added return type
                             chat_settings = get_chat_settings(db, chat_id)
                             group_name = chat_settings.group_name or "Unknown Group"
                             
-                            msg = f"📋 *Active Contacts for {group_name}*\n\n"
-                            for c in contacts:
-                                name = c.push_name or "Unknown"
-                                phone = c.phone_number or "Unknown"
-                                role = "(Admin)" if c.is_admin else ""
-                                msg += f"• {name} {role}\n  📞 {phone}\n"
+                            if not contacts:
+                                await send_text_message(chat_id, f"📭 No active contacts found for {group_name}.")
+                                return
+                                
+                            total = len(contacts)
+                            await send_text_message(chat_id, f"🔄 Fetching live contact details for {total} members... Results will be sent shortly.")
                             
-                            await send_text_message(chat_id, msg)
+                            original_contacts_map = {
+                                c.jid: {"phone": c.phone_number, "name": c.push_name, "is_admin": c.is_admin} for c in contacts
+                            }
+                            unique_jids_list = list(original_contacts_map.keys())
+                            
+                            import asyncio
+                            async def run_list_resolution_bg(jids, recipient_id, orig_map, g_name):
+                                from app.contact_sync import resolve_participant_info_batch
+                                
+                                async def send_progress(current, total_bg):
+                                    if current > 0 and current % 100 == 0:
+                                        await send_text_message(recipient_id, f"⏳ Progress: Resolving {current}/{total_bg} members in {g_name}...")
+                                        
+                                resolved_contacts = await resolve_participant_info_batch(jids, send_progress)
+                                
+                                processed_members = []
+                                for info in resolved_contacts:
+                                    jid = info.get("jid")
+                                    orig = orig_map.get(jid, {})
+                                    phone = info.get("phone") or orig.get("phone")
+                                    name = info.get("name") or orig.get("name") or "Unknown User"
+                                    is_admin = orig.get("is_admin", False)
+                                    processed_members.append({"jid": jid, "phone": phone, "name": name, "is_admin": is_admin})
+                                    
+                                # Sort members alphabetically by name
+                                processed_members.sort(key=lambda x: x["name"].lower())
+                                
+                                formatted_output = [f"📇 *Contacts in {g_name} ({len(processed_members)})*\n"]
+                                total_hidden = 0
+                                
+                                for idx, member in enumerate(processed_members, 1):
+                                    phone = member["phone"]
+                                    name = member["name"]
+                                    role = " (Admin)" if member["is_admin"] else ""
+                                    
+                                    if phone:
+                                        formatted_output.append(f"├─ {idx}. {name}{role} (+{phone})")
+                                    else:
+                                        formatted_output.append(f"├─ {idx}. 🔒 Hidden (Privacy) - {name}{role}")
+                                        total_hidden += 1
+                                        
+                                if total_hidden > 0:
+                                    formatted_output.append(f"\nℹ️ {total_hidden} numbers hidden due to privacy settings.")
+                                    
+                                result = "\n".join(formatted_output)
+                                await send_long_message(recipient_id, result)
+                                
+                            asyncio.create_task(run_list_resolution_bg(unique_jids_list, chat_id, original_contacts_map, group_name))
                 
                 elif subcmd == "global":
                     if not await is_owner(db, sender_id):
