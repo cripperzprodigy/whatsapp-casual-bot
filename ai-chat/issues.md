@@ -1,8 +1,18 @@
 # Issues
+### 6. Group AI Language Detection Defaulting to English (Resolved)
+- **Issue**: Group chat AI responses always defaulted to English regardless of the user's input language (e.g., Indonesian triggers received English replies).
+- **Cause**: `_detect_language()` in `ai_memory_engine.py` had a group-specific early return that bypassed actual language detection, returning the static `default_target_language` setting (defaulting to `'en'`) instead of detecting the incoming message's language.
+- **Resolution**: Implemented a 3-tier detection fallback for groups: (1) `langdetect` library on the message text, (2) LLM-based `detect_language()` fallback, (3) group's configured default only as last resort. The system prompt's `Preferred Language` and `Reply ONLY in {lang}` fields now dynamically reflect the detected language.
+
+### 5. `!contacts list` / `!contacts global` / `!contacts export` Architecture Overhaul (Resolved)
+- **Issue**: `!contacts global` returned "No contacts found" despite data existing. `!contacts list` showed stale cached data. `!contacts export` overwrote the same file on every run and lacked group name context.
+- **Cause**: `!contacts global` read from `data/contacts/*_g_us/profile.json` filesystem paths that were never populated (exports went to `exports/groups/`). `!contacts list` used only the cached `push_name`/`phone_number` from `GroupContactLedger` without live resolution. `!contacts export` used a hardcoded `ledger.csv` filename.
+- **Resolution**: All commands now query `GroupContactLedger` DB as canonical data source. `!contacts list` and `!contacts global` perform live WhatsApp network resolution via `resolve_participant_info_batch()` in async background tasks with smart caching (24h TTL). `!contacts global` displays hierarchical output grouped by chat. `!contacts export` uses timestamped filenames and performs an outerjoin with `ChatSettings` for group name enrichment.
+
 ### 4. Contact Resolution Stability (Resolved)
 - **Issue**: `!resolve` and `!contacts global` commands experienced random crashes and corrupted JSON reads, while active gateway queries failed with 404s.
 - **Cause**: Race conditions occurred when aggregating `profile.json` files simultaneously. Gateway queries failed because the `/participant/info` endpoint was missing.
-- **Resolution**: Integrated `filelock.FileLock` across all file aggregation loops to eliminate race conditions. Added the official `/participant/info` endpoint to the Node.js gateway with fallback resolution strategies (`getContactById` and `getNumberId`). Verified that all `resolve_participant_info()` helper calls are properly awaited.
+- **Resolution**: Migrated to `GroupContactLedger` database queries (eliminating filesystem race conditions). Implemented `POST /participant/info/batch` endpoint on the Node.js gateway for batched resolution (chunks of 10). Legacy single-contact `/contact/info` route (`whatsapp-service/src/routes/contact.js`) has been deleted. Smart cache (`data/contact_resolution_cache.json`) with 24h TTL prevents redundant gateway calls.
 
 ### 3. Agentic Search & Deep Crawl Configuration Sync Mismatch (Resolved)
 - **Issue**: The `!s` command reported "Agentic search is disabled" despite `ENABLE_AGENTIC_SEARCH=True` in `.env`.

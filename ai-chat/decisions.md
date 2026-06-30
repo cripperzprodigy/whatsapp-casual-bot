@@ -391,8 +391,8 @@ Long bot responses (LLM synthesis, search results, AI replies) were sent as a si
 
 ### 3. Contact Privacy & Active Resolution
 - **Decision:** WhatsApp webhooks often obfuscate users' real phone numbers into `@lid` hashes due to strict privacy settings.
-- **Rule:** When displaying global contacts, the bot actively falls back to the Node.js Gateway `/contact/info` endpoint to query the live `wwebjs` client. If a real number still cannot be found, it gracefully degrades to displaying the `@lid` with an explanatory footer.
-- **Reasoning:** Maximizes the utility of the bot for Owners while honoring unavoidable WhatsApp platform limitations without crashing.
+- **Rule:** When displaying contacts (via `!contacts list` or `!contacts global`), the bot uses `resolve_participant_info_batch()` to query the Node.js Gateway `POST /participant/info/batch` endpoint in chunks of 10, with smart caching (24h TTL via `data/contact_resolution_cache.json`). If a real number still cannot be found, it gracefully degrades to displaying a `🔒 Hidden (Privacy)` indicator.
+- **Reasoning:** Maximizes the utility of the bot for Owners while honoring unavoidable WhatsApp platform limitations without crashing or spamming the gateway.
 
 ### Consequences
 - Positive: No more ReadTimeout on long responses.
@@ -475,3 +475,52 @@ We introduced the `!sc` command to crawl and parse full HTML pages from search r
 ### References
 - `app/services/deep_crawl_service.py`
 - KB: `ai-chat/knowledge_base/AGENTIC_SEARCH_FEATURE.md`
+
+## ADR-033 — GroupContactLedger as Canonical Contact Store & Batch Resolution
+
+### Context
+The original contact system relied on filesystem-based `profile.json` files in `data/contacts/*_g_us/` directories. This caused:
+1. Race conditions when aggregating files simultaneously (requiring `FileLock`).
+2. Path mismatches between export directories and read directories (`!contacts global` returned empty).
+3. No way to enrich contact exports with human-readable group names.
+
+### Decision
+1. **Database as Single Source of Truth**: All contact commands (`!contacts list`, `!contacts global`, `!contacts export`) now query the `GroupContactLedger` SQLite table exclusively. The filesystem-based `data/contacts/` directory is considered legacy.
+2. **Batch Resolution Endpoint**: The legacy single-contact `GET /contact/info` and `GET /participant/info` endpoints have been replaced by `POST /participant/info/batch` which processes JIDs in chunks of 10.
+3. **Smart Cache**: Resolution results are cached in `data/contact_resolution_cache.json` with a 24-hour TTL to prevent redundant gateway calls.
+4. **Hierarchical Global Output**: `!contacts global` groups contacts by chat, with groups and members sorted alphabetically, using `ChatSettings` for group name resolution.
+5. **Timestamped Exports**: `!contacts export` generates timestamped filenames (`ledger_YYYYMMDD_HHMMSS.csv`) and performs a SQLAlchemy outerjoin with `ChatSettings` for group name enrichment.
+6. **Live Resolution for List**: `!contacts list` now performs live network resolution (identical to global) instead of showing stale cached data.
+
+### Consequences
+- Positive: Eliminates all filesystem race conditions.
+- Positive: No more path mismatch bugs; single canonical data source.
+- Positive: Export history is preserved (no more overwrites).
+- Positive: Group context is preserved in both display and export.
+- Negative: First-time resolution for large groups (500+ members) may take 10-20s, mitigated by smart cache on subsequent runs.
+
+### References
+- `app/commands.py` (handle_contacts_command)
+- `app/contact_sync.py` (resolve_participant_info_batch)
+- KB: `ai-chat/knowledge_base/CONTACT_SYNC_ARCHITECTURE.md`
+
+## ADR-034 — Live Language Detection for Group AI Responses
+
+### Context
+The AI Memory Engine's `_detect_language()` method had a group-specific early return that bypassed actual language detection. For any group chat (`@g.us`), it immediately returned `chat_settings.default_target_language` (defaulting to `'en'`), meaning the AI always responded in English regardless of the user's input language.
+
+### Decision
+1. **Live Detection First**: For group chats, `_detect_language()` now runs `langdetect` on the actual incoming message text before considering any static defaults.
+2. **3-Tier Fallback**: (1) `langdetect` library, (2) LLM-based `detect_language()` from `app/translation.py`, (3) group's configured `default_target_language` only as last resort.
+3. **System Prompt Injection**: The detected language is injected into both `Preferred Language: {lang}` and the constraint `Reply ONLY in {lang}` in the system prompt.
+4. **DM Unaffected**: The DM detection path (profile preference → langdetect → LLM fallback) was already correct and remains unchanged.
+
+### Consequences
+- Positive: Indonesian messages now receive Indonesian replies; English messages get English replies.
+- Positive: `langdetect` is sub-millisecond, adding no measurable latency.
+- Positive: Group's configured default still serves as a safety net if detection fails.
+- Negative: None identified.
+
+### References
+- `app/services/ai_memory_engine.py:_detect_language()`
+- KB: `ai-chat/knowledge_base/LANGUAGE_DETECTION.md`

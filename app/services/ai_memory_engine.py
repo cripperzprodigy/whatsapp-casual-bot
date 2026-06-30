@@ -89,14 +89,36 @@ class AIMemoryEngine:
         write_profile(self.chat_id, self.profile)
 
     async def _detect_language(self, text: str) -> str:
-        # Group Check
+        # Group Check: Detect the actual message language first,
+        # falling back to the group's configured default only if detection fails.
+        # This ensures AI replies match the user's input language (e.g., Indonesian
+        # triggers get Indonesian replies) rather than always defaulting to English.
         if "@g.us" in self.chat_id:
             from app.state import get_chat_settings
             from app.state import SessionLocal
             with SessionLocal() as db:
                 chat_settings = get_chat_settings(db, self.chat_id)
-                target_lang = chat_settings.default_target_language if chat_settings.default_target_language else getattr(settings, 'DEFAULT_GROUP_LANGUAGE', 'en')
-            return target_lang
+                group_default_lang = chat_settings.default_target_language if chat_settings.default_target_language else getattr(settings, 'DEFAULT_GROUP_LANGUAGE', 'en')
+            
+            # Attempt live detection on the incoming message text
+            try:
+                detected = detect(text)
+                if detected:
+                    return detected
+            except (LangDetectException, json.JSONDecodeError, ValueError):
+                pass
+            
+            # LLM-based fallback detection
+            try:
+                from app.translation import detect_language
+                detected = await detect_language(text)
+                if detected:
+                    return detected
+            except Exception as e:
+                logger.warning(f"Group language detection fallback failed: {e}")
+            
+            # Final fallback: group's configured default language
+            return group_default_lang
 
         # Private DM Check
         if self.profile.get("preferred_language"):
