@@ -17,6 +17,7 @@ from app.services.profile_service import read_profile, write_profile
 from app.translation import translate_text, detect_language
 from app.pm_service import start_batched_pm_task
 from app.whatsapp_gateway import send_text_message
+from app.utils.message_splitter import send_long_message
 from app.ai_client import ask_llm
 from app.config import settings as app_settings, persist_global_config
 from app.permissions import (
@@ -851,7 +852,7 @@ async def handle_command(  # Issue 13: added return type
                         for i, res in enumerate(results, 1):
                             response_lines.append(f"\n{i}. *{res.title}*\n{res.url}\n_{res.snippet}_")
 
-                        await send_text_message(chat_id, "\n".join(response_lines))
+                        await send_long_message(chat_id, "\n".join(response_lines))
                 except Exception as e:
                     logger.error(f"Search failed for query '{query}': {e}", exc_info=True)
                     err_msg = "⚠️ Search service encountered an error. Please try again later."
@@ -884,7 +885,7 @@ async def handle_command(  # Issue 13: added return type
                     # this except block would send a SECOND message.
                     final_answer = await orchestrator.execute_iterative_search(query, sender_id)
                     logger.info(f"Agentic search completed for '{query}'. Sending single response.")
-                    await send_text_message(chat_id, final_answer)
+                    await send_long_message(chat_id, final_answer)
                 except Exception as e:
                     # Defensive safety net — should never fire since
                     # execute_iterative_search catches all exceptions internally.
@@ -1298,7 +1299,7 @@ async def handle_command(  # Issue 13: added return type
                 response = await ask_llm(
                     ai_prompt, task_type="generic"
                 )
-                await send_text_message(chat_id, response)
+                await send_long_message(chat_id, response)
             else:
                 await send_text_message(
                     chat_id,

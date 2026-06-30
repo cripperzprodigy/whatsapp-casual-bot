@@ -158,7 +158,7 @@ async def send_text_message(
     
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(url, json=payload)
 
                 # Check for 202 Accepted (Queued for Recovery)

@@ -24,6 +24,7 @@ from app.whatsapp_gateway import (
     fetch_group_metadata,
     check_gateway_health,
 )
+from app.utils.message_splitter import send_long_message
 from app.state import get_db, add_message_to_buffer, get_chat_settings, SessionLocal
 from app.commands import handle_command
 from app.translation import detect_language, translate_text
@@ -156,7 +157,7 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
 
         ai_reply = await engine.generate_delayed_reply()
         if ai_reply:
-            await send_text_message(
+            await send_long_message(
                 chat_id,
                 ai_reply,
                 quoted_msg_id=None,
@@ -166,7 +167,7 @@ async def _delayed_chatty_reply(chat_id: str, msg_id: str, participant: str, eng
             for _ in range(1, burst_count):
                 burst_reply = await engine.generate_delayed_reply(is_burst=True)
                 if burst_reply:
-                    await send_text_message(
+                    await send_long_message(
                         chat_id,
                         burst_reply,
                         quoted_msg_id=None,
@@ -262,7 +263,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
         logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
             # DMs should never quote; natural chat flow per SOP 4.2
-            await send_text_message(
+            await send_long_message(
                 chat_id,
                 ai_reply,
                 quoted_msg_id=None,

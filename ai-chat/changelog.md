@@ -160,3 +160,10 @@
 - **Root Cause**: `execute_iterative_search()` only caught `asyncio.TimeoutError` but not other exceptions (e.g., `TranslationError` from OpenRouter 500). When an uncaught exception propagated to `commands.py`, the caller's `except` block sent an additional error message — producing duplicate messages.
 - **Fix**: Added catch-all `except Exception` in `execute_iterative_search()` that guarantees it ALWAYS returns a string, never raises. The caller's `except` block is now a defensive safety net only.
 - **Logging**: Added `"Fallback constructed"` and `"Sending single response"` log entries to trace exactly one send per command execution.
+
+### Added (Message Chunking & Sequential Sending)
+- **New Module**: `app/utils/message_splitter.py` — Smart text splitting utility with hierarchical boundary detection (paragraphs → sentences → words → hard cut). Each chunk ≤ 2500 chars.
+- **`send_long_message()`**: Wrapper around `send_text_message` that auto-chunks long text, adds part headers (`📄 Part 1/3`), and sends sequentially with 1s inter-chunk delay. Short messages (≤ 2500 chars) pass through directly with zero overhead.
+- **Integration Points**: `!s` (agentic search), `!search` (results), `!a` (AI ask), DM chatty replies, and group chatty replies now use `send_long_message()`. Short command responses (help, errors, confirmations) remain on `send_text_message` since they're well under the limit.
+- **Gateway Timeout Fix**: Increased `httpx.AsyncClient` timeout from default 5s to 15s in `send_text_message()` to prevent `ReadTimeout` on individual chunks.
+- **Abort Logic**: If a chunk fails delivery, remaining chunks are aborted and user is notified (`⚠️ Message delivery interrupted at part X/Y`).
