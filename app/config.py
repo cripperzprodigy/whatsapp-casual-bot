@@ -360,7 +360,7 @@ class Settings(BaseSettings):
     MSG_TRANSLATION_ERROR: str = "[⚠️ Translation service temporarily unavailable]"
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8"
+        env_file=".env", env_file_encoding="utf-8", extra="forbid"
     )
 
     @model_validator(mode="before")
@@ -500,6 +500,13 @@ def _apply_persisted_global_config() -> None:
             elif "DEEP_CRAWL_ENABLED" in overrides:
                 settings.deep_crawl_enabled = overrides["DEEP_CRAWL_ENABLED"]
                 logger.info(f"Applied persisted global config (legacy key): deep_crawl_enabled={settings.deep_crawl_enabled}")
+            
+            if "enable_agentic_search" in overrides:
+                settings.enable_agentic_search = overrides["enable_agentic_search"]
+                logger.info(f"Applied persisted global config: enable_agentic_search={settings.enable_agentic_search}")
+            elif "ENABLE_AGENTIC_SEARCH" in overrides:
+                settings.enable_agentic_search = overrides["ENABLE_AGENTIC_SEARCH"]
+                logger.info(f"Applied persisted global config: enable_agentic_search={settings.enable_agentic_search}")
     except Exception as exc:
         logger.error(f"Failed to load persisted global config: {exc}")
 

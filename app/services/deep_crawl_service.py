@@ -113,7 +113,7 @@ class DeepCrawlService:
         try:
             return await asyncio.wait_for(
                 self._execute_deep_crawl(query),
-                timeout=180.0,
+                timeout=self.llm_timeout + 60.0,
             )
         except asyncio.TimeoutError:
             logger.warning(f"DeepCrawlService global timeout for query '{query}'")
@@ -131,7 +131,7 @@ class DeepCrawlService:
         try:
             results: List[SearchResult] = await asyncio.wait_for(
                 self.search_service.search(query, max_results=self.max_urls),
-                timeout=15.0,
+                timeout=self.timeout,
             )
         except Exception as e:
             logger.error(f"Deep crawl search step failed: {e}")

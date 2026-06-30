@@ -695,8 +695,17 @@ async def handle_command(  # Issue 13: added return type
                 state_bool = state_str == "on"
 
                 try:
-                    await FeatureFlagService.toggle_feature(db, feature_name, state_bool, sender_id)
-                    await send_text_message(chat_id, f"✅ Feature '{feature_name}' is now {state_str.upper()}.")
+                    if feature_name == "agentic_search":
+                        if not await is_owner(db, sender_id):
+                            await send_text_message(chat_id, "🚫 Unauthorized: Only Owner can toggle features.")
+                            return
+                        app_settings.enable_agentic_search = state_bool
+                        from app.utils.config_persister import persist_global_config
+                        persist_global_config("enable_agentic_search", state_bool)
+                        await send_text_message(chat_id, f"✅ Feature '{feature_name}' is now {state_str.upper()}.")
+                    else:
+                        await FeatureFlagService.toggle_feature(db, feature_name, state_bool, sender_id)
+                        await send_text_message(chat_id, f"✅ Feature '{feature_name}' is now {state_str.upper()}.")
                 except PermissionError:
                     await send_text_message(chat_id, "🚫 Unauthorized: Only Owner can toggle features.")
                 except Exception as e:
@@ -903,7 +912,7 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, "Usage: !search <query>")
 
         elif command == "!s":
-            if not FeatureFlagService.is_enabled(db, "agentic_search"):
+            if not getattr(app_settings, "enable_agentic_search", False):
                 await send_text_message(chat_id, "🚫 Agentic search is disabled. Owner can enable via: !config toggle agentic_search on")
                 return
 
