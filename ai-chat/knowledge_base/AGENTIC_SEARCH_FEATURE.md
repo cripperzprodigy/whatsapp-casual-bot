@@ -67,3 +67,70 @@ The `!help` command now intelligently parses the `FeatureFlagService` and the us
 ### Troubleshooting
 
 - **`!search` vs `!s`**: `!search` relies directly on the underlying `HybridSearchService` with standard latency and no refinement loop. If `!search` fails, a generic error is surfaced. `!s` utilizes the `AgenticSearchOrchestrator` to multi-hop. If `!s` returns "Feature Disabled", ensure you are the Bot Owner and run `!config toggle agentic_search on` to turn it on dynamically.
+
+---
+
+## Deep Crawl Search (`!sc`)
+
+The `!sc` command extends the search pipeline by fetching and parsing **full HTML page content** from top search results, then synthesizing a comprehensive report. While `!s` works with snippets (title + description), `!sc` reads the actual pages for in-depth research.
+
+### Key Files
+1. **`app/services/deep_crawl_service.py`**: The `DeepCrawlService` class handling URL fetching, HTML parsing, and LLM synthesis.
+2. **`app/prompts/search_prompts.py`**: Contains `DEEP_CRAWL_SYNTHESIZER_SYSTEM` for detailed report generation.
+3. **`app/config.py`**: `DEEP_CRAWL_ENABLED`, `DEEP_CRAWL_MAX_URLS`, `DEEP_CRAWL_TIMEOUT_SECONDS`.
+
+### Configuration & Toggle
+
+Dual-layer control (matches `!globaltrans` pattern):
+1. **Environment Config**: `DEEP_CRAWL_ENABLED=false` inside `.env` (default: disabled).
+2. **Runtime Toggle**: Owner command `!sc_toggle on|off`. State persisted to `data/global_config.json` and survives restarts.
+
+### ASCII Flow Diagram
+
+```text
+User: "!sc <query>"
+  |
+  v
+Message Handler (app/commands.py)
+  |-- Check app_settings.DEEP_CRAWL_ENABLED
+  |   +-- FALSE -> Reply "Disabled by admin."
+  |   +-- TRUE  -> Send "Crawling the web..."
+  v
+DeepCrawlService.search_and_crawl(query)
+  |
+  +---> 1. HybridSearchService.search(query) -> Top 5 URLs
+  |
+  +---> 2. Async Fetch Loop (httpx, Semaphore=3)
+  |         - URL 1 -> Fetch HTML -> BeautifulSoup Parse -> Text (max 2000 chars)
+  |         - URL 2 -> Fetch HTML -> BeautifulSoup Parse -> Text
+  |         - URL 3 -> Fetch HTML -> (Timeout/Error) -> Skip
+  |         - ...
+  |
+  +---> 3. Aggregate Context (max 12000 chars total)
+  |         "--- Content from [Title] (URL) ---"
+  |         [Extracted Text]
+  |
+  +---> 4. LLM Synthesis (ask_llm + DEEP_CRAWL_SYNTHESIZER_SYSTEM)
+  |
+  v
+send_long_message() -> WhatsApp User
+```
+
+### Graceful Degradation
+
+- **Per-URL Timeout**: Each URL fetch has a configurable timeout (default 10s). Failed URLs are silently skipped.
+- **All Fetches Fail**: Falls back to snippet-based synthesis (same quality as `!s`).
+- **LLM Synthesis Timeout**: Returns raw crawled content truncated to 3000 chars.
+- **Global Timeout**: Entire operation capped at 180s with `asyncio.wait_for`.
+- **Single-Response Contract**: `search_and_crawl()` ALWAYS returns `str`, NEVER raises.
+
+### Command Comparison
+
+| Feature | `!search` | `!s` | `!sc` |
+|---|---|---|---|
+| Search Source | SearXNG/DDG Snippets | SearXNG/DDG Snippets | Full Page Content |
+| LLM Iterations | 0 (raw results) | Up to 2 (gap analysis) | 1 (synthesis only) |
+| Toggle | Always on | `!config toggle agentic_search` | `!sc_toggle on\|off` |
+| Speed | Fast (~2s) | Medium (~15s) | Slow (~30s) |
+| Depth | Shallow | Medium | Deep |
+

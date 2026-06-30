@@ -35,6 +35,7 @@ from app.permissions import (
 )
 from app.services.search_service import HybridSearchService
 from app.services.agentic_search_service import AgenticSearchOrchestrator
+from app.services.deep_crawl_service import DeepCrawlService
 from app.services.feature_flag_service import FeatureFlagService
 import asyncio
 
@@ -91,7 +92,15 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     if is_agentic_enabled:
         lines.extend([
             "🔍 *AI Tools*",
-            "└ `!s <query>` - Deep agentic search the web\n"
+            "├ `!s <query>` - Deep agentic search the web",
+        ])
+        if app_settings.DEEP_CRAWL_ENABLED:
+            lines.append("├ `!sc <query>` - Deep crawl search (reads full pages)")
+        lines.append("└ ...\n")
+    elif app_settings.DEEP_CRAWL_ENABLED:
+        lines.extend([
+            "🔍 *AI Tools*",
+            "└ `!sc <query>` - Deep crawl search (reads full pages)\n"
         ])
     elif role == OWNER_ROLE:
         lines.extend([
@@ -127,6 +136,7 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
             "├ `!whoami` - Register Bot Identity (tag bot)",
             "├ `!forget-me` - Clear Bot Identity (LIDs)",
             "├ `!globaltrans on|off` - Toggle global auto-translate",
+            "├ `!sc_toggle on|off` - Toggle deep crawl search",
             "└ `!shutdown | !restart` - Lifecycle controls\n"
         ])
 
@@ -216,6 +226,36 @@ async def handle_command(  # Issue 13: added return type
                     chat_id,
                     f"🌐 Global auto-translation is currently: *{current}*\n"
                     f"Usage: `!globaltrans on` or `!globaltrans off`",
+                )
+
+        elif command == "!sc_toggle":
+            if not await is_owner(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: `!sc_toggle` requires Owner privileges.",
+                )
+            elif len(args) == 1 and args[0] in ["on", "off"]:
+                new_state = args[0] == "on"
+                app_settings.DEEP_CRAWL_ENABLED = new_state
+                persist_global_config("DEEP_CRAWL_ENABLED", new_state)
+                if new_state:
+                    await send_text_message(
+                        chat_id,
+                        "✅ Deep Crawl Search is now *enabled* globally.\n"
+                        "Users can use `!sc <query>` to crawl full web pages for research.",
+                    )
+                else:
+                    await send_text_message(
+                        chat_id,
+                        "⛔ Deep Crawl Search is now *disabled* globally.\n"
+                        "The `!sc` command will return a disabled notice.",
+                    )
+            else:
+                current = "ON ✅" if app_settings.DEEP_CRAWL_ENABLED else "OFF ❌"
+                await send_text_message(
+                    chat_id,
+                    f"🕷️ Deep Crawl Search is currently: *{current}*\n"
+                    f"Usage: `!sc_toggle on` or `!sc_toggle off`",
                 )
 
         elif command == "!target":
@@ -893,6 +933,38 @@ async def handle_command(  # Issue 13: added return type
                     await send_text_message(chat_id, "⚠️ Agentic search service encountered an error. Please try again later.")
             else:
                 await send_text_message(chat_id, "Usage: !s <query>")
+
+        elif command == "!sc":
+            if not app_settings.DEEP_CRAWL_ENABLED:
+                await send_text_message(chat_id, "🚫 Deep Crawl Search is currently disabled by admin. Owner can enable via: `!sc_toggle on`")
+                return
+
+            if len(args) > 0:
+                query = " ".join(args)
+
+                await send_text_message(chat_id, f"🔍🕷️ *Deep Crawl Search:* Crawling the web for '{query}'... This may take up to 30 seconds.")
+
+                mode = getattr(app_settings, "SEARCH_PROVIDER_MODE", "hybrid")
+                searxng_url = getattr(app_settings, "SEARXNG_BASE_URL", None)
+                search_service = HybridSearchService(mode, searxng_url)
+                deep_crawl = DeepCrawlService(
+                    search_service=search_service,
+                    max_urls=getattr(app_settings, "DEEP_CRAWL_MAX_URLS", 5),
+                    timeout=float(getattr(app_settings, "DEEP_CRAWL_TIMEOUT_SECONDS", 10)),
+                )
+
+                try:
+                    # search_and_crawl ALWAYS returns a str — never raises.
+                    result = await deep_crawl.search_and_crawl(query)
+                    logger.info(f"Deep crawl completed for '{query}'. Sending single response.")
+                    await send_long_message(chat_id, result)
+                except Exception as e:
+                    # Defensive safety net — should never fire since
+                    # search_and_crawl catches all exceptions internally.
+                    logger.error(f"Deep crawl unexpected exception for '{query}': {e} (this should not happen)")
+                    await send_text_message(chat_id, "⚠️ Deep crawl service encountered an error. Please try again later.")
+            else:
+                await send_text_message(chat_id, "Usage: !sc <query>")
 
         elif command == "!pm":
             if len(args) < 2:

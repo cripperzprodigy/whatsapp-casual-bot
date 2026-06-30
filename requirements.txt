@@ -21,3 +21,4 @@ pdfplumber
 filelock
 duckduckgo-search
 aiohttp
+beautifulsoup4

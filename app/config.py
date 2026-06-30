@@ -257,6 +257,11 @@ class Settings(BaseSettings):
     SEARCH_MAX_RESULTS: int = 5
     ENABLE_AGENTIC_SEARCH: bool = False
 
+    # Deep Crawl Search (!sc) — fetches full page content for research
+    DEEP_CRAWL_ENABLED: bool = False
+    DEEP_CRAWL_MAX_URLS: int = 5
+    DEEP_CRAWL_TIMEOUT_SECONDS: int = 10
+
     # ------------------------------------------------------------------ #
     #  Internal Bot config
     # ------------------------------------------------------------------ #
@@ -466,6 +471,9 @@ def _apply_persisted_global_config() -> None:
             if "GLOBAL_AUTO_TRANSLATE" in overrides:
                 settings.GLOBAL_AUTO_TRANSLATE = overrides["GLOBAL_AUTO_TRANSLATE"]
                 logger.info(f"Applied persisted global config: GLOBAL_AUTO_TRANSLATE={settings.GLOBAL_AUTO_TRANSLATE}")
+            if "DEEP_CRAWL_ENABLED" in overrides:
+                settings.DEEP_CRAWL_ENABLED = overrides["DEEP_CRAWL_ENABLED"]
+                logger.info(f"Applied persisted global config: DEEP_CRAWL_ENABLED={settings.DEEP_CRAWL_ENABLED}")
     except Exception as exc:
         logger.error(f"Failed to load persisted global config: {exc}")
 

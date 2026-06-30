@@ -1,0 +1,244 @@
+import asyncio
+import logging
+from typing import List, Tuple, Optional
+
+import httpx
+from bs4 import BeautifulSoup
+
+from app.services.search_service import HybridSearchService, SearchResult
+from app.ai_client import ask_llm
+from app.prompts.search_prompts import DEEP_CRAWL_SYNTHESIZER_SYSTEM
+
+logger = logging.getLogger(__name__)
+
+# Tags that carry no useful content — stripped during parsing
+_JUNK_TAGS = [
+    "script", "style", "nav", "footer", "header",
+    "aside", "form", "iframe", "noscript", "svg",
+]
+
+# Maximum characters kept per crawled page
+_MAX_CHARS_PER_PAGE = 2000
+
+# Maximum total context chars sent to LLM (safety ceiling)
+_MAX_TOTAL_CONTEXT = 12000
+
+
+class DeepCrawlService:
+    """Fetches full page content for top search results and synthesises
+    a comprehensive answer.
+
+    Follows the Single-Response Contract: ``search_and_crawl`` ALWAYS
+    returns a ``str`` and NEVER raises.  The caller can blindly pass
+    the return value to ``send_long_message``.
+    """
+
+    def __init__(
+        self,
+        search_service: HybridSearchService,
+        max_urls: int = 5,
+        timeout: float = 10.0,
+    ):
+        self.search_service = search_service
+        self.max_urls = max_urls
+        self.timeout = timeout
+        # Limit concurrent outbound fetches to 3 to avoid overwhelming network
+        self._semaphore = asyncio.Semaphore(3)
+
+    # -------------------------------------------------------------- #
+    #  Public Entry Point (Single-Response Contract)
+    # -------------------------------------------------------------- #
+
+    async def search_and_crawl(self, query: str) -> str:
+        """Top-level entry.  ALWAYS returns str — never raises."""
+        try:
+            return await asyncio.wait_for(
+                self._execute_deep_crawl(query),
+                timeout=180.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"DeepCrawlService global timeout for query '{query}'")
+            return "⚠️ Deep crawl took too long. Please try a simpler query or use `!s` for a faster search."
+        except Exception as exc:
+            logger.error(f"DeepCrawlService unexpected error for query '{query}': {exc}", exc_info=True)
+            return "⚠️ Deep crawl encountered an error. Please try again later."
+
+    # -------------------------------------------------------------- #
+    #  Internal Orchestration
+    # -------------------------------------------------------------- #
+
+    async def _execute_deep_crawl(self, query: str) -> str:
+        # 1. Search for top URLs via existing HybridSearchService
+        try:
+            results: List[SearchResult] = await asyncio.wait_for(
+                self.search_service.search(query, max_results=self.max_urls),
+                timeout=15.0,
+            )
+        except Exception as e:
+            logger.error(f"Deep crawl search step failed: {e}")
+            return f"⚠️ Could not find search results for '{query}'. Please try again."
+
+        if not results:
+            return f"🔍 No results found for '{query}'."
+
+        # 2. Fetch and parse pages concurrently (bounded by semaphore)
+        tasks = [
+            self._fetch_and_parse(r.url, r.title)
+            for r in results
+            if r.url
+        ]
+        fetched: List[Tuple[str, str, str]] = await asyncio.gather(*tasks)
+
+        # Filter out empty results (failed fetches)
+        contents = [(title, url, text) for title, url, text in fetched if text]
+
+        if not contents:
+            # All fetches failed — fallback to snippet-based answer
+            logger.warning("All page fetches failed. Falling back to snippet synthesis.")
+            snippet_context = self._format_snippets(results)
+            return await self._synthesize(query, snippet_context, snippet_fallback=True)
+
+        # 3. Aggregate context
+        context = self._aggregate_context(contents)
+
+        # 4. Synthesize via LLM
+        return await self._synthesize(query, context, snippet_fallback=False)
+
+    # -------------------------------------------------------------- #
+    #  Fetch + Parse
+    # -------------------------------------------------------------- #
+
+    async def _fetch_and_parse(self, url: str, title: str) -> Tuple[str, str, str]:
+        """Fetch a single URL and extract clean text.
+
+        Returns ``(title, url, extracted_text)``; returns empty text on
+        any failure so the caller can skip it gracefully.
+        """
+        async with self._semaphore:
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(self.timeout),
+                    follow_redirects=True,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; WhatsAppBot/1.0)"},
+                ) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+
+                    content_type = resp.headers.get("content-type", "")
+                    if "text/html" not in content_type and "text/plain" not in content_type:
+                        logger.info(f"Skipping non-HTML content from {url}: {content_type}")
+                        return (title, url, "")
+
+                    text = self._clean_html(resp.text)
+                    return (title, url, text)
+
+            except httpx.TimeoutException:
+                logger.warning(f"Timeout fetching {url}")
+            except httpx.HTTPStatusError as e:
+                logger.warning(f"HTTP {e.response.status_code} from {url}")
+            except Exception as e:
+                logger.warning(f"Failed to crawl {url}: {e}")
+
+            return (title, url, "")
+
+    # -------------------------------------------------------------- #
+    #  HTML Cleaning
+    # -------------------------------------------------------------- #
+
+    def _clean_html(self, html: str) -> str:
+        """Strip non-content elements and extract readable text."""
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Remove junk tags
+        for tag in soup(_JUNK_TAGS):
+            tag.decompose()
+
+        text = soup.get_text(separator=" ", strip=True)
+
+        # Collapse multiple whitespace
+        text = " ".join(text.split())
+
+        # Truncate to per-page limit
+        if len(text) > _MAX_CHARS_PER_PAGE:
+            text = text[:_MAX_CHARS_PER_PAGE] + "…"
+
+        return text
+
+    # -------------------------------------------------------------- #
+    #  Context Formatting
+    # -------------------------------------------------------------- #
+
+    def _aggregate_context(self, contents: List[Tuple[str, str, str]]) -> str:
+        """Format crawled pages into a single context string for the LLM."""
+        sections = []
+        total_chars = 0
+
+        for title, url, text in contents:
+            section = f"--- Content from: {title} ({url}) ---\n{text}\n"
+            if total_chars + len(section) > _MAX_TOTAL_CONTEXT:
+                # Truncate this section to fit within budget
+                remaining = _MAX_TOTAL_CONTEXT - total_chars
+                if remaining > 200:
+                    section = section[:remaining] + "\n[Truncated]"
+                    sections.append(section)
+                break
+            sections.append(section)
+            total_chars += len(section)
+
+        return "\n".join(sections)
+
+    def _format_snippets(self, results: List[SearchResult]) -> str:
+        """Fallback: format search snippets when all crawls fail."""
+        lines = []
+        for i, r in enumerate(results, 1):
+            lines.append(f"{i}. {r.title}\nSnippet: {r.snippet}\nURL: {r.url}")
+        return "\n\n".join(lines)
+
+    # -------------------------------------------------------------- #
+    #  LLM Synthesis
+    # -------------------------------------------------------------- #
+
+    async def _synthesize(self, query: str, context: str, snippet_fallback: bool) -> str:
+        """Send aggregated context to the LLM for synthesis."""
+        fallback_note = ""
+        if snippet_fallback:
+            fallback_note = (
+                "\n\nNote: Full page content could not be retrieved. "
+                "The context below contains only search snippets. "
+                "Provide the best answer possible from the available information."
+            )
+
+        prompt = (
+            f"Original Query: '{query}'\n\n"
+            f"Using the following {'page contents' if not snippet_fallback else 'search snippets'}, "
+            f"write a comprehensive, detailed answer. "
+            f"Cite sources by referencing URLs where relevant. "
+            f"Tone: Helpful and authoritative. Format in Markdown."
+            f"{fallback_note}\n\n"
+            f"Context:\n{context}"
+        )
+
+        try:
+            return await asyncio.wait_for(
+                ask_llm(
+                    prompt=prompt,
+                    task_type="search_answer",
+                    system_override=DEEP_CRAWL_SYNTHESIZER_SYSTEM,
+                ),
+                timeout=60.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Deep crawl synthesis timed out.")
+            return (
+                "⚠️ I gathered page content but took too long to write the final answer.\n\n"
+                + context[:3000]
+                + "\n[Raw content truncated]"
+            )
+        except Exception as e:
+            logger.error(f"Deep crawl synthesis failed: {e}")
+            return (
+                "⚠️ I fetched page content but couldn't synthesize a report. "
+                "Here are the raw findings:\n\n"
+                + context[:3000]
+                + "\n[Raw content truncated]"
+            )

@@ -141,6 +141,15 @@
 - **Documentation**: Rewrote `LANGUAGE_DETECTION.md` with the sphere policy, updated flow diagram, and edge case table. Added ADR-028. Updated SOP with linguistic sphere rules.
 - **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
 
+### Added (Deep Crawl Search — `!sc` Command)
+- **New Command `!sc <query>`**: Deep research mode that fetches full HTML content from top search results (up to 5 URLs), parses and extracts readable text using BeautifulSoup, aggregates page content, and synthesizes a comprehensive report via the LLM. Goes far beyond snippet-based `!s` for in-depth research queries.
+- **Owner Toggle `!sc_toggle on|off`**: Runtime global toggle for the deep crawl feature. Uses `persist_global_config()` for restart-safe state (same pattern as `!globaltrans`).
+- **Dual-Layer Configuration**: `DEEP_CRAWL_ENABLED` (`.env` default) + runtime `!sc_toggle` override. Both layers must agree for `!sc` to function.
+- **New Service Module**: `app/services/deep_crawl_service.py` — follows Single-Response Contract (always returns `str`, never raises). Uses `asyncio.Semaphore(3)` for bounded concurrency, per-URL timeout, and graceful degradation (falls back to snippet synthesis if all page fetches fail).
+- **New Config Variables**: `DEEP_CRAWL_ENABLED` (bool, default: false), `DEEP_CRAWL_MAX_URLS` (int, default: 5), `DEEP_CRAWL_TIMEOUT_SECONDS` (int, default: 10).
+- **New Dependency**: `beautifulsoup4` added to `requirements.txt` for HTML parsing (pure Python, no C deps).
+- **New LLM Prompt**: `DEEP_CRAWL_SYNTHESIZER_SYSTEM` in `search_prompts.py` — instructs the LLM to produce citation-rich, detailed reports from full page content.
+- **Help Menu**: `!sc` shown conditionally when deep crawl is enabled. `!sc_toggle` shown in Owner Commands.
 
 ### Added (Hierarchical Auto-Translation Control — ADR-029)
 - **External Keyword Dictionary**: Moved hardcoded `COMMON_MS_ID_WORDS` from `translation.py` to `data/translation_skip_keywords.txt`. File supports comments (`#`) and blank lines. 172 keywords loaded at startup with caching.
