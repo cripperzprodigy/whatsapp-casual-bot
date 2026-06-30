@@ -253,17 +253,20 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     SEARCH_PROVIDER_MODE: str = "hybrid"  # options: "hybrid", "searxng", "duckduckgo"
     SEARXNG_BASE_URL: Optional[str] = None
-    ENABLE_AGENTIC_SEARCH: bool = False
-    DEEP_CRAWL_ENABLED: bool = False
+    enable_agentic_search: bool = True
+    search_max_results: int = Field(default=5, ge=1, le=20)
+    search_results_per_query: int = Field(default=10, ge=1, le=50)
+    agentic_max_iterations: int = Field(default=3, ge=1, le=10)
 
-    LLM_TIMEOUT_SECONDS: int = Field(default=300, ge=10)
-    CRAWL_TIMEOUT_SECONDS: float = Field(default=15.0, ge=1.0)
-    DEEP_CRAWL_MAX_URLS: int = Field(default=5, ge=1, le=20)
-    MAX_TOTAL_CONTEXT_CHARS: int = Field(default=15000, ge=1000)
-    AGENTIC_MAX_ITERATIONS: int = Field(default=3, ge=1, le=10)
-    SEARCH_RESULTS_PER_QUERY: int = Field(default=10, ge=1, le=50)
-    OPENROUTER_RATE_LIMIT_DELAY: float = Field(default=2.0, ge=0.0)
-    FALLBACK_TO_SNIPPETS: bool = True
+    deep_crawl_enabled: bool = True
+    deep_crawl_max_urls: int = Field(default=5, ge=1, le=20)
+    deep_crawl_timeout_seconds: int = Field(default=10, ge=1)
+    crawl_timeout_seconds: float = Field(default=15.0, ge=1.0)
+    max_total_context_chars: int = Field(default=15000, ge=1000)
+    llm_timeout_seconds: int = Field(default=300, ge=10)
+
+    openrouter_rate_limit_delay: float = Field(default=2.0, ge=0.0)
+    fallback_to_snippets: bool = True
 
     # ------------------------------------------------------------------ #
     #  Internal Bot config
@@ -401,22 +404,28 @@ class Settings(BaseSettings):
     @classmethod
     def _parse_and_clamp_search_results(cls, data: dict) -> dict:
         def _clamp(key: str, min_val: float, max_val: float, default: float, is_int: bool = True):
+            # Check lowercase, then uppercase
             val = data.get(key)
+            if val is None:
+                val = data.get(key.upper())
             if val is not None:
                 try:
                     num = int(val) if is_int else float(val)
                     data[key] = max(min_val, min(max_val, num))
+                    if key.upper() in data:
+                        data[key.upper()] = data[key]
                 except (ValueError, TypeError):
                     data[key] = default
 
-        _clamp("SEARCH_MAX_RESULTS", 1, 20, 5)
-        _clamp("DEEP_CRAWL_MAX_URLS", 1, 20, 5)
-        _clamp("LLM_TIMEOUT_SECONDS", 10, 1200, 300)
-        _clamp("CRAWL_TIMEOUT_SECONDS", 1.0, 60.0, 15.0, is_int=False)
-        _clamp("MAX_TOTAL_CONTEXT_CHARS", 1000, 100000, 15000)
-        _clamp("AGENTIC_MAX_ITERATIONS", 1, 10, 3)
-        _clamp("SEARCH_RESULTS_PER_QUERY", 1, 50, 10)
-        _clamp("OPENROUTER_RATE_LIMIT_DELAY", 0.0, 10.0, 2.0, is_int=False)
+        _clamp("search_max_results", 1, 20, 5)
+        _clamp("deep_crawl_max_urls", 1, 20, 5)
+        _clamp("llm_timeout_seconds", 10, 1200, 300)
+        _clamp("deep_crawl_timeout_seconds", 1, 60, 10)
+        _clamp("crawl_timeout_seconds", 1.0, 60.0, 15.0, is_int=False)
+        _clamp("max_total_context_chars", 1000, 100000, 15000)
+        _clamp("agentic_max_iterations", 1, 10, 3)
+        _clamp("search_results_per_query", 1, 50, 10)
+        _clamp("openrouter_rate_limit_delay", 0.0, 10.0, 2.0, is_int=False)
 
         return data
 
@@ -485,9 +494,12 @@ def _apply_persisted_global_config() -> None:
             if "GLOBAL_AUTO_TRANSLATE" in overrides:
                 settings.GLOBAL_AUTO_TRANSLATE = overrides["GLOBAL_AUTO_TRANSLATE"]
                 logger.info(f"Applied persisted global config: GLOBAL_AUTO_TRANSLATE={settings.GLOBAL_AUTO_TRANSLATE}")
-            if "DEEP_CRAWL_ENABLED" in overrides:
-                settings.DEEP_CRAWL_ENABLED = overrides["DEEP_CRAWL_ENABLED"]
-                logger.info(f"Applied persisted global config: DEEP_CRAWL_ENABLED={settings.DEEP_CRAWL_ENABLED}")
+            if "deep_crawl_enabled" in overrides:
+                settings.deep_crawl_enabled = overrides["deep_crawl_enabled"]
+                logger.info(f"Applied persisted global config: deep_crawl_enabled={settings.deep_crawl_enabled}")
+            elif "DEEP_CRAWL_ENABLED" in overrides:
+                settings.deep_crawl_enabled = overrides["DEEP_CRAWL_ENABLED"]
+                logger.info(f"Applied persisted global config (legacy key): deep_crawl_enabled={settings.deep_crawl_enabled}")
     except Exception as exc:
         logger.error(f"Failed to load persisted global config: {exc}")
 

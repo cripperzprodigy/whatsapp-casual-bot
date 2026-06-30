@@ -21,7 +21,7 @@ import httpx
 llm_client = AsyncOpenAI(
     base_url=settings.LLM_ENDPOINT,
     api_key=settings.LLM_API_KEY or "placeholder-key",
-    timeout=httpx.Timeout(settings.LLM_TIMEOUT_SECONDS),
+    timeout=httpx.Timeout(settings.llm_timeout_seconds),
 )
 
 _PRECISE_TASKS = {"translation", "language_detection"}

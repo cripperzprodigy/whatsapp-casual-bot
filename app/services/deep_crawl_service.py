@@ -94,10 +94,10 @@ class DeepCrawlService:
         search_service: HybridSearchService,
     ):
         self.search_service = search_service
-        self.max_urls = settings.DEEP_CRAWL_MAX_URLS
-        self.timeout = settings.CRAWL_TIMEOUT_SECONDS
-        self.max_context_chars = settings.MAX_TOTAL_CONTEXT_CHARS
-        self.llm_timeout = settings.LLM_TIMEOUT_SECONDS
+        self.max_urls = settings.deep_crawl_max_urls
+        self.timeout = settings.crawl_timeout_seconds
+        self.max_context_chars = settings.max_total_context_chars
+        self.llm_timeout = settings.llm_timeout_seconds
         
         # Dynamic budget: distribute total budget evenly across pages
         self._chars_per_page = self.max_context_chars // max(1, self.max_urls)
@@ -149,7 +149,7 @@ class DeepCrawlService:
                 logger.info(f"Skipping unsafe URL: {r.url}")
 
         if not safe_results:
-            if not settings.FALLBACK_TO_SNIPPETS:
+            if not settings.fallback_to_snippets:
                 return "⚠️ All URLs were blocked by security filters, and fallback to snippets is disabled."
             logger.warning("All URLs blocked by SSRF filter. Falling back to snippet synthesis.")
             snippet_context = self._format_snippets(results)
@@ -166,7 +166,7 @@ class DeepCrawlService:
         contents = [(title, url, text) for title, url, text in fetched if text]
 
         if not contents:
-            if not settings.FALLBACK_TO_SNIPPETS:
+            if not settings.fallback_to_snippets:
                 return "⚠️ All page fetches failed, and fallback to snippets is disabled."
             # All fetches failed — fallback to snippet-based answer
             logger.warning("All page fetches failed. Falling back to snippet synthesis.")

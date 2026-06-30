@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 class AgenticSearchOrchestrator:
     def __init__(self, search_service: HybridSearchService):
         self.search_service = search_service
-        self.max_iterations = settings.AGENTIC_MAX_ITERATIONS
-        self.results_per_query = settings.SEARCH_RESULTS_PER_QUERY
-        self.rate_limit_delay = settings.OPENROUTER_RATE_LIMIT_DELAY
-        self.llm_timeout = settings.LLM_TIMEOUT_SECONDS
+        self.max_iterations = settings.agentic_max_iterations
+        self.results_per_query = settings.search_results_per_query
+        self.rate_limit_delay = settings.openrouter_rate_limit_delay
+        self.llm_timeout = settings.llm_timeout_seconds
 
     async def execute_iterative_search(self, query: str, user_id: str) -> str:
         """Top-level entry point.  ALWAYS returns a str — never raises.

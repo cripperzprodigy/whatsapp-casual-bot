@@ -142,6 +142,7 @@
 - **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
 
 ### Added (Configurable Deep Crawl & Agentic Search limits)
+- **Bug Fix**: Added missing `Settings` fields for Deep Crawl & Agentic Search (e.g. `search_max_results`, `deep_crawl_timeout_seconds`, etc.) in lowercase formatting. Fixed Pydantic `ValidationError` ("Extra inputs are not permitted") on startup by properly defining these fields in `app/config.py`.
 - **Externalized Configuration**: Moved hardcoded timeout, context limit, and iteration magic numbers from `deep_crawl_service.py` and `agentic_search_service.py` to `.env`.
 - **New `.env` Variables**: Added `LLM_TIMEOUT_SECONDS`, `CRAWL_TIMEOUT_SECONDS`, `DEEP_CRAWL_MAX_URLS`, `MAX_TOTAL_CONTEXT_CHARS`, `AGENTIC_MAX_ITERATIONS`, `SEARCH_RESULTS_PER_QUERY`, `OPENROUTER_RATE_LIMIT_DELAY`, and `FALLBACK_TO_SNIPPETS`.
 - **Validation**: Added Pydantic `Field` bounds checking and `model_validator` clamping in `config.py` to ensure bot handles invalid env values gracefully.
