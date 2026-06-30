@@ -442,3 +442,26 @@ When OpenRouter API returned HTTP 500, `execute_iterative_search()` only caught 
 - `app/services/agentic_search_service.py`
 - `app/commands.py`
 - SOP.md (Single-Response Contract rule)
+
+## ADR-031 — Deep Crawl Search Architecture: SSRF Protection & Dynamic Context Budgeting
+
+### Context
+We introduced the `!sc` command to crawl and parse full HTML pages from search results. This introduces three major risks:
+1. **Security**: Server-Side Request Forgery (SSRF) if the bot crawls private network IPs.
+2. **Stability**: Fetching too many pages could cause a timeout or exhaust memory.
+3. **LLM Context Overflow**: Combining the text of up to 20 full webpages would exceed the LLM's token window, leading to API crashes.
+
+### Decision
+1. **SSRF Protection via URL Validation**: Before any `httpx` GET request, `is_safe_url()` is invoked. It blocks non-HTTP schemes, resolves the hostname, and enforces `ipaddress` blocks against private (`10.x`, `192.168.x`), loopback, link-local, and multicast IP ranges.
+2. **Dynamic Context Budgeting**: Instead of hardcoding a maximum character limit per page, we set a global `_TOTAL_CONTEXT_BUDGET` (15,000 characters). The per-page limit is dynamically calculated as `15,000 // MAX_URLS`. If `!sc` is configured for 5 URLs, each gets 3,000 chars. If 20 URLs, each gets 750 chars. 
+3. **Dual-Layer Toggle Configuration**: `DEEP_CRAWL_MAX_URLS` and `DEEP_CRAWL_ENABLED` are loaded from `.env` and clamped. Runtime state (`!sc_toggle on|off`) persists to `global_config.json`.
+4. **HTML Parsing Engine**: We use `BeautifulSoup` with `lxml` for fast stripping of non-content elements (`<script>`, `<nav>`, etc.).
+
+### Consequences
+- Positive: Fully mitigates SSRF vulnerabilities by forcing DNS resolution and verifying the resulting IPs before the request is initiated.
+- Positive: The LLM context window is mathematically protected from overflow regardless of how many URLs the owner configures the bot to crawl.
+- Negative: Heavy JS-rendered sites cannot be properly scraped, but fallback snippets provide graceful degradation.
+
+### References
+- `app/services/deep_crawl_service.py`
+- KB: `ai-chat/knowledge_base/AGENTIC_SEARCH_FEATURE.md`

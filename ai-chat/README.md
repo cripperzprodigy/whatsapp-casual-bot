@@ -14,6 +14,7 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 
 ## Latest ai-chat Updates (2026-06-30)
 
+- **Deep Crawl Search (`!sc`)**: Added in-depth agentic web crawling. Includes SSRF security protection, dynamic LLM context budgeting, configurable crawl depth, and `beautifulsoup4`/`lxml` based HTML parsing. See [AGENTIC_SEARCH_FEATURE.md](./knowledge_base/AGENTIC_SEARCH_FEATURE.md).
 - **Message Chunking & Sequential Sending**: Long bot responses (>2500 chars) are now automatically split at natural boundaries and sent as sequential parts. See [MESSAGE_CHUNKING.md](./knowledge_base/MESSAGE_CHUNKING.md).
 - **Bot Identity (`!whoami`) Self-Identification**: Fixed critical LID registration bug. Bot now dynamically discovers its own WhatsApp LID using sender-exclusion heuristic. See [WHOAMI_LID_REGISTRATION.md](./knowledge_base/WHOAMI_LID_REGISTRATION.md).
 - **Error Handling & Duplicate Prevention**: Established the Single-Response Contract to prevent duplicate messages when LLM calls fail. See [ERROR_HANDLING_DUPLICATE_PREVENTION.md](./knowledge_base/ERROR_HANDLING_DUPLICATE_PREVENTION.md).
