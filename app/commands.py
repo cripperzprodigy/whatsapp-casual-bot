@@ -1066,52 +1066,34 @@ async def handle_command(  # Issue 13: added return type
                     if not await is_owner(db, sender_id):
                         await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
                     else:
-                        import os, json
-                        from pathlib import Path
-                        from filelock import FileLock
+                        ledger_entries = db.query(GroupContactLedger).filter(
+                            GroupContactLedger.is_active == True
+                        ).all()
                         
-                        base_dir = Path("data/contacts")
+                        if not ledger_entries:
+                            await send_text_message(chat_id, "📭 No active contacts found in the ledger.")
+                            return
+
                         all_contacts = {}  # Key: jid, Value: info dict
                         
-                        if not base_dir.exists():
-                            await send_text_message(chat_id, "📭 No contact data directory found.")
-                            return
-                            
-                        for subdir in base_dir.iterdir():
-                            if subdir.is_dir() and subdir.name.endswith("_g_us"):
-                                profile_path = subdir / "profile.json"
-                                if profile_path.exists():
-                                    try:
-                                        with FileLock(f"{profile_path}.lock", timeout=5):
-                                            with open(profile_path, "r", encoding="utf-8") as f:
-                                                data = json.load(f)
-                                                # Handle both list and dict formats for participants
-                                                raw_participants = data.get("participants", [])
-                                                if isinstance(raw_participants, dict):
-                                                    # Convert dict to list of dicts holding jid
-                                                    participants = [{"jid": k, **v} for k, v in raw_participants.items()]
-                                                else:
-                                                    participants = raw_participants
-                                                    
-                                                for p in participants:
-                                                    jid = p.get("jid")
-                                                    if jid:
-                                                        # Merge info: prefer existing phone/name if new one is missing
-                                                        if jid not in all_contacts:
-                                                            all_contacts[jid] = p
-                                                        else:
-                                                            # Update if new info has phone but old didn't
-                                                            if not all_contacts[jid].get("phone") and p.get("phone"):
-                                                                all_contacts[jid]["phone"] = p["phone"]
-                                                            if not all_contacts[jid].get("name") and p.get("name"):
-                                                                all_contacts[jid]["name"] = p["name"]
-                                    except Exception as e:
-                                        logger.warning(f"Failed to load {profile_path}: {e}")
-                                        
-                        if not all_contacts:
-                            await send_text_message(chat_id, "📭 No contacts found in any group profiles.")
-                            return
-                            
+                        for entry in ledger_entries:
+                            jid = entry.jid
+                            if not jid:
+                                continue
+                                
+                            if jid not in all_contacts:
+                                all_contacts[jid] = {
+                                    "jid": jid,
+                                    "phone": entry.phone_number,
+                                    "name": entry.push_name
+                                }
+                            else:
+                                # Merge info: prefer existing phone/name if new one is missing
+                                if not all_contacts[jid].get("phone") and entry.phone_number:
+                                    all_contacts[jid]["phone"] = entry.phone_number
+                                if not all_contacts[jid].get("name") and entry.push_name:
+                                    all_contacts[jid]["name"] = entry.push_name
+                                    
                         # Extract the unique JIDs for active resolution
                         all_unique_jids = list(all_contacts.keys())
                         total = len(all_unique_jids)
@@ -1133,10 +1115,10 @@ async def handle_command(  # Issue 13: added return type
                             
                             for info in resolved_contacts:
                                 jid = info.get("jid")
-                                # If active resolution didn't find a phone, fallback to profile.json phone if we had one
+                                # If active resolution didn't find a phone, fallback to db phone if we had one
                                 original_info = original_contacts_map.get(jid, {})
                                 phone = info.get("phone") or original_info.get("phone")
-                                name = info.get("name") or original_info.get("name", "Unknown User")
+                                name = info.get("name") or original_info.get("name") or "Unknown User"
                                 
                                 if phone:
                                     formatted_list.append(f"• +{phone} ({name})")
