@@ -367,8 +367,8 @@ except ImportError as e:
 # App-specific imports
 try:
     from app.config import settings
-    from app.translation import TranslationService
-    from app.ai_client import AIClient
+    import app.translation
+    import app.ai_client
     print('✅ Application modules pre-loaded')
 except Exception as e:
     print(f'⚠️  App module pre-load warning: {e}')
