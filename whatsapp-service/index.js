@@ -7,7 +7,6 @@ const statusRouter = require('./src/routes/status');
 const sessionRouter = require('./src/routes/session');
 const groupRouter = require('./src/routes/group');
 const sendRouter = require('./src/routes/send');
-const contactRouter = require('./src/routes/contact');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -21,8 +20,33 @@ app.use('/whatsapp', statusRouter);
 app.use('/whatsapp', sessionRouter);
 app.use('/group', groupRouter);
 app.use('/message', sendRouter);
-app.use('/contact', contactRouter);
 
+app.get('/participant/info', async (req, res) => {
+    const { jid } = req.query;
+    if (!jid) return res.status(400).json({ error: 'Missing jid' });
+    
+    try {
+        const client = getClient();
+        if (!client) return res.status(503).json({ error: 'WhatsApp client not connected' });
+
+        // Attempt to resolve number
+        const contact = await client.getContactById(jid);
+        if (contact && contact.number) {
+            return res.json({ success: true, phone: contact.number, name: contact.name || contact.pushname });
+        }
+        
+        // Fallback: try getNumberId
+        const numberId = await client.getNumberId(jid.split('@')[0]);
+        if (numberId) {
+            return res.json({ success: true, phone: numberId.user, name: contact ? contact.name : undefined });
+        }
+        
+        return res.json({ success: false, reason: 'privacy_hidden_or_not_contact' });
+    } catch (e) {
+        console.error('Resolve error:', e);
+        return res.json({ success: false, reason: 'lookup_failed' });
+    }
+});
 // Graceful Shutdown
 const shutdown = async () => {
     console.log('Shutting down gracefully...');

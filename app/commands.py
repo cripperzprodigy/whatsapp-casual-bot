@@ -1070,16 +1070,18 @@ async def handle_command(  # Issue 13: added return type
                         contacts_dir = "data/contacts"
                         
                         import os, json
+                        from filelock import FileLock
                         if os.path.exists(contacts_dir):
                             for group_folder in os.listdir(contacts_dir):
                                 if "_g_us" in group_folder:
                                     profile_path = os.path.join(contacts_dir, group_folder, "profile.json")
                                     if os.path.exists(profile_path):
                                         try:
-                                            with open(profile_path, "r", encoding="utf-8") as f:
-                                                data = json.load(f)
-                                                for jid in data.get("participants", {}).keys():
-                                                    all_unique_jids.add(jid)
+                                            with FileLock(f"{profile_path}.lock", timeout=5):
+                                                with open(profile_path, "r", encoding="utf-8") as f:
+                                                    data = json.load(f)
+                                                    for jid in data.get("participants", {}).keys():
+                                                        all_unique_jids.add(jid)
                                         except Exception as e:
                                             logger.error(f"Failed to read {group_folder}: {e}")
                                             
@@ -1186,6 +1188,7 @@ async def handle_command(  # Issue 13: added return type
             
             if args and args[0] == "global":
                 import os, json, asyncio
+                from filelock import FileLock
                 all_unique_jids = set()
                 contacts_dir = "data/contacts"
                 if os.path.exists(contacts_dir):
@@ -1194,10 +1197,11 @@ async def handle_command(  # Issue 13: added return type
                             profile_path = os.path.join(contacts_dir, group_folder, "profile.json")
                             if os.path.exists(profile_path):
                                 try:
-                                    with open(profile_path, "r", encoding="utf-8") as f:
-                                        data = json.load(f)
-                                        for j in data.get("participants", {}).keys():
-                                            all_unique_jids.add(j)
+                                    with FileLock(f"{profile_path}.lock", timeout=5):
+                                        with open(profile_path, "r", encoding="utf-8") as f:
+                                            data = json.load(f)
+                                            for j in data.get("participants", {}).keys():
+                                                all_unique_jids.add(j)
                                 except Exception as e:
                                     logger.error(f"Failed to read {group_folder}: {e}")
                 
@@ -1233,6 +1237,7 @@ async def handle_command(  # Issue 13: added return type
                     return
                     
                 import os, json, asyncio
+                from filelock import FileLock
                 all_unique_jids = set()
                 contacts_dir = "data/contacts"
                 # Remove suffix '@g.us' -> '_g_us' to match folder names
@@ -1241,10 +1246,11 @@ async def handle_command(  # Issue 13: added return type
                 
                 if os.path.exists(profile_path):
                     try:
-                        with open(profile_path, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                            for j in data.get("participants", {}).keys():
-                                all_unique_jids.add(j)
+                        with FileLock(f"{profile_path}.lock", timeout=5):
+                            with open(profile_path, "r", encoding="utf-8") as f:
+                                data = json.load(f)
+                                for j in data.get("participants", {}).keys():
+                                    all_unique_jids.add(j)
                     except Exception as e:
                         logger.error(f"Failed to read {folder_name}: {e}")
                         

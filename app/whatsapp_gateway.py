@@ -95,13 +95,16 @@ async def resolve_contact_info(jid: str) -> Optional[Dict[str, Any]]:
     """
     Resolves a contact's phone number and name via the Node.js gateway live lookup.
     """
-    url = f"{settings.WHATSAPP_GATEWAY_URL}/contact/info"
+    url = f"{settings.WHATSAPP_GATEWAY_URL}/participant/info"
     
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params={"jid": jid}, timeout=5.0)
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                if data.get("success"):
+                    return data
+
     except Exception as e:
         logger.error(f"Failed to resolve contact info for {jid}: {e}")
     return None

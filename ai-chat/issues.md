@@ -1,4 +1,9 @@
 # Issues
+### 4. Contact Resolution Stability (Resolved)
+- **Issue**: `!resolve` and `!contacts global` commands experienced random crashes and corrupted JSON reads, while active gateway queries failed with 404s.
+- **Cause**: Race conditions occurred when aggregating `profile.json` files simultaneously. Gateway queries failed because the `/participant/info` endpoint was missing.
+- **Resolution**: Integrated `filelock.FileLock` across all file aggregation loops to eliminate race conditions. Added the official `/participant/info` endpoint to the Node.js gateway with fallback resolution strategies (`getContactById` and `getNumberId`). Verified that all `resolve_participant_info()` helper calls are properly awaited.
+
 ### 3. Agentic Search & Deep Crawl Configuration Sync Mismatch (Resolved)
 - **Issue**: The `!s` command reported "Agentic search is disabled" despite `ENABLE_AGENTIC_SEARCH=True` in `.env`.
 - **Cause**: The `!s` command and the `!config toggle agentic_search` logic were relying on the SQLite-based `FeatureFlagService.is_enabled` instead of checking the loaded application settings (`app_settings.enable_agentic_search`). This effectively ignored the `.env` settings.

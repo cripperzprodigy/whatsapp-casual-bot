@@ -141,7 +141,9 @@
 - **Documentation**: Rewrote `LANGUAGE_DETECTION.md` with the sphere policy, updated flow diagram, and edge case table. Added ADR-028. Updated SOP with linguistic sphere rules.
 - **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
 
-### Added
+### Fixed
+- **Fix**: Contact resolution stability & permissions. Addressed async mismatches, added missing `/participant/info` gateway endpoint, introduced `FileLock` for profile reads to fix race conditions, and corrected `!sc` permission inversion.
+
 - **Feature**: Active Contact Resolution & `!resolve` command. Owners can now use `!resolve @mention` or `!resolve global` to actively query the gateway and bypass local cache privacy restrictions. `!contacts global` also utilizes this feature.
 - **Feature**: Hybrid Display Formatting. Contact lists now gracefully handle WhatsApp privacy limits, displaying real numbers when available and providing a summary of hidden numbers.
 - **Feature**: Role-based Help Menu dynamically filters commands based on the user's role (User, Admin, Owner) and adds inline permission hints.
