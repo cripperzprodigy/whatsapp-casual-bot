@@ -6,13 +6,17 @@ from typing import List, Dict, Any, Optional
 from app.services.search_service import HybridSearchService
 from app.ai_client import ask_llm
 from app.prompts.search_prompts import GAP_ANALYZER_SYSTEM, SYNTHESIZER_SYSTEM
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 class AgenticSearchOrchestrator:
     def __init__(self, search_service: HybridSearchService):
         self.search_service = search_service
-        self.max_iterations = 2
+        self.max_iterations = settings.AGENTIC_MAX_ITERATIONS
+        self.results_per_query = settings.SEARCH_RESULTS_PER_QUERY
+        self.rate_limit_delay = settings.OPENROUTER_RATE_LIMIT_DELAY
+        self.llm_timeout = settings.LLM_TIMEOUT_SECONDS
 
     async def execute_iterative_search(self, query: str, user_id: str) -> str:
         """Top-level entry point.  ALWAYS returns a str — never raises.
@@ -25,7 +29,7 @@ class AgenticSearchOrchestrator:
         try:
             return await asyncio.wait_for(
                 self._execute_search_loop(query),
-                timeout=120.0
+                timeout=self.llm_timeout + 60.0
             )
         except asyncio.TimeoutError:
             logger.warning(f"AgenticSearchOrchestrator global timeout for query '{query}'")
@@ -48,7 +52,7 @@ class AgenticSearchOrchestrator:
             try:
                 # Search Step Timeout: 3.0 seconds
                 results = await asyncio.wait_for(
-                    self.search_service.search(current_query),
+                    self.search_service.search(current_query, max_results=self.results_per_query),
                     timeout=15.0
                 )
 
@@ -73,7 +77,7 @@ class AgenticSearchOrchestrator:
                 # LLM Gap Analysis Timeout: 5.0 seconds
                 analysis = await asyncio.wait_for(
                     self._analyze_gaps(query, context_history),
-                    timeout=60.0
+                    timeout=self.llm_timeout
                 )
 
                 if analysis.get('sufficient', True):
@@ -100,6 +104,9 @@ class AgenticSearchOrchestrator:
                 reasoning_failed = True
                 break
 
+            if iteration < self.max_iterations - 1:
+                await asyncio.sleep(self.rate_limit_delay)
+
             iteration += 1
 
         # 3. Final Synthesis
@@ -107,7 +114,7 @@ class AgenticSearchOrchestrator:
             # LLM Synthesis Timeout: 6.0 seconds
             return await asyncio.wait_for(
                 self._synthesize_final_answer(query, context_history, reasoning_failed),
-                timeout=60.0
+                timeout=self.llm_timeout
             )
         except asyncio.TimeoutError:
              logger.warning("Synthesis timed out.")

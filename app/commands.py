@@ -943,7 +943,7 @@ async def handle_command(  # Issue 13: added return type
                 query = " ".join(args)
 
                 max_urls = getattr(app_settings, "DEEP_CRAWL_MAX_URLS", 5)
-                crawl_timeout = float(getattr(app_settings, "DEEP_CRAWL_TIMEOUT_SECONDS", 10))
+                crawl_timeout = float(getattr(app_settings, "CRAWL_TIMEOUT_SECONDS", 15.0))
                 est_seconds = max_urls * crawl_timeout
                 await send_text_message(
                     chat_id,
@@ -956,8 +956,6 @@ async def handle_command(  # Issue 13: added return type
                 search_service = HybridSearchService(mode, searxng_url)
                 deep_crawl = DeepCrawlService(
                     search_service=search_service,
-                    max_urls=max_urls,
-                    timeout=crawl_timeout,
                 )
 
                 try:

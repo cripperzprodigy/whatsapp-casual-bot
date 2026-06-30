@@ -141,6 +141,12 @@
 - **Documentation**: Rewrote `LANGUAGE_DETECTION.md` with the sphere policy, updated flow diagram, and edge case table. Added ADR-028. Updated SOP with linguistic sphere rules.
 - **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
 
+### Added (Configurable Deep Crawl & Agentic Search limits)
+- **Externalized Configuration**: Moved hardcoded timeout, context limit, and iteration magic numbers from `deep_crawl_service.py` and `agentic_search_service.py` to `.env`.
+- **New `.env` Variables**: Added `LLM_TIMEOUT_SECONDS`, `CRAWL_TIMEOUT_SECONDS`, `DEEP_CRAWL_MAX_URLS`, `MAX_TOTAL_CONTEXT_CHARS`, `AGENTIC_MAX_ITERATIONS`, `SEARCH_RESULTS_PER_QUERY`, `OPENROUTER_RATE_LIMIT_DELAY`, and `FALLBACK_TO_SNIPPETS`.
+- **Validation**: Added Pydantic `Field` bounds checking and `model_validator` clamping in `config.py` to ensure bot handles invalid env values gracefully.
+- **Documentation**: Added `ai-chat/knowledge_base/CONFIGURATION_GUIDE.md` detailing the new variables.
+
 ### Added (Deep Crawl Search — `!sc` Command)
 - **New Command `!sc <query>`**: Deep research mode that fetches full HTML content from top search results (up to 5 URLs), parses and extracts readable text using BeautifulSoup, aggregates page content, and synthesizes a comprehensive report via the LLM. Goes far beyond snippet-based `!s` for in-depth research queries.
 - **Owner Toggle `!sc_toggle on|off`**: Runtime global toggle for the deep crawl feature. Uses `persist_global_config()` for restart-safe state (same pattern as `!globaltrans`).

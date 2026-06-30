@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from app.services.search_service import HybridSearchService, SearchResult
 from app.ai_client import ask_llm
 from app.prompts.search_prompts import DEEP_CRAWL_SYNTHESIZER_SYSTEM
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +20,6 @@ _JUNK_TAGS = [
     "script", "style", "nav", "footer", "header",
     "aside", "form", "iframe", "noscript", "svg",
 ]
-
-# Total character budget for ALL pages combined (LLM context ceiling)
-_TOTAL_CONTEXT_BUDGET = 15000
 
 
 # ------------------------------------------------------------------ #
@@ -94,14 +92,15 @@ class DeepCrawlService:
     def __init__(
         self,
         search_service: HybridSearchService,
-        max_urls: int = 5,
-        timeout: float = 10.0,
     ):
         self.search_service = search_service
-        self.max_urls = max_urls
-        self.timeout = timeout
+        self.max_urls = settings.DEEP_CRAWL_MAX_URLS
+        self.timeout = settings.CRAWL_TIMEOUT_SECONDS
+        self.max_context_chars = settings.MAX_TOTAL_CONTEXT_CHARS
+        self.llm_timeout = settings.LLM_TIMEOUT_SECONDS
+        
         # Dynamic budget: distribute total budget evenly across pages
-        self._chars_per_page = _TOTAL_CONTEXT_BUDGET // max(1, max_urls)
+        self._chars_per_page = self.max_context_chars // max(1, self.max_urls)
         # Limit concurrent outbound fetches to 3 to avoid overwhelming network
         self._semaphore = asyncio.Semaphore(3)
 
@@ -150,6 +149,8 @@ class DeepCrawlService:
                 logger.info(f"Skipping unsafe URL: {r.url}")
 
         if not safe_results:
+            if not settings.FALLBACK_TO_SNIPPETS:
+                return "⚠️ All URLs were blocked by security filters, and fallback to snippets is disabled."
             logger.warning("All URLs blocked by SSRF filter. Falling back to snippet synthesis.")
             snippet_context = self._format_snippets(results)
             return await self._synthesize(query, snippet_context, snippet_fallback=True)
@@ -165,6 +166,8 @@ class DeepCrawlService:
         contents = [(title, url, text) for title, url, text in fetched if text]
 
         if not contents:
+            if not settings.FALLBACK_TO_SNIPPETS:
+                return "⚠️ All page fetches failed, and fallback to snippets is disabled."
             # All fetches failed — fallback to snippet-based answer
             logger.warning("All page fetches failed. Falling back to snippet synthesis.")
             snippet_context = self._format_snippets(results)
@@ -253,9 +256,9 @@ class DeepCrawlService:
 
         for title, url, text in contents:
             section = f"--- Content from: {title} ({url}) ---\n{text}\n"
-            if total_chars + len(section) > _TOTAL_CONTEXT_BUDGET:
+            if total_chars + len(section) > self.max_context_chars:
                 # Truncate this section to fit within budget
-                remaining = _TOTAL_CONTEXT_BUDGET - total_chars
+                remaining = self.max_context_chars - total_chars
                 if remaining > 200:
                     section = section[:remaining] + "\n[Truncated]"
                     sections.append(section)
@@ -303,7 +306,7 @@ class DeepCrawlService:
                     task_type="search_answer",
                     system_override=DEEP_CRAWL_SYNTHESIZER_SYSTEM,
                 ),
-                timeout=60.0,
+                timeout=self.llm_timeout,
             )
         except asyncio.TimeoutError:
             logger.warning("Deep crawl synthesis timed out.")

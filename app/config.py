@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from filelock import FileLock
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import model_validator
+from pydantic import model_validator, Field
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -242,7 +242,6 @@ class Settings(BaseSettings):
     LLM_ENDPOINT: str = "https://api.openai.com/v1"
     LLM_API_KEY: str = ""
     DEFAULT_MODEL_NAME: str = "gpt-3.5-turbo"
-    LLM_TIMEOUT_SECONDS: int = 180
 
     # ------------------------------------------------------------------ #
     #  Database
@@ -250,17 +249,21 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./bot.db"
 
     # ------------------------------------------------------------------ #
-    #  Search Configuration
+    #  Deep Crawl & Agentic Search Configuration
     # ------------------------------------------------------------------ #
     SEARCH_PROVIDER_MODE: str = "hybrid"  # options: "hybrid", "searxng", "duckduckgo"
     SEARXNG_BASE_URL: Optional[str] = None
-    SEARCH_MAX_RESULTS: int = 5
     ENABLE_AGENTIC_SEARCH: bool = False
-
-    # Deep Crawl Search (!sc) — fetches full page content for research
     DEEP_CRAWL_ENABLED: bool = False
-    DEEP_CRAWL_MAX_URLS: int = 5
-    DEEP_CRAWL_TIMEOUT_SECONDS: int = 10
+
+    LLM_TIMEOUT_SECONDS: int = Field(default=300, ge=10)
+    CRAWL_TIMEOUT_SECONDS: float = Field(default=15.0, ge=1.0)
+    DEEP_CRAWL_MAX_URLS: int = Field(default=5, ge=1, le=20)
+    MAX_TOTAL_CONTEXT_CHARS: int = Field(default=15000, ge=1000)
+    AGENTIC_MAX_ITERATIONS: int = Field(default=3, ge=1, le=10)
+    SEARCH_RESULTS_PER_QUERY: int = Field(default=10, ge=1, le=50)
+    OPENROUTER_RATE_LIMIT_DELAY: float = Field(default=2.0, ge=0.0)
+    FALLBACK_TO_SNIPPETS: bool = True
 
     # ------------------------------------------------------------------ #
     #  Internal Bot config
@@ -397,22 +400,23 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def _parse_and_clamp_search_results(cls, data: dict) -> dict:
-        limit_val = data.get("SEARCH_MAX_RESULTS")
-        if limit_val is not None:
-            try:
-                val = int(limit_val)
-                data["SEARCH_MAX_RESULTS"] = max(1, min(20, val))
-            except (ValueError, TypeError):
-                data.pop("SEARCH_MAX_RESULTS", None)
+        def _clamp(key: str, min_val: float, max_val: float, default: float, is_int: bool = True):
+            val = data.get(key)
+            if val is not None:
+                try:
+                    num = int(val) if is_int else float(val)
+                    data[key] = max(min_val, min(max_val, num))
+                except (ValueError, TypeError):
+                    data[key] = default
 
-        # Clamp DEEP_CRAWL_MAX_URLS between 1 and 20
-        dc_val = data.get("DEEP_CRAWL_MAX_URLS")
-        if dc_val is not None:
-            try:
-                val = int(dc_val)
-                data["DEEP_CRAWL_MAX_URLS"] = max(1, min(20, val))
-            except (ValueError, TypeError):
-                data.pop("DEEP_CRAWL_MAX_URLS", None)
+        _clamp("SEARCH_MAX_RESULTS", 1, 20, 5)
+        _clamp("DEEP_CRAWL_MAX_URLS", 1, 20, 5)
+        _clamp("LLM_TIMEOUT_SECONDS", 10, 1200, 300)
+        _clamp("CRAWL_TIMEOUT_SECONDS", 1.0, 60.0, 15.0, is_int=False)
+        _clamp("MAX_TOTAL_CONTEXT_CHARS", 1000, 100000, 15000)
+        _clamp("AGENTIC_MAX_ITERATIONS", 1, 10, 3)
+        _clamp("SEARCH_RESULTS_PER_QUERY", 1, 50, 10)
+        _clamp("OPENROUTER_RATE_LIMIT_DELAY", 0.0, 10.0, 2.0, is_int=False)
 
         return data
 
