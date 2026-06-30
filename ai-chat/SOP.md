@@ -97,3 +97,4 @@ See ADR-014 and ADR-017 in decisions.md.
 
 ### Agentic Feature Documentation Standards
 - **Knowledge Base Extensibility**: When introducing new large-scale architectural features (like RAG, Agentic Search, or Backup systems), create a dedicated markdown file in `ai-chat/knowledge_base/` and explicitly detail the ASCII flow, constraints, failovers, and feature toggle states, linking it back to the `ai-chat/README.md` hub.
+- **Search Infrastructure**: All external search deployments (e.g., SearXNG) must be strictly documented using the Copy-Paste-Deploy pattern. See [SEARXNG_DEPLOYMENT_GUIDE.md](knowledge_base/SEARXNG_DEPLOYMENT_GUIDE.md) as the standard.

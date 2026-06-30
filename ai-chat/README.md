@@ -33,4 +33,5 @@ Welcome. Any newly attached AI agent must read the workspace documents in this e
 | [BOT_IDENTITY_AND_ROUTING.md](./knowledge_base/BOT_IDENTITY_AND_ROUTING.md) | JID normalization, LID routing, and identity management |
 | [BACKUP_RESTORE_FEATURE.md](./knowledge_base/BACKUP_RESTORE_FEATURE.md) | Migration and backup utilities |
 | [translation_architecture.md](./knowledge_base/translation_architecture.md) | Translation pipeline and semantic chunking |
+| [SEARXNG_DEPLOYMENT_GUIDE.md](./knowledge_base/SEARXNG_DEPLOYMENT_GUIDE.md) | Comprehensive SearXNG Docker installation and network configuration for Agentic Search |
 

@@ -139,6 +139,8 @@
 - **Keyword Heuristic Early-Exit**: The `_heuristic_ms_id_check()` now triggers an immediate skip (returns `None`) when the detected ms/id is in the ignored set, instead of returning `"ms"` which would proceed to translation.
 - **Removed 20-char Limit**: The keyword heuristic now fires on ALL text lengths, not just < 20 chars, providing consistent ms/id detection regardless of message length.
 - **Documentation**: Rewrote `LANGUAGE_DETECTION.md` with the sphere policy, updated flow diagram, and edge case table. Added ADR-028. Updated SOP with linguistic sphere rules.
+- **Documentation**: Added `SEARXNG_DEPLOYMENT_GUIDE.md` to `knowledge_base/` — a comprehensive Copy-Paste-Deploy guide detailing directory structure, Docker setup, network configuration, and troubleshooting for the Agentic Search SearXNG dependency.
+
 
 ### Added (Hierarchical Auto-Translation Control — ADR-029)
 - **External Keyword Dictionary**: Moved hardcoded `COMMON_MS_ID_WORDS` from `translation.py` to `data/translation_skip_keywords.txt`. File supports comments (`#`) and blank lines. 172 keywords loaded at startup with caching.
