@@ -29,3 +29,4 @@ We recently integrated a highly sophisticated long-term memory conversational as
 ## Backup & Restore Utilities
 For migrating the bot to new machines without losing active WhatsApp sessions or local RAG memory, see [BACKUP_RESTORE_FEATURE.md](./knowledge_base/BACKUP_RESTORE_FEATURE.md).
 \n- [AGENTIC_SEARCH_FEATURE.md](knowledge_base/AGENTIC_SEARCH_FEATURE.md): Deep dive into the multi-hop Agentic Search (!s) workflow, architecture, and feature toggles.
+- [LANGUAGE_DETECTION.md](knowledge_base/LANGUAGE_DETECTION.md): Hybrid language detection strategy with keyword heuristic for short Malay/Indonesian texts.

@@ -136,3 +136,11 @@
   - `decisions.md`: Authored ADR-026 formally documenting the architectural decision.
   - `ARCHITECTURE.md`: Added an ASCII flow diagram depicting explicit `quotedParticipant` routing.
   - `README.md`: Updated the summary feature list with links to the Chatty documentation.
+
+### Fixed (Language Detection, Mention Resolution, DM Reply Behavior)
+- **Short-Text Language Detection Heuristic (ADR-027)**: `langdetect` was misidentifying short Malay/Indonesian texts (< 20 chars) as Finnish, Tagalog, or English, causing auto-translation to silently skip. Added a keyword-based heuristic (`COMMON_MS_ID_WORDS` set of ~80 words) that bypasses `langdetect` for short texts when ≥ 50% of tokens match. Also added a false-positive guard that overrides `langdetect` results of `fi`/`tl`/`so`/`sw`/`hr`/`ro` when keyword evidence is strong.
+- **DM Reply Quoting Removed**: DM chatty replies were incorrectly passing `quoted_msg_id` from the original message, causing WhatsApp to show "Replying to [User]" quote bubbles in DMs. DMs should chat naturally without quoting. Fixed by forcing `quoted_msg_id=None` in `_handle_dm_message()`. Group replies remain unchanged.
+- **`!whoami` Multi-JID Registration**: The `!whoami` handler now registers ALL JIDs in the `mentioned_jids` array (not just the first), improving coverage for multi-device environments.
+- **LID Registry Auto-Creation**: `BotIdentityManager.load_known_bot_ids()` now creates `data/bot_known_lids.json` with an empty array on first access, ensuring the file always exists after startup.
+- **Mention Detection Logging**: Enhanced `is_explicitly_tagged()` with a debug dump of `mentioned_jids` vs `known_ids` for traceability when mention checks fail.
+- **Documentation**: Created `ai-chat/knowledge_base/LANGUAGE_DETECTION.md` detailing the hybrid detection algorithm. Added ADR-027, updated SOP, issues, and README.

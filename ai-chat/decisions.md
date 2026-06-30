@@ -293,3 +293,26 @@ We mandate that all group chat replies MUST include the `quotedParticipant` para
 - `ai-chat/changelog.md` (fix entry)
 - `ai-chat/issues.md` (issue log)
 - `ai-chat/knowledge_base/WISP_PROTOCOL.md` (schema)
+
+## ADR-027: Keyword Heuristic for Short Malay/Indonesian Text Detection
+Date: 2026-06-30
+Status: Accepted
+Authors: DEBUG-LEAD (orchestration), Antigravity (implementation)
+
+### Context
+The `langdetect` library is statistically unreliable for texts shorter than ~20 characters, particularly for Malay (`ms`) and Indonesian (`id`). Common conversational words like "mulai", "makan", "saya" are frequently misidentified as Finnish (`fi`), Tagalog (`tl`), or English (`en`). This caused auto-translation to silently skip messages that should have been translated.
+
+### Decision
+Implement a two-tier hybrid detection strategy in `detect_language_safe()`:
+1. **Short-text heuristic** (< 20 chars): Tokenize and check against a curated `COMMON_MS_ID_WORDS` set (~80 words). If ≥ 50% of tokens match, bypass `langdetect` and return `"ms"`.
+2. **False-positive guard** (all lengths): If `langdetect` returns a known false-positive language (`fi`, `tl`, `so`, `sw`, `hr`, `ro`) AND the keyword heuristic also matches, override to `"ms"`.
+
+### Consequences
+- Positive: Short Malay/Indonesian phrases now correctly trigger translation.
+- Positive: No regression for English — common English words are not in the keyword set.
+- Negative: The keyword set requires manual curation and may need expansion over time.
+- Neutral: Existing `TRANSLATION_EQUIVALENT_LANGS` config (`id,ms`) continues to prevent unnecessary id↔ms translations.
+
+### References
+- `ai-chat/knowledge_base/LANGUAGE_DETECTION.md` (full algorithm documentation)
+- `app/translation.py` (implementation)

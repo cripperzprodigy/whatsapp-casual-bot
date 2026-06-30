@@ -92,14 +92,13 @@ def is_explicitly_tagged(
     if mentioned_jids:
         from app.config import BotIdentityManager
         known_ids = BotIdentityManager.load_known_bot_ids()
+        logger.debug(f"Mention check: mentioned_jids={mentioned_jids}, known_ids={known_ids}, bare_bot={bare_bot}")
         for jid in mentioned_jids:
             if normalize_jid_for_comparison(jid) == bare_bot:
-                import logging
-                logging.getLogger(__name__).debug(f"Mention detected via JID match for bot {bot_number}")
+                logger.debug(f"Mention detected via JID match for bot {bot_number}")
                 return True
             if jid in known_ids:
-                import logging
-                logging.getLogger(__name__).debug(f"Mention detected via known LID match: {jid}")
+                logger.debug(f"Mention detected via known LID match: {jid}")
                 return True
 
     # 2. Check if bot's bare number is literally present in text
@@ -262,14 +261,11 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
         ai_reply = await engine.process_message(final_user_input, media_path, generate_reply=True, context_type=None, context_text=None)
         logger.info(f"DM: LLM reply received={ai_reply is not None}, reply_len={len(ai_reply) if ai_reply else 0} for {chat_id}")
         if ai_reply:
-            quoted_msg_id = getattr(msg_key, 'id', None)
-            if not quoted_msg_id:
-                logger.warning("Triggered DM chatty but msg_key.id is missing")
-
+            # DMs should never quote; natural chat flow per SOP 4.2
             await send_text_message(
                 chat_id,
                 ai_reply,
-                quoted_msg_id=quoted_msg_id,
+                quoted_msg_id=None,
                 quoted_participant=None,
             )
         else:
@@ -597,11 +593,12 @@ async def process_message(
 
                     if command_text.startswith("!whoami"):
                         if mentioned_jids:
-                            bot_lid = mentioned_jids[0]
-                            BotIdentityManager.register_bot_id(bot_lid)
-                            await send_text_message(chat_id, f"✅ Bot identity registered successfully as: {bot_lid}")
+                            for jid in mentioned_jids:
+                                BotIdentityManager.register_bot_id(jid)
+                            registered = ', '.join(mentioned_jids)
+                            await send_text_message(chat_id, f"✅ Bot identity registered: {registered}")
                         else:
-                            await send_text_message(chat_id, "⚠️ Please tag the bot when using !whoami to register its LID.")
+                            await send_text_message(chat_id, "⚠️ No @mention detected. Please tag the bot explicitly (e.g. @Bot !whoami) to register its LID.")
                         return
                     elif command_text.startswith("!forget-me"):
                         BotIdentityManager.clear_bot_ids()

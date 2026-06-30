@@ -36,6 +36,48 @@ FULL_NAME_TO_CODE: dict[str, str] = {
 
 VALID_TARGET_LANGUAGES = set(FULL_NAME_TO_CODE.values())
 
+# ------------------------------------------------------------------ #
+#  Heuristic Keyword Set for Short Malay/Indonesian Text Detection
+#  langdetect is unreliable for texts < 20 chars in ms/id, often
+#  returning 'fi' (Finnish), 'tl' (Tagalog), or 'en' (English).
+#  This curated set provides a fast O(1) fallback.
+# ------------------------------------------------------------------ #
+COMMON_MS_ID_WORDS: set[str] = {
+    # Pronouns & address
+    "saya", "aku", "awak", "kamu", "dia", "kami", "kita", "mereka",
+    # Common verbs
+    "makan", "minum", "pergi", "datang", "buat", "ambil", "beli",
+    "jual", "cari", "mulai", "kerja", "tidur", "bangun", "duduk",
+    "baca", "tulis", "dengar", "lihat", "tahu", "boleh", "mahu",
+    # Common nouns
+    "orang", "rumah", "hari", "masa", "waktu", "tempat", "air",
+    "nasi", "ayam", "ikan", "duit", "wang", "kereta", "jalan",
+    # Particles & connectors
+    "tak", "tidak", "nak", "ke", "di", "dan", "atau", "ya",
+    "lah", "kan", "leh", "pun", "dah", "ada", "ini", "itu",
+    "apa", "mana", "bila", "siapa", "kenapa", "macam", "dengan",
+    "untuk", "dari", "dalam", "sudah", "belum", "akan", "sedang",
+    # Common adjectives
+    "baik", "besar", "kecil", "banyak", "sedikit", "cantik",
+    "bagus", "mahal", "murah", "cepat", "lambat", "panas", "sejuk",
+}
+
+# Languages that langdetect commonly confuses with ms/id on short texts
+_MS_ID_FALSE_POSITIVE_LANGS = {"fi", "tl", "so", "sw", "hr", "ro"}
+
+
+def _heuristic_ms_id_check(text: str) -> bool:
+    """
+    Returns True if the text is likely Malay/Indonesian based on keyword matching.
+    Used as a fast heuristic for short texts where langdetect is unreliable.
+    """
+    tokens = re.findall(r'[a-zA-Z]+', text.lower())
+    if not tokens:
+        return False
+    match_count = sum(1 for t in tokens if t in COMMON_MS_ID_WORDS)
+    return match_count / len(tokens) >= 0.5
+
+
 def is_valid_language_code(code: str) -> bool:
     """Check if the provided language code is explicitly supported."""
     if not code:
@@ -85,6 +127,10 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
     """
     Determines if text should be translated based on length, emojis,
     and probabilistic language detection. Returns detected code or None if skipped.
+
+    For short texts (< 20 chars), uses a keyword heuristic for ms/id detection
+    since langdetect is unreliable at this length. For longer texts, uses
+    langdetect with a secondary guard against common false positives (fi, tl).
     """
     # 1. Length Guard
     if len(text.strip()) < settings.TRANSLATION_MIN_LENGTH:
@@ -97,7 +143,24 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         logger.debug("Skipping translation: Less than 2 alphanumeric characters")
         return None
 
-    # 3. Detection with Confidence
+    # 3. Short-Text Heuristic for Malay/Indonesian
+    stripped = text.strip()
+    if len(stripped) < 20 and _heuristic_ms_id_check(stripped):
+        code = "ms"
+        logger.debug(f"Short-text heuristic detected ms/id for: '{stripped}'")
+
+        # Still apply equivalence and exact match checks
+        equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
+        if code in equivalent_langs and target_lang in equivalent_langs:
+            logger.debug(f"Skipping translation: Equivalent languages ({code} -> {target_lang})")
+            return None
+        if code == target_lang:
+            logger.debug(f"Skipping translation: Exact match ({code})")
+            return None
+
+        return code
+
+    # 4. Detection with Confidence (standard langdetect path)
     try:
         langs = detect_langs(text)
         if not langs:
@@ -107,25 +170,30 @@ def detect_language_safe(text: str, target_lang: str) -> Optional[str]:
         detected = langs[0]
         conf = detected.prob
 
-        # 4. Confidence Guard
+        # 5. Confidence Guard
         if conf < settings.TRANSLATION_CONFIDENCE_THRESHOLD:
             logger.debug(f"Skipping translation: Low confidence ({conf:.2f})")
             return None
 
         code = detected.lang
 
-        # 5. ID/MS Equivalence
+        # 6. False-Positive Guard: langdetect returns fi/tl/so for ms/id text
+        if code in _MS_ID_FALSE_POSITIVE_LANGS and _heuristic_ms_id_check(stripped):
+            logger.info(f"Overriding langdetect false positive: '{code}' -> 'ms' (keyword match)")
+            code = "ms"
+
+        # 7. ID/MS Equivalence
         equivalent_langs = {lang.strip().lower() for lang in settings.TRANSLATION_EQUIVALENT_LANGS.split(',')}
         if code in equivalent_langs and target_lang in equivalent_langs:
             logger.debug(f"Skipping translation: Equivalent languages ({code} -> {target_lang})")
             return None
 
-        # 6. Exact Match
+        # 8. Exact Match
         if code == target_lang:
             logger.debug(f"Skipping translation: Exact match ({code})")
             return None
 
-        # 7. Confirmed Mismatch
+        # 9. Confirmed Mismatch
         return code
 
     except LangDetectException:

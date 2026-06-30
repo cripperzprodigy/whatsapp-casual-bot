@@ -37,6 +37,10 @@ Strict adherence to the project's architecture is required.
 
 - **JID Normalization:** Node.js gateway implementations must normalize all incoming unofficial or device-specific JID suffixes (such as `@c.us` and `@lid`) to the official `@s.whatsapp.net` suffix before forwarding payloads to the Python backend. This ensures domain guard rails and mention detection logic function correctly against standardized JIDs.
 
+- **Language Detection Standards:** Auto-translation must use a hybrid detection strategy for Malay (`ms`) and Indonesian (`id`) support. For short texts (< 20 characters), a keyword heuristic (`COMMON_MS_ID_WORDS`) MUST be checked before invoking `langdetect`. If `langdetect` returns a known false-positive language (`fi`, `tl`, `so`, `sw`) for text that matches the keyword set, the result MUST be overridden to `ms`. See [LANGUAGE_DETECTION.md](knowledge_base/LANGUAGE_DETECTION.md) and ADR-027.
+
+- **DM Reply Quoting Prohibition (MANDATORY):** Direct Message (DM) chatty replies MUST NOT include `quotedMsgId` in the send payload. DMs should appear as natural conversational messages without WhatsApp quote bubbles. Only group replies triggered by explicit `@bot` tags or threaded reply contexts should use quoted messages.
+
 ## 4.3 Session Storage Paths
 - All session/authentication files MUST use absolute paths resolved via `path.resolve(__dirname, '...')` in Node.js
 - Python services MUST use `Path(__file__).resolve().parent` for relative path resolution
@@ -62,6 +66,12 @@ runtime detection with caching over static ENV configuration.
 For opaque multi-device identifiers like `@lid`, implement Owner-Registered 
 Identity flows (e.g., `!whoami`) to securely learn mapping contextually.
 See ADR-014 and ADR-017 in decisions.md.
+
+### LID Registration Requirements
+- On first group deployment, the bot owner MUST run `@Bot !whoami` to register the bot's LID for mention detection.
+- `bot_known_lids.json` MUST be auto-created on first access with an empty array.
+- The `!whoami` handler MUST register ALL JIDs in the `mentioned_jids` array, not just the first.
+- Debug logging MUST dump `mentioned_jids` vs `known_ids` on every mention check for traceability.
 
 ### 6.4 Docker Installation
 - `start.sh` MUST check for Docker installation before attempting docker-compose operations

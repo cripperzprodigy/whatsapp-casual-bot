@@ -164,13 +164,17 @@ class BotIdentityManager:
 
     @classmethod
     def load_known_bot_ids(cls) -> list[str]:
-        """Loads and caches the known LIDs from the persistence file."""
+        """Loads and caches the known LIDs from the persistence file. Creates the file if missing."""
         if cls._known_lids_cache is not None:
             return cls._known_lids_cache
 
         try:
             os.makedirs(os.path.dirname(cls.KNOWN_LIDS_FILE), exist_ok=True)
             if not os.path.exists(cls.KNOWN_LIDS_FILE):
+                # Initialize with empty array so the file exists for future writes
+                with open(cls.KNOWN_LIDS_FILE, "w", encoding="utf-8") as f:
+                    json.dump([], f)
+                logger.info(f"Created empty LID registry: {cls.KNOWN_LIDS_FILE}")
                 cls._known_lids_cache = []
                 return []
             
