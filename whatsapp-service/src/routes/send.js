@@ -57,7 +57,7 @@ router.post('/sendText', async (req, res) => {
     }
 
     // Adapt Python payload format
-    let { number, textMessage, options, to, message, quotedMsgId } = req.body;
+    let { number, textMessage, options, to, message, quotedMsgId, quotedParticipant } = req.body;
     
     if (!number && to) number = to;
     if (!textMessage && message) textMessage = { text: message };
@@ -71,8 +71,14 @@ router.post('/sendText', async (req, res) => {
 
         if (options && options.quoted) {
             sendOptions.quotedMessageId = options.quoted;
+            if (options.quotedParticipant) {
+                sendOptions.quotedParticipant = options.quotedParticipant;
+            }
         } else if (quotedMsgId) {
             sendOptions.quotedMessageId = quotedMsgId;
+            if (quotedParticipant && typeof quotedParticipant === 'string' && quotedParticipant.trim()) {
+                sendOptions.quotedParticipant = quotedParticipant;
+            }
         }
 
         const trimmedText = textMessage.text.trim();

@@ -143,6 +143,10 @@ async def send_text_message(
     if quoted_msg_id and isinstance(quoted_msg_id, str) and quoted_msg_id.strip():
         payload["quotedMsgId"] = quoted_msg_id
         logger.debug(f"Including quote ID: {quoted_msg_id}")
+
+        if quoted_participant and isinstance(quoted_participant, str) and quoted_participant.strip():
+            payload["quotedParticipant"] = quoted_participant
+            logger.debug(f"Including quote participant: {quoted_participant}")
     else:
         logger.debug("No valid quote ID provided, sending plain message.")
 

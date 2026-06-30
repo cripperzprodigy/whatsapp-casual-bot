@@ -19,10 +19,12 @@ The Node.js Gateway operates in one of three strict states:
     "text": "Hello world"
   },
   "options": {
-    "quoted": "false_628123456789@s.whatsapp.net_1234567890"
+    "quoted": "false_628123456789@s.whatsapp.net_1234567890",
+    "quotedParticipant": "628987654321@s.whatsapp.net"
   }
 }
 ```
+**Note:** The `quotedParticipant` field is required for proper message attribution in group chats. For DMs, it should be omitted or `null`. The Python backend also supports a flat payload format: `{"to": "...", "message": "...", "quotedMsgId": "...", "quotedParticipant": "..."}`.
 
 ### 3.2. DeliveryResponse (Node -> Python)
 **Success (200 OK)**

@@ -365,7 +365,7 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
                         chat_id,
                         ai_reply,
                         quoted_msg_id=quoted_msg_id,
-                        quoted_participant=None,
+                        quoted_participant=getattr(msg_key, 'participant', None),
                     )
                 return
             else:

@@ -121,3 +121,10 @@
 - **Agentic Search**: Updated `!s` command response when disabled to include instructions for the owner on how to toggle the feature (`!config toggle agentic_search on`).
 - **Chatty Quoting Restoration**: Fixed `quoted_msg_id` logic to ensure compliance with ADR-022. Direct mentions and threaded replies now quote the user's message correctly, while unprompted responses gracefully fall back to natural conversation flow (no quote).
 - **Reply Context Mapping**: Fixed webhook parser logic dropping threaded conversations by robustly ensuring missing dictionaries are mapped over for string-only formats during WhatsApp native replies.
+
+### Fixed (Group Reply Participant Attribution)
+- **End-to-End `quotedParticipant` Fix**: The `quoted_participant` parameter in `send_text_message()` was accepted but silently dropped — never serialized into the HTTP payload to the Node.js gateway. Fixed across three layers:
+  1. **Python Gateway** (`whatsapp_gateway.py`): Now includes `quotedParticipant` in the outbound JSON payload when a valid participant JID is provided.
+  2. **Node.js Gateway** (`send.js`): Now extracts `quotedParticipant` from the request body and passes it into `sendOptions.quotedParticipant` for `whatsapp-web.js`.
+  3. **Router Webhook** (`router_webhook.py`): Chatty group replies (explicit mentions/tags) now pass `msg_key.participant` instead of `None`, ensuring proper sender attribution. DM replies correctly remain `None`.
+- **WISP Protocol Schema Update**: Updated `WISP_PROTOCOL.md` to document the new `quotedParticipant` field in the `OutboundMessageRequest` schema.
