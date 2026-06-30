@@ -587,20 +587,113 @@ async def process_message(
                 command_text = text.strip()
                 if command_text.startswith("!whoami") or command_text.startswith("!forget-me"):
                     from app.permissions import is_owner
-                    if not await is_owner(db, sender_id):
-                        await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
-                        return
 
                     if command_text.startswith("!whoami"):
-                        if mentioned_jids:
-                            for jid in mentioned_jids:
-                                BotIdentityManager.register_bot_id(jid)
-                            registered = ', '.join(mentioned_jids)
-                            await send_text_message(chat_id, f"✅ Bot identity registered: {registered}")
+                        # ── !whoami: Two-mode handler ───────────────────
+                        #
+                        # Mode A (Already Registered):
+                        #   Bot LIDs exist in bot_known_lids.json.
+                        #   → Owner-only status check. Show registration
+                        #     details via DM. Silently ignore non-owners.
+                        #
+                        # Mode B (First Registration):
+                        #   bot_known_lids.json is empty.
+                        #   → Discover the bot's LID from mentioned_jids
+                        #     by excluding the sender. Save unconditionally.
+                        #     Only respond to owner.
+
+                        existing_lids = BotIdentityManager.load_known_bot_ids()
+                        sender_is_owner = await is_owner(db, sender_id)
+
+                        # ── Mode A: Already registered → status check ──
+                        if existing_lids:
+                            if not sender_is_owner:
+                                # Silently ignore non-owners
+                                logger.debug(f"!whoami: Non-owner {sender_id} ignored (bot already registered)")
+                                return
+
+                            # Owner gets a DM with current registration status
+                            owner_dm_id = sender_id
+                            if not owner_dm_id.endswith("@s.whatsapp.net") and not owner_dm_id.endswith("@lid"):
+                                owner_dm_id = f"{owner_dm_id}@s.whatsapp.net"
+
+                            dm_text = (
+                                f"🤖 *Bot Identity Status*\n\n"
+                                f"📋 Status: ✅ Registered\n"
+                                f"📌 Known LID(s): `{', '.join(existing_lids)}`\n"
+                                f"📞 .env BOT_NUMBER: `{bot_number}`\n\n"
+                                f"The bot is recognizing @mentions in groups."
+                            )
+                            await send_text_message(owner_dm_id, dm_text)
+                            return
+
+                        # ── Mode B: First registration → discover LID ──
+                        if not mentioned_jids:
+                            await send_text_message(
+                                chat_id,
+                                "⚠️ No @mention detected.\n"
+                                "Please tag the bot explicitly: `@Bot !whoami`",
+                            )
+                            return
+
+                        # Self-identification: exclude the sender's JID.
+                        # The bot's .env number (e.g. 6587481374) has a DIFFERENT
+                        # numeric base than its LID (e.g. 68728804868116@lid),
+                        # so direct matching is impossible. Whatever JID remains
+                        # after excluding the sender must be the bot.
+                        bare_sender = normalize_jid_for_comparison(sender_id)
+                        bot_jids = [
+                            jid for jid in mentioned_jids
+                            if normalize_jid_for_comparison(jid) != bare_sender
+                        ]
+
+                        # Fallback: if exclusion removed everything
+                        if not bot_jids:
+                            bot_jids = list(mentioned_jids)
+                            logger.warning(
+                                f"!whoami: Sender exclusion left no JIDs. "
+                                f"Fallback to all: {bot_jids}"
+                            )
+
+                        # Unconditional persistence — save BEFORE auth check
+                        for jid in bot_jids:
+                            BotIdentityManager.register_bot_id(jid)
+
+                        all_known = BotIdentityManager.load_known_bot_ids()
+                        registered_str = ', '.join(bot_jids)
+                        logger.info(
+                            f"!whoami: First registration complete. "
+                            f"Bot JIDs: {registered_str}, all_known={all_known}, "
+                            f"sender={sender_id}"
+                        )
+
+                        # Only respond to owner
+                        if sender_is_owner:
+                            owner_dm_id = sender_id
+                            if not owner_dm_id.endswith("@s.whatsapp.net") and not owner_dm_id.endswith("@lid"):
+                                owner_dm_id = f"{owner_dm_id}@s.whatsapp.net"
+
+                            dm_text = (
+                                f"✅ *Bot Identity Registered*\n\n"
+                                f"📌 Discovered LID(s): `{registered_str}`\n"
+                                f"📋 All Known LIDs: `{', '.join(all_known)}`\n"
+                                f"📞 .env BOT_NUMBER: `{bot_number}`\n\n"
+                                f"The bot will now recognize @mentions in groups."
+                            )
+                            await send_text_message(owner_dm_id, dm_text)
+                            await send_text_message(
+                                chat_id,
+                                "✅ Bot identity registered successfully.",
+                            )
                         else:
-                            await send_text_message(chat_id, "⚠️ No @mention detected. Please tag the bot explicitly (e.g. @Bot !whoami) to register its LID.")
+                            logger.info(f"!whoami: LID saved by non-owner {sender_id}. No response sent.")
                         return
+
                     elif command_text.startswith("!forget-me"):
+                        # !forget-me is destructive — owner-only
+                        if not await is_owner(db, sender_id):
+                            await send_text_message(chat_id, "🚫 Access Denied: `!forget-me` requires Owner privileges.")
+                            return
                         BotIdentityManager.clear_bot_ids()
                         await send_text_message(chat_id, "🗑️ Known Bot identities (LIDs) have been cleared.")
                         return

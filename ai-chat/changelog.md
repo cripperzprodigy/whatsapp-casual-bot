@@ -161,3 +161,10 @@
 - **Help Menu Restructure**: Translation section now shows all hierarchy commands (`!auto on|off`, `!auto global`, `!target`, `!ignore`). `!globaltrans` added to Owner Commands.
 - **Keyword File Loader**: `load_skip_keywords()` in `config.py` reads external file with comment support, returns `frozenset` for O(1) lookup. Cache invalidated on `safe_reload_settings()`.
 - **Documentation**: Added ADR-029, updated SOP, LANGUAGE_DETECTION.md, issues.
+
+### Fixed (!whoami LID Registration — Self-Identification)
+- **Critical Bug Fix**: `!whoami` had two flaws: (1) `is_owner()` ran before `register_bot_id()`, blocking LID save for non-owners, and (2) it registered ALL `mentioned_jids` blindly without identifying which JID belongs to the bot.
+- **Self-Identification**: Since the `.env` phone number (e.g., `6587481374`) has a different numeric base than the WhatsApp LID (e.g., `68728804868116@lid`), we cannot match them directly. Solution: exclude the sender's JID from `mentioned_jids` — whatever remains is the bot's JID. Handles edge case where exclusion removes all JIDs (fallback to full list).
+- **Unconditional Persistence**: LID registration happens BEFORE any owner check. This ensures `bot_known_lids.json` is populated even when triggered by non-owners.
+- **Owner DM**: Owner receives a DM with full identity details (discovered LIDs, all known LIDs, .env BOT_NUMBER). Non-owners get a group reply confirming internal update.
+- **`!forget-me` unchanged**: Remains owner-only since it's destructive.
