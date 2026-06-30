@@ -179,3 +179,8 @@
 ### Fixed (Delayed Chatty Reply Missing Quotes)
 - **Root Cause**: The `_delayed_chatty_reply` function (Path B) received `msg_id` and `participant` parameters but never passed them to `send_long_message`, resulting in missing message attribution in group chats.
 - **Fix**: Updated `_delayed_chatty_reply` to explicitly pass `quoted_msg_id=msg_id` and `quoted_participant=participant` to `send_long_message`, ensuring proper visual quotes for frequency-triggered replies.
+
+### Fixed (Stale Pre-Load Imports in start.sh)
+- **Root Cause**: `start.sh` line 370 tried `from app.translation import TranslationService` and line 371 tried `from app.ai_client import AIClient` — both classes were removed during the translation refactoring (function-based `translate_text` replaced `TranslationService`) and AI client refactoring (`ask_llm()` replaced `AIClient`). The try/except swallowed the ImportError, but the modules never actually warmed up.
+- **Fix**: Replaced with bare `import app.translation` and `import app.ai_client` which correctly load the modules and their dependencies at startup.
+- **Files Modified**: `start.sh`
