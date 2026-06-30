@@ -49,9 +49,10 @@ This document outlines the commands available to users, administrators, and the 
 |---|---|---|---|
 | !sc_toggle <on|off> | Owner | 🔒 Toggle Deep Crawl feature globally. | !sc_toggle on |
 | !config toggle <feature> <state> | Owner | ⚙️ Advanced configuration toggles. | !config toggle agentic_search true |
-| !contacts global | Owner | View all contacts globally. | !contacts global |
-| !contacts export | Owner | Export global contact ledger. | !contacts export |
-| !pm global <text> | Owner | DM all groups. | !pm global Maintenance at midnight |
+| `!contacts global` | Owner | View all contacts globally. | `!contacts global` |
+| `!contacts export` | Owner | Export global contact ledger. | `!contacts export` |
+| `!resolve <@mention|group|global>` | Owner | Force resolve a user's phone number, scan the current group, or scan globally. | `!resolve @user` |
+| `!pm global <text>` | Owner | DM all groups. | `!pm global Maintenance at midnight` |
 | !pm flood <limit|interval> <val> | Owner | Configure PM flood settings. | !pm flood limit 10 |
 | !owner <grant|revoke> <jid> | Owner | Manage bot Owners. | !owner grant 123@s.whatsapp.net |
 | !admin <grant|revoke> <jid> | Owner | Manage bot Admins. | !admin grant 123@s.whatsapp.net |

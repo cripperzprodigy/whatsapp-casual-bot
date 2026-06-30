@@ -109,6 +109,9 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
         response += "• `!config toggle <feature> <state>`: ⚙️ Advanced configuration toggles\n"
         response += "• `!contacts global`: View all contacts globally\n"
         response += "• `!contacts export`: Export global contact ledger\n"
+        response += "• `!resolve @mention`: Force resolve a user's phone number\n"
+        response += "• `!resolve group`: Actively resolve all numbers in the current group\n"
+        response += "• `!resolve global`: Actively resolve all numbers across all groups\n"
         response += "• `!pm global <text>`: DM all groups\n"
         response += "• `!pm flood limit|interval <val>`: PM flood settings\n"
         response += "• `!owner grant|revoke <jid>`: Manage Owners\n"
@@ -1063,7 +1066,7 @@ async def handle_command(  # Issue 13: added return type
                     if not await is_owner(db, sender_id):
                         await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
                     else:
-                        all_contacts = {}
+                        all_unique_jids = set()
                         contacts_dir = "data/contacts"
                         
                         import os, json
@@ -1075,17 +1078,37 @@ async def handle_command(  # Issue 13: added return type
                                         try:
                                             with open(profile_path, "r", encoding="utf-8") as f:
                                                 data = json.load(f)
-                                                for jid, info in data.get("participants", {}).items():
-                                                    name = info.get("pushName") or info.get("name") or jid
-                                                    all_contacts[jid] = name
+                                                for jid in data.get("participants", {}).keys():
+                                                    all_unique_jids.add(jid)
                                         except Exception as e:
                                             logger.error(f"Failed to read {group_folder}: {e}")
                                             
-                        if not all_contacts:
+                        if not all_unique_jids:
                             await send_text_message(chat_id, "📭 No contacts found in any group profiles.")
                         else:
-                            lines = [f"• {name} ({jid})" for jid, name in all_contacts.items()]
-                            await send_long_message(chat_id, "🌍 *Global Contacts Summary (Deduplicated)*\n\n" + "\n".join(lines))
+                            await send_text_message(chat_id, "⏳ Resolving contact info from gateway... this may take a moment.")
+                            
+                            from app.contact_sync import resolve_participant_info
+                            resolved_contacts = []
+                            hidden_count = 0
+                            
+                            for jid in all_unique_jids:
+                                info = await resolve_participant_info(jid)
+                                resolved_contacts.append(info)
+                                if not info.get("phone"):
+                                    hidden_count += 1
+                                    
+                            def format_contact_entry(info: dict) -> str:
+                                if info.get("phone"):
+                                    return f"• +{info['phone']} ({info.get('name', 'Unknown')})"
+                                else:
+                                    return f"• Unknown User (LID: {info['jid']})"
+                                    
+                            lines = [format_contact_entry(c) for c in resolved_contacts]
+                            output = "🌍 *Global Contacts Summary (Deduplicated)*\n\n" + "\n".join(lines)
+                            output += f"\n\n⚠️ {hidden_count} members have hidden phone numbers due to WhatsApp privacy settings."
+                            
+                            await send_long_message(chat_id, output)
                             
                 elif subcmd == "export":
                     if not await is_owner(db, sender_id):
@@ -1149,6 +1172,116 @@ async def handle_command(  # Issue 13: added return type
                                 chat_id,
                                 f"✅ Contacts exported to: {export_path}",
                             )
+
+        elif command == "!resolve":
+            if not await is_owner(db, sender_id):
+                await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
+                return
+                
+            if len(args) == 0 and not mentioned_jids:
+                await send_text_message(chat_id, "Usage: !resolve @mention OR !resolve group OR !resolve global")
+                return
+                
+            from app.contact_sync import resolve_participant_info
+            
+            if args and args[0] == "global":
+                import os, json, asyncio
+                all_unique_jids = set()
+                contacts_dir = "data/contacts"
+                if os.path.exists(contacts_dir):
+                    for group_folder in os.listdir(contacts_dir):
+                        if "_g_us" in group_folder:
+                            profile_path = os.path.join(contacts_dir, group_folder, "profile.json")
+                            if os.path.exists(profile_path):
+                                try:
+                                    with open(profile_path, "r", encoding="utf-8") as f:
+                                        data = json.load(f)
+                                        for j in data.get("participants", {}).keys():
+                                            all_unique_jids.add(j)
+                                except Exception as e:
+                                    logger.error(f"Failed to read {group_folder}: {e}")
+                
+                if not all_unique_jids:
+                    await send_text_message(chat_id, "📭 No contacts found to resolve.")
+                    return
+                    
+                total = len(all_unique_jids)
+                await send_text_message(chat_id, f"🔍 Starting global resolution for {total} users... This may take {total} seconds.")
+                
+                resolved_count = 0
+                hidden_count = 0
+                processed = 0
+                
+                for j in all_unique_jids:
+                    info = await resolve_participant_info(j)
+                    if info.get("phone"):
+                        resolved_count += 1
+                    else:
+                        hidden_count += 1
+                    
+                    processed += 1
+                    if processed % 50 == 0:
+                        await send_text_message(chat_id, f"⏳ Progress: {processed}/{total} users processed...")
+                    
+                    await asyncio.sleep(1) # Rate limit
+                    
+                await send_text_message(chat_id, f"✅ *Global Resolution Complete*\n\nResolved {resolved_count}/{total} numbers.\n{hidden_count} hidden by privacy settings.")
+            
+            elif args and args[0] == "group":
+                if not is_group_chat:
+                    await send_text_message(chat_id, "❌ This command must be used within a group chat.")
+                    return
+                    
+                import os, json, asyncio
+                all_unique_jids = set()
+                contacts_dir = "data/contacts"
+                # Remove suffix '@g.us' -> '_g_us' to match folder names
+                folder_name = f"{chat_id.replace('@g.us', '_g_us')}"
+                profile_path = os.path.join(contacts_dir, folder_name, "profile.json")
+                
+                if os.path.exists(profile_path):
+                    try:
+                        with open(profile_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            for j in data.get("participants", {}).keys():
+                                all_unique_jids.add(j)
+                    except Exception as e:
+                        logger.error(f"Failed to read {folder_name}: {e}")
+                        
+                if not all_unique_jids:
+                    await send_text_message(chat_id, "📭 No contacts found in this group to resolve.")
+                    return
+                    
+                total = len(all_unique_jids)
+                await send_text_message(chat_id, f"🔍 Starting group resolution for {total} users... This may take {total} seconds.")
+                
+                resolved_count = 0
+                hidden_count = 0
+                processed = 0
+                
+                for j in all_unique_jids:
+                    info = await resolve_participant_info(j)
+                    if info.get("phone"):
+                        resolved_count += 1
+                    else:
+                        hidden_count += 1
+                    
+                    processed += 1
+                    if processed % 50 == 0:
+                        await send_text_message(chat_id, f"⏳ Progress: {processed}/{total} users processed...")
+                    
+                    await asyncio.sleep(1) # Rate limit
+                    
+                await send_text_message(chat_id, f"✅ *Group Resolution Complete*\n\nResolved {resolved_count}/{total} numbers.\n{hidden_count} hidden by privacy settings.")
+                
+            else:
+                jid = mentioned_jids[0]
+                info = await resolve_participant_info(jid)
+                if info.get("phone"):
+                    reply = f"✅ Resolved: +{info['phone']} ({info.get('name', 'Unknown')})"
+                else:
+                    reply = "⚠️ Number hidden by privacy settings or not in contacts."
+                await send_text_message(chat_id, reply)
 
         elif command == "!chatty":
             if len(args) == 1 and args[0] in ["on", "off"]:
