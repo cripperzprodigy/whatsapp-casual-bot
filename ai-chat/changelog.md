@@ -143,6 +143,9 @@
 
 ### Added
 - **Feature**: Role-based Help Menu dynamically filters commands based on the user's role (User, Admin, Owner) and adds inline permission hints.
+- **Fix**: `!contacts global` now aggregates and deduplicates contacts across all groups by scanning filesystem profiles.
+- **Fix**: `!sc` (Deep Crawl Search) is now public when enabled; toggle remains owner-only.
+- **Change**: `!export ledger` renamed to `!contacts export` and secured as an Owner-Only command.
 - **Fix**: Agentic Search config mapping & Settings fields. Resolves the mismatch between `FeatureFlagService` and `app_settings` for `.env` integration.
 - **Fix**: Config sync and removal of hardcoded search/crawl values.
 - **Bug Fix**: Added missing `Settings` fields for Deep Crawl & Agentic Search (e.g. `search_max_results`, `deep_crawl_timeout_seconds`, etc.) in lowercase formatting. Fixed Pydantic `ValidationError` ("Extra inputs are not permitted") on startup by properly defining these fields in `app/config.py`.

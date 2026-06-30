@@ -16,6 +16,7 @@ This document outlines the commands available to users, administrators, and the 
 | !lang set <code> | User | (DM Only) Set preferred language. | !lang set fr |
 | !lang reset | User | (DM Only) Revert preferred language. | !lang reset |
 | !task add <desc> | User | Add a task. | !task add Buy groceries |
+| !sc <query> | User | 🕷️ Deep Crawl Search (if enabled by admin). | !sc current AI news |
 | !task list | User | List tasks. | !task list |
 | !task done <id> | User | Complete a task. | !task done 1 |
 | !note add <text> | User | Add a note. | !note add Wifi pass: 1234 |
@@ -46,11 +47,11 @@ This document outlines the commands available to users, administrators, and the 
 ## Owner Commands
 | Command | Role | Description | Example |
 |---|---|---|---|
-| !sc <query> | Owner | Deep Crawl Search: Fetches full content from top websites for detailed analysis. | !sc latest research on nuclear fusion |
-| !sc_toggle <on|off> | Owner | Toggle Deep Crawl feature globally. | !sc_toggle on |
-| !config toggle <feature> <state> | Owner | Advanced configuration toggles. | !config toggle agentic_search on |
+| !sc_toggle <on|off> | Owner | 🔒 Toggle Deep Crawl feature globally. | !sc_toggle on |
+| !config toggle <feature> <state> | Owner | ⚙️ Advanced configuration toggles. | !config toggle agentic_search true |
 | !contacts global | Owner | View all contacts globally. | !contacts global |
-| !pm global <text> | Owner | Send a direct message to all groups globally. | !pm global Hello world |
+| !contacts export | Owner | Export global contact ledger. | !contacts export |
+| !pm global <text> | Owner | DM all groups. | !pm global Maintenance at midnight |
 | !pm flood <limit|interval> <val> | Owner | Configure PM flood settings. | !pm flood limit 10 |
 | !owner <grant|revoke> <jid> | Owner | Manage bot Owners. | !owner grant 123@s.whatsapp.net |
 | !admin <grant|revoke> <jid> | Owner | Manage bot Admins. | !admin grant 123@s.whatsapp.net |

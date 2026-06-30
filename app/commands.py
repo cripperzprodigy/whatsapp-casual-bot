@@ -55,6 +55,7 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     response += "• `!a <text>`: Ask the AI a question\n"
     response += "• `!search <query>`: Quick search the web\n"
     response += "• `!s <query>`: Search the web with AI refinement\n"
+    response += "• `!sc <query>`: 🕷️ Deep Crawl Search: Fetches full content from top websites (if enabled)\n"
     response += "• `!summary`: Summarize replied text or chat history\n"
     response += "• `!ping`: Check bot status\n"
     response += "• `!help`: Show this menu\n"
@@ -95,7 +96,6 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
         response += "• `!contacts list`: View group contacts\n"
         response += "• `!pm group <text>`: DM current group\n"
         response += "• `!pm @user <text>`: DM specific user\n"
-        response += "• `!export ledger`: Export group contacts\n"
         response += "• `!broadcast <msg>`: Message all chats\n"
         response += "• `!stats`: System statistics\n"
         response += "• `!botid`: Show bot identity status\n"
@@ -105,10 +105,10 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     # ---------------------------------------------------------
     if role == OWNER_ROLE:
         response += "\n*👑 Owner Commands:*\n"
-        response += "• `!sc <query>`: 🕷️ Deep Crawl Search: Fetches full content from top websites for detailed analysis\n"
         response += "• `!sc_toggle <on|off>`: 🔒 Toggle Deep Crawl feature globally\n"
         response += "• `!config toggle <feature> <state>`: ⚙️ Advanced configuration toggles\n"
         response += "• `!contacts global`: View all contacts globally\n"
+        response += "• `!contacts export`: Export global contact ledger\n"
         response += "• `!pm global <text>`: DM all groups\n"
         response += "• `!pm flood limit|interval <val>`: PM flood settings\n"
         response += "• `!owner grant|revoke <jid>`: Manage Owners\n"
@@ -545,77 +545,6 @@ async def handle_command(  # Issue 13: added return type
                     f"Active contacts: {contact_count}\n"
                     f"Active owners: {owner_count}\n"
                     f"Active admins: {admin_count}",
-                )
-
-        elif command == "!export":
-            if len(args) == 1 and args[0] == "ledger":
-                if not await is_admin(db, sender_id):
-                    await send_text_message(
-                        chat_id,
-                        "🚫 Access Denied: This command requires Admin or Owner privileges.",
-                    )
-                else:
-                    ledger_rows = (
-                        db.query(GroupContactLedger)
-                        .filter(GroupContactLedger.is_active.is_(True))
-                        .all()
-                    )
-                    if not ledger_rows:
-                        await send_text_message(
-                            chat_id,
-                            "No active contact ledger entries to export.",
-                        )
-                    else:
-                        os.makedirs(
-                            app_settings.CONTACTS_EXPORT_DIR,
-                            exist_ok=True,
-                        )
-                        export_path = os.path.join(
-                            app_settings.CONTACTS_EXPORT_DIR,
-                            "ledger.csv",
-                        )
-                        with open(
-                            export_path,
-                            "w",
-                            newline="",
-                            encoding="utf-8",
-                        ) as csvfile:
-                            writer = csv.writer(csvfile)
-                            writer.writerow(
-                                [
-                                    "chat_id",
-                                    "phone_number",
-                                    "push_name",
-                                    "is_admin",
-                                    "is_active",
-                                    "first_seen_at",
-                                    "last_seen_at",
-                                ]
-                            )
-                            for row in ledger_rows:
-                                writer.writerow(
-                                    [
-                                        row.chat_id,
-                                        row.phone_number,
-                                        row.push_name or "",
-                                        row.is_admin,
-                                        row.is_active,
-                                        row.first_seen_at.isoformat()
-                                        if row.first_seen_at
-                                        else "",
-                                        row.last_seen_at.isoformat()
-                                        if row.last_seen_at
-                                        else "",
-                                    ]
-                                )
-                        await send_text_message(
-                            chat_id,
-                            f"Ledger exported to: {export_path}",
-                        )
-            else:
-                await send_text_message(
-                    chat_id,
-                    "Usage: !export ledger - export the active contact ledger.",
                 )
 
         elif command == "!ping":
@@ -1092,7 +1021,7 @@ async def handle_command(  # Issue 13: added return type
             if len(args) == 0:
                 await send_text_message(
                     chat_id,
-                    "Usage: !contacts list | !contacts global"
+                    "Usage: !contacts list | !contacts global | !contacts export"
                 )
             else:
                 subcmd = args[0]
@@ -1134,37 +1063,92 @@ async def handle_command(  # Issue 13: added return type
                     if not await is_owner(db, sender_id):
                         await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
                     else:
-                        contacts = db.query(GroupContactLedger).filter(
-                            GroupContactLedger.is_active == True
-                        ).order_by(GroupContactLedger.chat_id, GroupContactLedger.push_name).all()
+                        all_contacts = {}
+                        contacts_dir = "data/contacts"
                         
-                        # Group contacts by chat_id
-                        from collections import defaultdict
-                        grouped_contacts = defaultdict(list)
-                        for c in contacts:
-                            grouped_contacts[c.chat_id].append(c)
-                        
-                        if not grouped_contacts:
-                            await send_text_message(chat_id, "No active contacts found globally.")
+                        import os, json
+                        if os.path.exists(contacts_dir):
+                            for group_folder in os.listdir(contacts_dir):
+                                if "_g_us" in group_folder:
+                                    profile_path = os.path.join(contacts_dir, group_folder, "profile.json")
+                                    if os.path.exists(profile_path):
+                                        try:
+                                            with open(profile_path, "r", encoding="utf-8") as f:
+                                                data = json.load(f)
+                                                for jid, info in data.get("participants", {}).items():
+                                                    name = info.get("pushName") or info.get("name") or jid
+                                                    all_contacts[jid] = name
+                                        except Exception as e:
+                                            logger.error(f"Failed to read {group_folder}: {e}")
+                                            
+                        if not all_contacts:
+                            await send_text_message(chat_id, "📭 No contacts found in any group profiles.")
                         else:
-                            msg = "🌍 *Global Contacts Summary*\n"
-                            for g_id, g_contacts in grouped_contacts.items():
-                                chat_settings = get_chat_settings(db, g_id)
-                                g_name = chat_settings.group_name or "Unknown Group"
-                                total_contacts = len(g_contacts)
-                                
-                                msg += f"\n*Group: {g_name}* (ID: {g_id})\n"
-                                
-                                limit = 10
-                                for c in g_contacts[:limit]:
-                                    name = c.push_name or "Unknown"
-                                    phone = c.phone_number or "Unknown"
-                                    msg += f"• {name} - {phone}\n"
-                                
-                                if total_contacts > limit:
-                                    msg += f"...and {total_contacts - limit} more (Showing {limit} of {total_contacts})\n"
-                                    
-                            await send_text_message(chat_id, msg)
+                            lines = [f"• {name} ({jid})" for jid, name in all_contacts.items()]
+                            await send_long_message(chat_id, "🌍 *Global Contacts Summary (Deduplicated)*\n\n" + "\n".join(lines))
+                            
+                elif subcmd == "export":
+                    if not await is_owner(db, sender_id):
+                        await send_text_message(chat_id, "🚫 Access Denied: This command requires Owner privileges.")
+                    else:
+                        ledger_rows = (
+                            db.query(GroupContactLedger)
+                            .filter(GroupContactLedger.is_active.is_(True))
+                            .all()
+                        )
+                        if not ledger_rows:
+                            await send_text_message(
+                                chat_id,
+                                "No active contact ledger entries to export.",
+                            )
+                        else:
+                            import os, csv
+                            os.makedirs(
+                                app_settings.CONTACTS_EXPORT_DIR,
+                                exist_ok=True,
+                            )
+                            export_path = os.path.join(
+                                app_settings.CONTACTS_EXPORT_DIR,
+                                "ledger.csv",
+                            )
+                            with open(
+                                export_path,
+                                "w",
+                                newline="",
+                                encoding="utf-8",
+                            ) as csvfile:
+                                writer = csv.writer(csvfile)
+                                writer.writerow(
+                                    [
+                                        "chat_id",
+                                        "phone_number",
+                                        "push_name",
+                                        "is_admin",
+                                        "is_active",
+                                        "first_seen_at",
+                                        "last_seen_at",
+                                    ]
+                                )
+                                for row in ledger_rows:
+                                    writer.writerow(
+                                        [
+                                            row.chat_id,
+                                            row.phone_number,
+                                            row.push_name or "",
+                                            row.is_admin,
+                                            row.is_active,
+                                            row.first_seen_at.isoformat()
+                                            if row.first_seen_at
+                                            else "",
+                                            row.last_seen_at.isoformat()
+                                            if row.last_seen_at
+                                            else "",
+                                        ]
+                                    )
+                            await send_text_message(
+                                chat_id,
+                                f"✅ Contacts exported to: {export_path}",
+                            )
 
         elif command == "!chatty":
             if len(args) == 1 and args[0] in ["on", "off"]:
