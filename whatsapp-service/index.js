@@ -47,6 +47,41 @@ app.get('/participant/info', async (req, res) => {
         return res.json({ success: false, reason: 'lookup_failed' });
     }
 });
+
+app.post('/participant/info/batch', async (req, res) => {
+    const { jids } = req.body;
+    if (!jids || !Array.isArray(jids)) return res.status(400).json({ error: 'Missing or invalid jids array' });
+    
+    try {
+        const client = getClient();
+        if (!client) return res.status(503).json({ error: 'WhatsApp client not connected' });
+
+        const results = [];
+        for (const jid of jids) {
+            let result = { jid, success: false, reason: 'privacy_hidden_or_not_contact' };
+            try {
+                const contact = await client.getContactById(jid);
+                if (contact && contact.number) {
+                    result = { jid, success: true, phone: contact.number, name: contact.name || contact.pushname };
+                } else {
+                    const numberId = await client.getNumberId(jid.split('@')[0]);
+                    if (numberId) {
+                        result = { jid, success: true, phone: numberId.user, name: contact ? contact.name : undefined };
+                    }
+                }
+            } catch (err) {
+                console.error(`Batch resolve error for ${jid}:`, err);
+                result.reason = 'lookup_failed';
+            }
+            results.push(result);
+        }
+        
+        return res.json({ success: true, results });
+    } catch (e) {
+        console.error('Batch resolve error:', e);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
 // Graceful Shutdown
 const shutdown = async () => {
     console.log('Shutting down gracefully...');

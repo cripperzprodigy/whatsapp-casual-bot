@@ -109,6 +109,23 @@ async def resolve_contact_info(jid: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Failed to resolve contact info for {jid}: {e}")
     return None
 
+async def resolve_contact_info_batch(jids: list[str]) -> list[dict]:
+    """
+    Resolves multiple contacts' phone numbers and names via the Node.js gateway batch lookup.
+    """
+    url = f"{settings.WHATSAPP_GATEWAY_URL}/participant/info/batch"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json={"jids": jids}, timeout=30.0)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    return data.get("results", [])
+    except Exception as e:
+        logger.error(f"Failed to resolve contact info batch: {e}")
+    return []
+
 async def resolve_quote_id(short_id: str) -> Optional[str]:
     """
     Resolves a short message ID to its full serialized format using the Node.js gateway cache.

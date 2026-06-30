@@ -1090,25 +1090,25 @@ async def handle_command(  # Issue 13: added return type
                         else:
                             await send_text_message(chat_id, "⏳ Resolving contact info from gateway... this may take a moment.")
                             
-                            from app.contact_sync import resolve_participant_info
-                            resolved_contacts = []
-                            hidden_count = 0
+                            from app.contact_sync import resolve_participant_info_batch
                             
-                            for jid in all_unique_jids:
-                                info = await resolve_participant_info(jid)
-                                resolved_contacts.append(info)
-                                if not info.get("phone"):
-                                    hidden_count += 1
+                            async def send_progress(current, total):
+                                if current > 0 and current % 50 == 0:
+                                    await send_text_message(chat_id, f"🔄 Resolving {current}/{total}...")
+                                    
+                            resolved_contacts = await resolve_participant_info_batch(list(all_unique_jids), send_progress)
+                            hidden_count = sum(1 for info in resolved_contacts if not info.get("phone"))
                                     
                             def format_contact_entry(info: dict) -> str:
                                 if info.get("phone"):
                                     return f"• +{info['phone']} ({info.get('name', 'Unknown')})"
                                 else:
-                                    return f"• Unknown User (LID: {info['jid']})"
+                                    name_val = info.get("name", "Unknown User")
+                                    return f"• 🔒 Hidden (User has strict privacy settings) - {name_val}. Tip: Ask them to add your bot number as a contact to reveal their number."
                                     
                             lines = [format_contact_entry(c) for c in resolved_contacts]
                             output = "🌍 *Global Contacts Summary (Deduplicated)*\n\n" + "\n".join(lines)
-                            output += f"\n\n⚠️ {hidden_count} members have hidden phone numbers due to WhatsApp privacy settings."
+                            output += f"\n\nℹ️ {hidden_count} numbers hidden. These users likely have 'Who can see my phone number' set to 'Nobody' or 'My Contacts'."
                             
                             await send_long_message(chat_id, output)
                             
@@ -1210,26 +1210,33 @@ async def handle_command(  # Issue 13: added return type
                     return
                     
                 total = len(all_unique_jids)
-                await send_text_message(chat_id, f"🔍 Starting global resolution for {total} users... This may take {total} seconds.")
+                await send_text_message(chat_id, f"🔄 Starting global resolution for {total} users... This will run in the background. Results will be sent to you via DM when complete.")
                 
-                resolved_count = 0
-                hidden_count = 0
-                processed = 0
-                
-                for j in all_unique_jids:
-                    info = await resolve_participant_info(j)
-                    if info.get("phone"):
-                        resolved_count += 1
-                    else:
-                        hidden_count += 1
+                async def run_global_resolution_bg(jids, recipient_id):
+                    from app.contact_sync import resolve_participant_info_batch
                     
-                    processed += 1
-                    if processed % 50 == 0:
-                        await send_text_message(chat_id, f"⏳ Progress: {processed}/{total} users processed...")
+                    async def send_progress(current, total_bg):
+                        if current > 0 and current % 100 == 0:
+                            await send_text_message(recipient_id, f"⏳ Progress: Resolving {current}/{total_bg} users...")
+                            
+                    resolved = await resolve_participant_info_batch(jids, send_progress)
+                    resolved_count = sum(1 for info in resolved if info.get("phone"))
+                    hidden_count = len(resolved) - resolved_count
                     
-                    await asyncio.sleep(1) # Rate limit
+                    def format_contact_entry(info: dict) -> str:
+                        if info.get("phone"):
+                            return f"• +{info['phone']} ({info.get('name', 'Unknown')})"
+                        else:
+                            name_val = info.get("name", "Unknown User")
+                            return f"• 🔒 Hidden (User has strict privacy settings) - {name_val}. Tip: Ask them to add your bot number as a contact to reveal their number."
+                            
+                    lines = [format_contact_entry(c) for c in resolved]
+                    output = f"✅ *Global Resolution Complete*\n\nResolved {resolved_count}/{total} numbers.\n\n" + "\n".join(lines)
+                    output += f"\n\nℹ️ {hidden_count} numbers hidden. These users likely have 'Who can see my phone number' set to 'Nobody' or 'My Contacts'."
                     
-                await send_text_message(chat_id, f"✅ *Global Resolution Complete*\n\nResolved {resolved_count}/{total} numbers.\n{hidden_count} hidden by privacy settings.")
+                    await send_long_message(recipient_id, output)
+                    
+                asyncio.create_task(run_global_resolution_bg(list(all_unique_jids), sender_id))
             
             elif args and args[0] == "group":
                 if not is_group_chat:
@@ -1259,25 +1266,18 @@ async def handle_command(  # Issue 13: added return type
                     return
                     
                 total = len(all_unique_jids)
-                await send_text_message(chat_id, f"🔍 Starting group resolution for {total} users... This may take {total} seconds.")
+                await send_text_message(chat_id, f"🔍 Starting group resolution for {total} users in batches...")
                 
-                resolved_count = 0
-                hidden_count = 0
-                processed = 0
+                from app.contact_sync import resolve_participant_info_batch
                 
-                for j in all_unique_jids:
-                    info = await resolve_participant_info(j)
-                    if info.get("phone"):
-                        resolved_count += 1
-                    else:
-                        hidden_count += 1
-                    
-                    processed += 1
-                    if processed % 50 == 0:
-                        await send_text_message(chat_id, f"⏳ Progress: {processed}/{total} users processed...")
-                    
-                    await asyncio.sleep(1) # Rate limit
-                    
+                async def send_progress(current, total_bg):
+                    if current > 0 and current % 50 == 0:
+                        await send_text_message(chat_id, f"⏳ Progress: {current}/{total_bg} users processed...")
+                        
+                resolved = await resolve_participant_info_batch(list(all_unique_jids), send_progress)
+                resolved_count = sum(1 for info in resolved if info.get("phone"))
+                hidden_count = len(resolved) - resolved_count
+                
                 await send_text_message(chat_id, f"✅ *Group Resolution Complete*\n\nResolved {resolved_count}/{total} numbers.\n{hidden_count} hidden by privacy settings.")
                 
             else:
@@ -1286,7 +1286,7 @@ async def handle_command(  # Issue 13: added return type
                 if info.get("phone"):
                     reply = f"✅ Resolved: +{info['phone']} ({info.get('name', 'Unknown')})"
                 else:
-                    reply = "⚠️ Number hidden by privacy settings or not in contacts."
+                    reply = f"🔒 Hidden (User has strict privacy settings) - {info.get('name', 'Unknown')}. Tip: Ask them to add your bot number as a contact to reveal their number."
                 await send_text_message(chat_id, reply)
 
         elif command == "!chatty":

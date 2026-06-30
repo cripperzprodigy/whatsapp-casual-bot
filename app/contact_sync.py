@@ -9,10 +9,56 @@ from app.state import GroupContactLedger, get_chat_settings
 from app.config import settings
 from app.whatsapp_gateway import resolve_contact_info
 
+import time
+from filelock import FileLock
+
 logger = logging.getLogger(__name__)
+
+CACHE_FILE = "data/contact_resolution_cache.json"
+CACHE_TTL = 86400  # 24 hours
+
+def get_cached_contact(jid: str) -> dict:
+    if not os.path.exists(CACHE_FILE):
+        return None
+    try:
+        with FileLock(f"{CACHE_FILE}.lock", timeout=5):
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                entry = data.get(jid)
+                if entry and (time.time() - entry.get("last_seen", 0)) < CACHE_TTL:
+                    return entry.get("data")
+    except Exception as e:
+        logger.error(f"Error reading resolution cache: {e}")
+    return None
+
+def save_cached_contact(jid: str, contact_data: dict) -> None:
+    try:
+        with FileLock(f"{CACHE_FILE}.lock", timeout=5):
+            data = {}
+            if os.path.exists(CACHE_FILE):
+                with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                    try:
+                        data = json.load(f)
+                    except json.JSONDecodeError:
+                        pass
+            
+            data[jid] = {
+                "last_seen": time.time(),
+                "data": contact_data
+            }
+            
+            with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Error writing resolution cache: {e}")
 
 async def resolve_participant_info(jid: str) -> dict:
     """Resolves phone number and name for a participant by checking local DB then Gateway API."""
+    # Step 0: Check Smart Cache
+    cached = get_cached_contact(jid)
+    if cached:
+        return cached
+
     # Step 1: Check Local DB (data/contacts/)
     contacts_dir = "data/contacts"
     if os.path.exists(contacts_dir):
@@ -27,31 +73,88 @@ async def resolve_participant_info(jid: str) -> dict:
                                 if p_jid == jid:
                                     phone = info.get("phone") or (jid.split("@")[0] if jid.split("@")[0].isdigit() else None)
                                     name = info.get("pushName") or info.get("name") or jid
-                                    return {
+                                    res = {
                                         "jid": jid,
                                         "phone": phone,
                                         "name": name,
                                         "source": "cache"
                                     }
+                                    save_cached_contact(jid, res)
+                                    return res
                     except Exception:
                         pass
                         
     # Step 2: Query Gateway API
     gateway_info = await resolve_contact_info(jid)
     if gateway_info:
-        return {
+        res = {
             "jid": jid,
             "phone": gateway_info.get("phone"),
             "name": gateway_info.get("name") or jid,
             "source": "gateway"
         }
+        save_cached_contact(jid, res)
+        return res
         
-    return {
+    res = {
         "jid": jid,
         "phone": None,
         "name": jid,
         "source": "unknown"
     }
+    save_cached_contact(jid, res)
+    return res
+
+import asyncio
+from app.whatsapp_gateway import resolve_contact_info_batch
+
+async def resolve_participant_info_batch(jids: list[str], progress_callback=None) -> list[dict]:
+    """Resolves phone numbers in batches, utilizing smart cache."""
+    results = []
+    needs_lookup = []
+    
+    # 1. Check Smart Cache first
+    for jid in jids:
+        cached = get_cached_contact(jid)
+        if cached:
+            results.append(cached)
+        else:
+            needs_lookup.append(jid)
+            
+    # 2. Process needs_lookup in batches of 10
+    batch_size = 10
+    total = len(needs_lookup)
+    for i in range(0, total, batch_size):
+        batch = needs_lookup[i:i+batch_size]
+        if progress_callback:
+            await progress_callback(i, total)
+            
+        gateway_results = await resolve_contact_info_batch(batch)
+        
+        # Merge gateway results
+        for item in gateway_results:
+            jid = item.get("jid")
+            if item.get("success"):
+                res = {
+                    "jid": jid,
+                    "phone": item.get("phone"),
+                    "name": item.get("name") or jid,
+                    "source": "gateway"
+                }
+            else:
+                res = {
+                    "jid": jid,
+                    "phone": None,
+                    "name": jid,
+                    "source": "unknown"
+                }
+            save_cached_contact(jid, res)
+            results.append(res)
+            
+        if i + batch_size < total:
+            await asyncio.sleep(0.2)
+            
+    return results
 
 def process_active_sweep(  # Issue 13: added return type
     db: Session,

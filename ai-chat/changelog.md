@@ -143,6 +143,7 @@
 
 ### Fixed
 - **Fix**: Contact resolution stability & permissions. Addressed async mismatches, added missing `/participant/info` gateway endpoint, introduced `FileLock` for profile reads to fix race conditions, and corrected `!sc` permission inversion.
+- **Optimization**: Caching & Batching for Contacts. Added `data/contact_resolution_cache.json` with 24h TTL to skip redundant gateway hits. Implemented `POST /participant/info/batch` in Node.js gateway to process JIDs in batches of 10. `!resolve global` now executes in the background and sends a DM upon completion. Enhanced privacy formatting UX to guide users.
 
 - **Feature**: Active Contact Resolution & `!resolve` command. Owners can now use `!resolve @mention` or `!resolve global` to actively query the gateway and bypass local cache privacy restrictions. `!contacts global` also utilizes this feature.
 - **Feature**: Hybrid Display Formatting. Contact lists now gracefully handle WhatsApp privacy limits, displaying real numbers when available and providing a summary of hidden numbers.
