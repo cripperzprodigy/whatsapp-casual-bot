@@ -1,4 +1,9 @@
 # Issues
+### 7. RAG Context Isolation Audit (Resolved — No Bug Found)
+- **Issue**: Suspected cross-chat context leakage in RAG retrieval — user messages from Group chats potentially appearing in DM queries and vice versa.
+- **Cause**: Audit revealed the hypothesis was incorrect. Each `chat_id` already maps to a separate `ChromaDB.PersistentClient` at `./data/contacts/{safe_id}/vector_db/`, providing complete filesystem-level isolation. No `where` clause existed in retrieval queries, but this was inconsequential since each collection is chat-specific.
+- **Resolution**: Applied defense-in-depth hardening: extracted duplicated retrieval code into `_retrieve_rag_context()` with an explicit `where={"chat_id": self.chat_id}` filter. Added 6 integration tests in `tests/test_rag_isolation.py` proving isolation across DM↔Group and Group↔Group boundaries. See ADR-035.
+
 ### 6. Group AI Language Detection Defaulting to English (Resolved)
 - **Issue**: Group chat AI responses always defaulted to English regardless of the user's input language (e.g., Indonesian triggers received English replies).
 - **Cause**: `_detect_language()` in `ai_memory_engine.py` had a group-specific early return that bypassed actual language detection, returning the static `default_target_language` setting (defaulting to `'en'`) instead of detecting the incoming message's language.

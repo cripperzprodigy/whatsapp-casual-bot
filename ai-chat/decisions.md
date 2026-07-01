@@ -587,3 +587,32 @@ The AI Memory Engine's `_detect_language()` method had a group-specific early re
 ### References
 - `app/services/ai_memory_engine.py:_detect_language()`
 - KB: `ai-chat/knowledge_base/LANGUAGE_DETECTION.md`
+
+## ADR-035 — RAG Per-Chat Filesystem Isolation & Defense-in-Depth Filtering
+
+### Context
+A code audit was initiated to investigate suspected cross-chat context leakage in the RAG retrieval pipeline — specifically whether a user's DM query might return messages from their group conversations, or vice versa.
+
+The audit revealed that the existing architecture already provides **complete filesystem-level isolation**: each `chat_id` maps to a separate `ChromaDB.PersistentClient` at `./data/contacts/{safe_id}/vector_db/`. Since each chat has its own physical SQLite database, cross-chat vector retrieval is architecturally impossible.
+
+However, two gaps were identified:
+1. The retrieval queries used no `where` clause at all — relying entirely on filesystem separation.
+2. The retrieval logic was duplicated identically in `process_message()` and `generate_delayed_reply()` (~20 lines each).
+3. No integration tests existed to formally prove the isolation guarantees.
+
+### Decision
+1. **Extract `_retrieve_rag_context()`**: Consolidate the duplicated retrieval blocks into a single reusable async method, eliminating ~40 lines of code duplication.
+2. **Defense-in-depth `where` clause**: Add `where={"chat_id": self.chat_id}` to the ChromaDB `collection.query()` call. This is a no-op in the current per-chat-db architecture but guards against future architectural changes (e.g., collection consolidation) accidentally breaking isolation.
+3. **Isolation test suite**: Create `tests/test_rag_isolation.py` with 6 integration tests covering all cross-chat boundary scenarios (Group↔Group, Group↔DM, same-chat retrieval, where clause verification, filesystem path uniqueness).
+
+### Consequences
+- Positive: Formal proof (via tests) that no cross-chat leakage exists.
+- Positive: Defense-in-depth ensures isolation survives future refactors.
+- Positive: Code duplication eliminated — single retrieval method to maintain.
+- Positive: Zero performance impact — `where` clause filtering within a single-chat collection adds negligible overhead.
+- Negative: None identified.
+
+### References
+- `app/services/ai_memory_engine.py:_retrieve_rag_context()`
+- `tests/test_rag_isolation.py`
+- KB: `ai-chat/knowledge_base/RAG_MEMORY_ENGINE.md` (Context Isolation Architecture section)

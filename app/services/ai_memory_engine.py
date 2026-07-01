@@ -221,6 +221,40 @@ class AIMemoryEngine:
         except Exception as e:
             logger.error(f"[RAG] Async ingest error for {self.chat_id}: {e}")
 
+    async def _retrieve_rag_context(self, query_text: str) -> str:
+        """
+        Retrieve relevant past messages from ChromaDB for the current chat.
+
+        Defense-in-depth: Although each chat_id already has its own isolated
+        ChromaDB PersistentClient (filesystem-level isolation), we additionally
+        filter by chat_id in the where clause. This guards against future
+        architectural changes (e.g., collection consolidation) accidentally
+        breaking isolation boundaries.
+        """
+        if not settings.ENABLE_RAG_INGESTION:
+            return ""
+        try:
+            count = await asyncio.to_thread(lambda: self.collection.count())
+            if count == 0:
+                return ""
+            query_embedding = await asyncio.to_thread(
+                lambda: self.embedding_model.encode(query_text).tolist()
+            )
+            results = await asyncio.to_thread(
+                lambda: self.collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=min(settings.RAG_TOP_K, count),
+                    where={"chat_id": self.chat_id},  # Defense-in-depth isolation
+                )
+            )
+            if results["documents"] and results["documents"][0]:
+                return "\n".join(results["documents"][0])
+        except ValueError as e:
+            logger.error(f"RAG retrieval error for {self.chat_id}: {e}")
+        except Exception as e:
+            logger.error(f"RAG retrieval unexpected error for {self.chat_id}: {e}")
+        return ""
+
     async def ingest_message(
         self,
         text: str,
@@ -314,26 +348,7 @@ Output ONLY valid JSON."""
             return None
 
         # 4. Retrieve RAG Context (async, non-blocking; guarded by ENABLE_RAG_INGESTION)
-        retrieved_context = ""
-        if settings.ENABLE_RAG_INGESTION:
-            try:
-                count = await asyncio.to_thread(lambda: self.collection.count())
-                if count > 0:
-                    query_embedding = await asyncio.to_thread(
-                        lambda: self.embedding_model.encode(full_text).tolist()
-                    )
-                    results = await asyncio.to_thread(
-                        lambda: self.collection.query(
-                            query_embeddings=[query_embedding],
-                            n_results=min(settings.RAG_TOP_K, count)
-                        )
-                    )
-                    if results["documents"] and results["documents"][0]:
-                        retrieved_context = "\n".join(results["documents"][0])
-            except ValueError as e:
-                logger.error(f"RAG retrieval error: {e}")
-            except Exception as e:
-                logger.error(f"RAG retrieval unexpected error: {e}")
+        retrieved_context = await self._retrieve_rag_context(full_text)
 
         # 5. Build System Prompt
         base_prompt_path = Path("./data/system_prompts/default.txt")
@@ -425,26 +440,7 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         lang = await self._detect_language(full_text)
 
         # 3. Retrieve RAG Context (async, non-blocking; guarded by ENABLE_RAG_INGESTION)
-        retrieved_context = ""
-        if settings.ENABLE_RAG_INGESTION:
-            try:
-                count = await asyncio.to_thread(lambda: self.collection.count())
-                if count > 0:
-                    query_embedding = await asyncio.to_thread(
-                        lambda: self.embedding_model.encode(full_text).tolist()
-                    )
-                    results = await asyncio.to_thread(
-                        lambda: self.collection.query(
-                            query_embeddings=[query_embedding],
-                            n_results=min(settings.RAG_TOP_K, count)
-                        )
-                    )
-                    if results["documents"] and results["documents"][0]:
-                        retrieved_context = "\n".join(results["documents"][0])
-            except ValueError as e:
-                logger.error(f"RAG retrieval error in delayed reply: {e}")
-            except Exception as e:
-                logger.error(f"RAG retrieval unexpected error in delayed reply: {e}")
+        retrieved_context = await self._retrieve_rag_context(full_text)
 
         # 4. Build System Prompt
         base_prompt_path = Path("./data/system_prompts/default.txt")

@@ -1,5 +1,18 @@
 # Changelog
 
+### RAG Context Isolation — Defense-in-Depth Hardening — ADR-035 (2026-07-02)
+- **Audit finding**: Per-chat filesystem isolation via separate `ChromaDB.PersistentClient` directories already prevents cross-chat context leakage. No live bug exists.
+- **New `_retrieve_rag_context()` method** (`app/services/ai_memory_engine.py`): Extracted and consolidated duplicated RAG retrieval logic from `process_message()` and `generate_delayed_reply()` into a single reusable async method. Eliminates ~40 lines of code duplication.
+- **Defense-in-depth `where` clause**: `_retrieve_rag_context()` now filters by `where={"chat_id": self.chat_id}` in ChromaDB queries. This is a no-op in the current per-chat-db architecture but guards against future collection consolidation accidentally breaking isolation.
+- **New isolation test suite** (`tests/test_rag_isolation.py`): 6 integration tests proving cross-chat isolation boundaries:
+  - Scenario A: Group 1 → Group 2 (same user) → No results
+  - Scenario B: Group → DM → No results
+  - Scenario C: DM → Same DM → Results found
+  - Scenario D: Group → Same Group → Results found
+  - Scenario E: Verifies `where` clause is passed to ChromaDB
+  - Scenario F: Verifies filesystem path uniqueness across chat types
+- **Updated `RAG_MEMORY_ENGINE.md`**: Added Context Isolation Architecture section with dual-layer defense diagram and isolation guarantee matrix.
+
 ### Activated RAG Ingestion Pipeline — ADR-030 (2026-07-01)
 - **New `ingest_message()` method** (`app/services/ai_memory_engine.py`): Public async entry point for fire-and-forget message ingestion. Writes to `.jsonl` conversation history synchronously (required for `generate_delayed_reply()` continuity), then schedules an async ChromaDB embedding write via `asyncio.create_task()` → `_rag_ingest_async()` → `asyncio.to_thread()`. Context isolation is guaranteed by scoping all writes to `self.chat_id`.
 - **New `_rag_ingest_async()` method**: Non-blocking ChromaDB write helper that runs `SentenceTransformer.encode()` and `collection.add()` in Python's thread pool via `asyncio.to_thread()`, preventing the previously synchronous embedding calls from blocking the FastAPI event loop.

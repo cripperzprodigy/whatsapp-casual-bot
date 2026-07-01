@@ -110,7 +110,8 @@ await engine.process_message(text, ..., skip_user_ingestion=True)
 │  2. _process_media(media_path)                      │
 │  3. Skip user .jsonl write (skip_user_ingestion)    │
 │                                                     │
-│  4. RAG Retrieval  ← guarded by ENABLE_RAG_INGESTION│
+│  4. _retrieve_rag_context(full_text)                │
+│     ← Consolidated retrieval method (ADR-035)       │
 │     a. asyncio.to_thread(collection.count())        │
 │     b. asyncio.to_thread(                          │
 │            embedding_model.encode(full_text)        │
@@ -118,7 +119,9 @@ await engine.process_message(text, ..., skip_user_ingestion=True)
 │     c. asyncio.to_thread(                          │
 │            collection.query(                        │
 │                query_embeddings=[embedding],         │
-│                n_results=min(RAG_TOP_K, count)      │
+│                n_results=min(RAG_TOP_K, count),     │
+│                where={"chat_id": self.chat_id}      │
+│                ↑ Defense-in-depth isolation filter   │
 │            )                                        │
 │        )                                            │
 │     → retrieved_context = top-K documents joined   │
@@ -225,6 +228,63 @@ Reads from SQLite `message_buffer`. Processes oldest-first. Yields after each ro
 
 ---
 
+## 🔒 Context Isolation Architecture (ADR-035)
+
+RAG context isolation uses a **dual-layer** defense strategy:
+
+### Layer 1: Filesystem Isolation (Primary)
+
+Each `chat_id` maps to a completely separate ChromaDB `PersistentClient` on disk:
+
+```
+User DM:    ./data/contacts/user1_s_whatsapp_net/vector_db/chroma.sqlite3
+Group A:    ./data/contacts/groupA_g_us/vector_db/chroma.sqlite3
+Group B:    ./data/contacts/groupB_g_us/vector_db/chroma.sqlite3
+```
+
+These are **physically separate databases**. A query in one PersistentClient can never return results from another.
+
+### Layer 2: Where Clause Filter (Defense-in-Depth)
+
+The `_retrieve_rag_context()` method additionally filters by `chat_id` in the ChromaDB `where` clause:
+
+```python
+results = self.collection.query(
+    query_embeddings=[query_embedding],
+    n_results=min(settings.RAG_TOP_K, count),
+    where={"chat_id": self.chat_id},  # Defense-in-depth
+)
+```
+
+This is a no-op in the current architecture (all vectors in a collection already share the same `chat_id`) but guards against future changes that might consolidate collections.
+
+### Isolation Guarantees
+
+```
+User Query (DM)                      User Query (Group A)
+     │                                      │
+     ▼                                      ▼
+_retrieve_rag_context()             _retrieve_rag_context()
+     │                                      │
+     ▼                                      ▼
+ChromaDB: user1_s_whatsapp_net/     ChromaDB: groupA_g_us/
+  where: chat_id = DM_ID              where: chat_id = GROUP_A_ID
+     │                                      │
+     ▼                                      ▼
+DM Messages ONLY ✓                  Group A Messages ONLY ✓
+(No Group data)                     (No DM or Group B data)
+```
+
+| Scenario | Ingested In | Query In | Result |
+|---|---|---|---|
+| Same DM | DM | DM | ✅ Found |
+| Same Group | Group A | Group A | ✅ Found |
+| Group → DM | Group A | DM | ❌ Not found |
+| Group → Group | Group A | Group B | ❌ Not found |
+| DM → Group | DM | Group A | ❌ Not found |
+
+---
+
 ## 🧪 Test Coverage
 
 See `tests/test_rag_ingestion.py`:
@@ -238,3 +298,14 @@ See `tests/test_rag_ingestion.py`:
 | `test_process_message_writes_user_without_skip_flag` | User entry present when `skip_user_ingestion=False` |
 | `test_context_isolation_separate_vector_paths` | DM and Group use distinct `vector_db_path` |
 | `test_rag_top_k_used_in_retrieval` | `n_results=min(RAG_TOP_K, count)` respected |
+
+See `tests/test_rag_isolation.py` (ADR-035):
+
+| Test | Verifies |
+|---|---|
+| `test_scenario_a_group1_to_group2_no_leakage` | Group 1 data NOT visible in Group 2 |
+| `test_scenario_b_group_to_dm_no_leakage` | Group data NOT visible in DM |
+| `test_scenario_c_dm_to_same_dm_returns_results` | DM data IS visible in same DM |
+| `test_scenario_d_group_to_same_group_returns_results` | Group data IS visible in same Group |
+| `test_where_clause_includes_chat_id` | `where={"chat_id": ...}` passed to ChromaDB query |
+| `test_filesystem_isolation_different_chat_types` | All chat types produce distinct DB paths |
