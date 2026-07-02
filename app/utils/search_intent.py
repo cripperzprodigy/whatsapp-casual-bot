@@ -16,6 +16,22 @@ Design principles:
 import re
 from typing import Optional, Tuple
 
+
+def is_search_enabled() -> bool:
+    """Check if search is globally enabled (SEARCH_ENABLED config flag).
+
+    Used as a global gate before any search operation (DM, Group Mention, Command).
+    If disabled, all search entry points should reject with a friendly message.
+
+    Returns
+    -------
+    bool
+        True if search features are globally enabled, False otherwise.
+    """
+    from app.config import settings
+    return getattr(settings, "SEARCH_ENABLED", True)
+
+
 # 🧩 Natural language search patterns 🧩
 # Each pattern has exactly ONE capture group:
 #   Group 1: the actual search query (e.g., (.+) at end of pattern)

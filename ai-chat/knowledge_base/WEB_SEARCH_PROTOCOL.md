@@ -104,6 +104,37 @@ DM Message: "what's the weather like?" (no intent)
 
 ---
 
+## Global Search Disable (SEARCH-GATE-001)
+
+The `SEARCH_ENABLED` flag provides a "kill switch" to completely disable all web search features across the entire bot:
+
+**Configuration:**
+```env
+# In .env file
+SEARCH_ENABLED=False  # Disables ALL search (DM, Group, Commands)
+SEARCH_ENABLED=True   # Enables search (default)
+```
+
+**Affected Entry Points:**
+When `SEARCH_ENABLED=False`, the bot rejects search requests from:
+1. **DM Natural Language**: `"search for X"`, `"look up Y"` → returns `"⚠️ Web search is currently disabled by administration."`
+2. **Group Mentions**: `"@Bot search for X"` → returns same message
+3. **Explicit Commands**: `!sc <query>`, `!s <query>` → returns same message
+
+**Use Cases:**
+- **Temporary Maintenance**: Set to `False` while updating search backend
+- **Rate Limiting**: Disable search if API quota exceeded
+- **Cost Control**: Set to `False` to prevent expensive API calls during high traffic
+- **Security**: Block search if a vulnerability in crawling is discovered
+
+**Implementation Details:**
+- Gate check function `is_search_enabled()` in `app/utils/search_intent.py`
+- Gate is checked **before** expensive operations (API calls, LLM synthesis)
+- Rejection message is friendly and non-technical
+- Admins can toggle via `.env` file + restart (or integrate with dynamic config system)
+
+---
+
 ## Group Chat Mention-Triggered Search (GROUP-SEARCH-001)
 
 Natural language search is disabled by default in groups to prevent spam on casual conversation (e.g. "let's search for a restaurant"). It can only be triggered via an explicit bot mention.

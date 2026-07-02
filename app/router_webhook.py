@@ -277,6 +277,17 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             is_search, search_query = detect_search_intent(text)
             if is_search and search_query:
                 from app.config import settings as _cfg
+                from app.utils.search_intent import is_search_enabled
+                
+                # SEARCH-GATE-001: Global gate check (kill switch)
+                if not is_search_enabled():
+                    logger.info(f"[SearchGate] DM search blocked (SEARCH_ENABLED=False): chat={chat_id}")
+                    await send_text_message(
+                        chat_id,
+                        "⚠️ Web search is currently disabled by administration.",
+                    )
+                    return
+                
                 if getattr(_cfg, "deep_crawl_enabled", True) and getattr(_cfg, "CHATTY_SEARCH_DEFAULT", True):
                     logger.info(f"[SearchIntent] DM chat={chat_id} natural search: '{search_query}'")
                     search_triggered = True

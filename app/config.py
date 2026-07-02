@@ -246,9 +246,13 @@ class Settings(BaseSettings):
     DEFAULT_MODEL_NAME: str = "gpt-3.5-turbo"
 
     # ------------------------------------------------------------------ #
-    #  Web Search Timeouts
+    #  Web Search Configuration
     # ------------------------------------------------------------------ #
+    # Global kill switch for all web search features (DM, Group Mention, Commands)
+    SEARCH_ENABLED: bool = True
+    # Timeout in seconds for web search LLM synthesis (large contexts need time)
     LLM_SEARCH_TIMEOUT: int = Field(default=90, description="Timeout in seconds for web search LLM synthesis")
+    # Cooldown in seconds between mention-triggered searches in groups
     GROUP_SEARCH_COOLDOWN: int = Field(default=60, description="Cooldown in seconds between mention-triggered searches in groups")
 
     # ------------------------------------------------------------------ #

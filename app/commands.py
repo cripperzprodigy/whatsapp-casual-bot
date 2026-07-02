@@ -823,6 +823,13 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, "Usage: !search <query>")
 
         elif command == "!s":
+            from app.utils.search_intent import is_search_enabled
+            
+            # SEARCH-GATE-001: Global kill switch (applies to all search types)
+            if not is_search_enabled():
+                await send_text_message(chat_id, "⚠️ Web search is currently disabled by administration.")
+                return
+            
             if not getattr(app_settings, "enable_agentic_search", False):
                 await send_text_message(chat_id, "🚫 Agentic search is disabled. Owner can enable via: !config toggle agentic_search on")
                 return
@@ -855,6 +862,13 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, "Usage: !s <query>")
 
         elif command == "!sc":
+            from app.utils.search_intent import is_search_enabled
+            
+            # SEARCH-GATE-001: Global kill switch (primary gate)
+            if not is_search_enabled():
+                await send_text_message(chat_id, "⚠️ Web search is currently disabled by administration.")
+                return
+            
             if not app_settings.deep_crawl_enabled:
                 await send_text_message(chat_id, "🚫 Deep Crawl Search is currently disabled by admin. Owner can enable via: `!sc_toggle on`")
                 return

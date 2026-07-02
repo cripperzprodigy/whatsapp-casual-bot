@@ -1,5 +1,15 @@
 # Changelog
 
+### Global Search Kill Switch — SEARCH-GATE-001 - 2026-07-02
+- **New Config Flag**: Added `SEARCH_ENABLED=True` to `app/config.py` Settings class. Global control for all web search features (DM, Group, Commands).
+- **Helper Function**: Created `is_search_enabled()` in `app/utils/search_intent.py`. Replaces scattered gate checks throughout codebase.
+- **DM Search Gate**: Added gate check in `router_webhook.py` DM handler before `detect_search_intent()`. Rejects with: `"⚠️ Web search is currently disabled by administration."`.
+- **Command Search Gates**: Added gate checks in `commands.py` for both `!s` (agentic) and `!sc` (deep crawl) commands. Early rejection before expensive API calls.
+- **Config Sync**: Updated `.env.example` with comprehensive "WEB SEARCH & DEEP CRAWL CONFIGURATION" section. Consolidated `SEARCH_ENABLED`, `LLM_SEARCH_TIMEOUT`, `GROUP_SEARCH_COOLDOWN`, and all related search configs with clear comments and defaults.
+- **Documentation**: Updated `ai-chat/knowledge_base/WEB_SEARCH_PROTOCOL.md` with new "Global Search Disable (SEARCH-GATE-001)" section explaining configuration, use cases, and implementation details.
+- **Test Coverage**: Created `tests/test_search_gates.py` with 30+ tests covering gate functionality, config loading, `.env.example` synchronization, and documentation updates.
+- **Unified Gates**: All three search entry points (DM natural language, Group mentions, Commands) now check the same global flag. Single point of control prevents bypass scenarios.
+
 ### Config Cleanup & Documentation Fixes - 2026-07-02
 - **Dead Config Variables Removed**: Removed `CRAWL_TOTAL_TIMEOUT`, `CHATTY_SEARCH_TIMEOUT_SECONDS`, and `deep_crawl_timeout_seconds` from `config.py` and `.env.example`.
 - **Config Rename**: Renamed the legacy `crawl_timeout_seconds` to `CRAWL_CONNECTION_TIMEOUT` to unify the naming standard across the `config.py` definitions and consuming services (`deep_crawl_service.py`, `agentic_search_service.py`, `commands.py`).
