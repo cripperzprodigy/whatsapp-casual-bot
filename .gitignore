@@ -78,6 +78,11 @@ data/system_prompts/
 exports/
 profile.json
 chat_history.jsonl
+# Runtime state files (search toggles, config overrides, etc.)
+.search_state.json
+.search_state.json.lock
+config_override.json
+config_override.json.lock
 *.jsonl
 
 # RAG & ChromaDB Vector Stores

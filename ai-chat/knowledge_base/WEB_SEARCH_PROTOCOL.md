@@ -149,3 +149,53 @@ Natural language search is disabled by default in groups to prevent spam on casu
 - ✅ `"hey @CasualBot can you look up f1 results"` → Cleans to `"f1 results"`, executes search.
 - ❌ `"search for Batam news"` → Ignored (no mention).
 - ❌ `"I saw a search result on Google"` → Ignored (no mention, false positive).
+
+---
+
+## Runtime Toggling (ADMIN-TOGGLE-002)
+
+The Owner can independently toggle Agentic Search (`!s`) and Deep Crawl Search (`!sc`) at runtime without restarting the bot. State persists across restarts.
+
+**Hierarchy:**
+```
+┌─ SEARCH_ENABLED env var (Hard Kill Switch)
+│  ├─ False → All search blocked regardless of runtime toggles
+│  └─ True → Check runtime state (soft toggles)
+│     ├─ agentic_enabled → Controls !s command
+│     └─ deep_crawl_enabled → Controls !sc command
+```
+
+**Owner Commands:**
+```
+!admin toggle_agentic   # Flip Agentic Search (!s) on/off
+!admin toggle_crawl     # Flip Deep Crawl Search (!sc) on/off
+```
+
+**Responses:**
+- Success: `✅ Agentic Search is now ENABLED/DISABLED.`
+- Unauthorized: `🔒 Access Denied: This command requires Owner privileges.`
+
+**Persistence:**
+- Runtime state is stored in `.search_state.json` (git-ignored)
+- State file format: `{"agentic_enabled": true, "deep_crawl_enabled": true}`
+- On startup, toggles are loaded from `.search_state.json`
+- If file is corrupted, defaults to all-enabled
+
+**Dynamic Help:**
+The `!help` command dynamically shows current status:
+```
+• !s (Agentic Search): 🟢 ENABLED / 🔴 DISABLED
+• !sc (Deep Crawl): 🟢 ENABLED / 🔴 DISABLED
+  └─ Status controlled by owner via !admin toggle_*
+```
+
+**Security:**
+- Only users in `OWNER_IDS` config (comma-separated) can toggle
+- Non-owners attempting to use `!admin toggle_*` receive "Access Denied" and state does NOT change
+- Example config: `OWNER_IDS=1234567890@s.whatsapp.net,9876543210@s.whatsapp.net`
+
+**Use Cases:**
+- **Resource Management**: Disable Deep Crawl during high server load, keep Agentic Search enabled for quick queries
+- **Cost Control**: Disable expensive feature, enable cheaper alternative
+- **Testing**: Toggle features on/off without restarting bot
+- **Debugging**: Isolate issues by disabling specific search type

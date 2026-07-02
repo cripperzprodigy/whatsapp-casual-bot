@@ -288,6 +288,9 @@ class Settings(BaseSettings):
     BOT_IDENTITY_CACHE_TTL: int = 300
     # Bootstrap Owner configured via .env
     BOT_OWNER_ID: Optional[str] = None
+    # Comma-separated list of owner IDs (WhatsApp JIDs) who can toggle features.
+    # E.g., "1234567890@s.whatsapp.net,9876543210@s.whatsapp.net"
+    OWNER_IDS: str = ""
     # Issue 2: buffer size, now referenced as a named config value
     MESSAGE_BUFFER_SIZE: int = 200
     AUTO_SYNC_CONTACTS: bool = True

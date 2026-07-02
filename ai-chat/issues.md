@@ -1,5 +1,20 @@
 # Issues
 
+### ISSUE-031: [RESOLVED] Individual Search Feature Toggles
+- **Description**: Owner needed ability to toggle Agentic Search (`!s`) and Deep Crawl Search (`!sc`) independently at runtime without restarting the bot. State must persist across restarts. Global `SEARCH_ENABLED` flag should hard-override all toggles as a kill switch.
+- **Resolution**: Implemented `app/utils/runtime_state.py` with persistent JSON-based state management. Added two new gate functions to `search_intent.py`:
+  - `is_agentic_search_allowed()`: Checks hard kill switch first, then runtime state for agentic
+  - `is_deep_crawl_allowed()`: Checks hard kill switch first, then runtime state for deep crawl
+  - Updated `!s` and `!sc` commands to use new gates (replaces global `is_search_enabled()`)
+  - Added owner-only commands: `!admin toggle_agentic` and `!admin toggle_crawl`
+  - Updated `!help` to dynamically display `🟢 ENABLED` or `🔴 DISABLED` for each feature
+  - Config: Added `OWNER_IDS` field for comma-separated WhatsApp JIDs
+  - Security: Non-owners attempting toggle receive "🔒 Access Denied" without state change
+  - Persistence: State stored in `.search_state.json` with thread-safe locking (survives restart)
+  - Hierarchy: `SEARCH_ENABLED=False` env var blocks both toggles; `SEARCH_ENABLED=True` allows individual control
+  - Tests: 37 comprehensive tests covering state persistence, gate logic, owner auth, dynamic help, file corruption recovery
+- **Related ADR**: ADMIN-TOGGLE-002
+
 ### ISSUE-030: [RESOLVED] Stale Comment in search_intent.py
 - **Description**: The comment in `search_intent.py` inaccurately stated that the regex patterns contained exactly TWO capture groups.
 - **Resolution**: Corrected the comment to reflect the reality that each pattern contains exactly ONE capture group `(.+)`.

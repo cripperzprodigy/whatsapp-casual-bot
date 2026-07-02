@@ -277,18 +277,18 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
             is_search, search_query = detect_search_intent(text)
             if is_search and search_query:
                 from app.config import settings as _cfg
-                from app.utils.search_intent import is_search_enabled
+                from app.utils.search_intent import is_agentic_search_allowed
                 
-                # SEARCH-GATE-001: Global gate check (kill switch)
-                if not is_search_enabled():
-                    logger.info(f"[SearchGate] DM search blocked (SEARCH_ENABLED=False): chat={chat_id}")
+                # ADMIN-TOGGLE-002: Check if agentic search is allowed (hierarchical gate)
+                if not is_agentic_search_allowed():
+                    logger.info(f"[SearchGate] DM search blocked (agentic_search disabled): chat={chat_id}")
                     await send_text_message(
                         chat_id,
                         "⚠️ Web search is currently disabled by administration.",
                     )
                     return
                 
-                if getattr(_cfg, "deep_crawl_enabled", True) and getattr(_cfg, "CHATTY_SEARCH_DEFAULT", True):
+                if getattr(_cfg, "CHATTY_SEARCH_DEFAULT", True):
                     logger.info(f"[SearchIntent] DM chat={chat_id} natural search: '{search_query}'")
                     search_triggered = True
                     try:
@@ -392,10 +392,15 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
         idx = text.lower().find(mention_str)
         is_mentioned_for_search = idx != -1
         if is_mentioned_for_search:
-            from app.utils.search_intent import detect_search_intent, clean_query
+            from app.utils.search_intent import detect_search_intent, clean_query, is_deep_crawl_allowed
             text_after_mention = text[idx + len(mention_str):].strip()
             is_search, _ = detect_search_intent(text_after_mention)
             if is_search:
+                # ADMIN-TOGGLE-002: Check if deep crawl is allowed for group mention search
+                if not is_deep_crawl_allowed():
+                    await send_text_message(chat_id, "⚠️ Web search is currently disabled by administration.")
+                    return
+                
                 now = time.time()
                 cooldown = getattr(settings, "GROUP_SEARCH_COOLDOWN", 60)
                 if now - _group_search_cooldowns[chat_id] < cooldown:

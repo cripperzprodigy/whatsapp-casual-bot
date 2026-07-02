@@ -49,13 +49,20 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     response = "🤖 *WhatsApp Casual Bot Commands*\n\n"
     
     # ---------------------------------------------------------
+    # Dynamic Search Status (ADMIN-TOGGLE-002)
+    # ---------------------------------------------------------
+    from app.utils.search_intent import is_agentic_search_allowed, is_deep_crawl_allowed
+    agentic_status = "🟢 ENABLED" if is_agentic_search_allowed() else "🔴 DISABLED"
+    crawl_status = "🟢 ENABLED" if is_deep_crawl_allowed() else "🔴 DISABLED"
+    
+    # ---------------------------------------------------------
     # 1. COMMON COMMANDS (Available to everyone)
     # ---------------------------------------------------------
     response += "*📢 Available to You:*\n"
     response += "• `!a <text>`: Ask the AI a question\n"
     response += "• `!search <query>`: Quick search the web\n"
-    response += "• `!s <query>`: Search the web with AI refinement\n"
-    response += "• `!sc <query>`: 🕷️ Deep Crawl Search: Fetches full content from top websites (if enabled)\n"
+    response += f"• `!s <query>`: AI-refined search [{agentic_status}]\n"
+    response += f"• `!sc <query>`: 🕷️ Deep Crawl Search [{crawl_status}]\n"
     response += "• `!summary`: Summarize replied text or chat history\n"
     response += "• `!ping`: Check bot status\n"
     response += "• `!help`: Show this menu\n"
@@ -106,8 +113,10 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     # ---------------------------------------------------------
     if role == OWNER_ROLE:
         response += "\n*👑 Owner Commands:*\n"
-        response += "• `!sc_toggle <on|off>`: 🔒 Toggle Deep Crawl feature globally\n"
-        response += "• `!config toggle <feature> <state>`: ⚙️ Advanced configuration toggles\n"
+        response += "• `!search_toggle <agentic|deep> <on|off>`: Toggle search features\n"
+        response += "  └─ `!search_toggle agentic off` disables Agentic Search (!s)\n"
+        response += "  └─ `!search_toggle deep off` disables Deep Crawl Search (!sc)\n"
+        response += "  └─ Status persists across restarts via config_override.json\n"
         response += "• `!contacts global`: View all contacts globally\n"
         response += "• `!contacts export`: Export global contact ledger\n"
         response += "• `!resolve @mention`: Force resolve a user's phone number\n"
@@ -211,33 +220,41 @@ async def handle_command(  # Issue 13: added return type
                 )
 
         elif command == "!sc_toggle":
+            # Legacy command for backward compatibility. Use !search_toggle instead.
+            from app.utils.state_manager import RuntimeStateManager
+            
             if not await is_owner(db, sender_id):
                 await send_text_message(
                     chat_id,
-                    "🚫 Access Denied: `!sc_toggle` requires Owner privileges. Type !help to see available commands.",
+                    "🚫 Access Denied: `!sc_toggle` requires Owner privileges.\n"
+                    "Use `!search_toggle deep <on|off>` instead. Type `!help` for more info.",
                 )
             elif len(args) == 1 and args[0] in ["on", "off"]:
                 new_state = args[0] == "on"
-                app_settings.deep_crawl_enabled = new_state
-                persist_global_config("deep_crawl_enabled", new_state)
+                # Use RuntimeStateManager for consistency with new unified system
+                RuntimeStateManager.set_bool("deep_crawl_enabled", new_state)
                 if new_state:
                     await send_text_message(
                         chat_id,
                         "✅ Deep Crawl Search is now *enabled* globally.\n"
-                        "Users can use `!sc <query>` to crawl full web pages for research.",
+                        "Users can use `!sc <query>` to crawl full web pages for research.\n"
+                        "_Tip: Use `!search_toggle deep on|off` for newer unified command._",
                     )
                 else:
                     await send_text_message(
                         chat_id,
                         "⛔ Deep Crawl Search is now *disabled* globally.\n"
-                        "The `!sc` command will return a disabled notice.",
+                        "The `!sc` command will return a disabled notice.\n"
+                        "_Tip: Use `!search_toggle deep on|off` for newer unified command._",
                     )
             else:
-                current = "ON ✅" if app_settings.deep_crawl_enabled else "OFF ❌"
+                current = RuntimeStateManager.get_bool("deep_crawl_enabled", True)
+                current_status = "ON ✅" if current else "OFF ❌"
                 await send_text_message(
                     chat_id,
-                    f"🕷️ Deep Crawl Search is currently: *{current}*\n"
-                    f"Usage: `!sc_toggle on` or `!sc_toggle off`",
+                    f"🕷️ Deep Crawl Search is currently: *{current_status}*\n"
+                    f"Usage: `!sc_toggle on` or `!sc_toggle off`\n"
+                    f"_Tip: Use `!search_toggle deep on|off` for newer unified command._",
                 )
 
         elif command == "!target":
@@ -719,11 +736,33 @@ async def handle_command(  # Issue 13: added return type
             elif len(args) == 0:
                 await send_text_message(
                     chat_id,
-                    "Usage: !admin grant|revoke|list <jid>",
+                    "Usage: !admin grant|revoke|list|toggle_agentic|toggle_crawl <jid>",
                 )
             else:
                 subcmd = args[0]
-                if subcmd == "grant" and len(args) == 2:
+                if subcmd == "toggle_agentic":
+                    # CMD-HELP-SYNC-001: Refactored to use unified RuntimeStateManager
+                    # (Legacy: Use !search_toggle agentic on|off instead)
+                    from app.utils.state_manager import RuntimeStateManager
+                    new_state = RuntimeStateManager.toggle_bool("agentic_enabled", True)
+                    status = "ENABLED ✅" if new_state else "DISABLED ❌"
+                    await send_text_message(
+                        chat_id,
+                        f"Agentic Search (!s) is now {status}\n"
+                        f"_Tip: Use `!search_toggle agentic on|off` for unified command._",
+                    )
+                elif subcmd == "toggle_crawl":
+                    # CMD-HELP-SYNC-001: Refactored to use unified RuntimeStateManager
+                    # (Legacy: Use !search_toggle deep on|off instead)
+                    from app.utils.state_manager import RuntimeStateManager
+                    new_state = RuntimeStateManager.toggle_bool("deep_crawl_enabled", True)
+                    status = "ENABLED ✅" if new_state else "DISABLED ❌"
+                    await send_text_message(
+                        chat_id,
+                        f"Deep Crawl Search (!sc) is now {status}\n"
+                        f"_Tip: Use `!search_toggle deep on|off` for unified command._",
+                    )
+                elif subcmd == "grant" and len(args) == 2:
                     await grant_role(
                         db,
                         args[1],
@@ -760,7 +799,63 @@ async def handle_command(  # Issue 13: added return type
                 else:
                     await send_text_message(
                         chat_id,
-                        "Usage: !admin grant|revoke|list <jid>",
+                        "Usage: !admin grant|revoke|list|toggle_agentic|toggle_crawl <jid>",
+                    )
+
+        elif command == "!search_toggle":
+            # CMD-HELP-SYNC-001: Unified search feature toggle command
+            from app.utils.state_manager import RuntimeStateManager
+            
+            if not await is_owner(db, sender_id):
+                await send_text_message(
+                    chat_id,
+                    "🚫 Access Denied: This command requires Owner privileges.",
+                )
+            elif len(args) < 2:
+                # Show current status
+                current_agentic = RuntimeStateManager.get_bool("agentic_enabled", True)
+                current_deep = RuntimeStateManager.get_bool("deep_crawl_enabled", True)
+                agentic_status = "🟢 ON" if current_agentic else "🔴 OFF"
+                deep_status = "🟢 ON" if current_deep else "🔴 OFF"
+                await send_text_message(
+                    chat_id,
+                    f"*Search Feature Status:*\n"
+                    f"• Agentic Search (!s): {agentic_status}\n"
+                    f"• Deep Crawl Search (!sc): {deep_status}\n\n"
+                    f"Usage: `!search_toggle <agentic|deep> <on|off>`\n"
+                    f"Example: `!search_toggle agentic off`",
+                )
+            else:
+                search_type = args[0].lower()
+                status = args[1].lower()
+                
+                if search_type not in ["agentic", "deep"]:
+                    await send_text_message(
+                        chat_id,
+                        f"❌ Unknown search type: `{search_type}`\n"
+                        f"Valid types: `agentic`, `deep`",
+                    )
+                elif status not in ["on", "off"]:
+                    await send_text_message(
+                        chat_id,
+                        f"❌ Invalid status: `{status}`\n"
+                        f"Valid statuses: `on`, `off`",
+                    )
+                else:
+                    new_state = status == "on"
+                    
+                    if search_type == "agentic":
+                        RuntimeStateManager.set_bool("agentic_enabled", new_state)
+                        feature_name = "Agentic Search (!s)"
+                    else:  # deep
+                        RuntimeStateManager.set_bool("deep_crawl_enabled", new_state)
+                        feature_name = "Deep Crawl Search (!sc)"
+                    
+                    status_emoji = "🟢 ENABLED ✅" if new_state else "🔴 DISABLED ❌"
+                    await send_text_message(
+                        chat_id,
+                        f"{feature_name} is now *{status_emoji}*\n"
+                        f"Changes persist across bot restarts.",
                     )
 
         elif command == "!shutdown" or command == "!restart":
@@ -823,15 +918,11 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, "Usage: !search <query>")
 
         elif command == "!s":
-            from app.utils.search_intent import is_search_enabled
+            from app.utils.search_intent import is_agentic_search_allowed
             
-            # SEARCH-GATE-001: Global kill switch (applies to all search types)
-            if not is_search_enabled():
-                await send_text_message(chat_id, "⚠️ Web search is currently disabled by administration.")
-                return
-            
-            if not getattr(app_settings, "enable_agentic_search", False):
-                await send_text_message(chat_id, "🚫 Agentic search is disabled. Owner can enable via: !config toggle agentic_search on")
+            # ADMIN-TOGGLE-002: Check if agentic search is allowed (hierarchical gate)
+            if not is_agentic_search_allowed():
+                await send_text_message(chat_id, "⚠️ Agentic search is currently disabled by administration. Owner can enable via: `!admin toggle_agentic`")
                 return
 
             if len(args) > 0:
@@ -862,15 +953,11 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, "Usage: !s <query>")
 
         elif command == "!sc":
-            from app.utils.search_intent import is_search_enabled
+            from app.utils.search_intent import is_deep_crawl_allowed
             
-            # SEARCH-GATE-001: Global kill switch (primary gate)
-            if not is_search_enabled():
-                await send_text_message(chat_id, "⚠️ Web search is currently disabled by administration.")
-                return
-            
-            if not app_settings.deep_crawl_enabled:
-                await send_text_message(chat_id, "🚫 Deep Crawl Search is currently disabled by admin. Owner can enable via: `!sc_toggle on`")
+            # ADMIN-TOGGLE-002: Check if deep crawl is allowed (hierarchical gate)
+            if not is_deep_crawl_allowed():
+                await send_text_message(chat_id, "⚠️ Deep crawl search is currently disabled by administration. Owner can enable via: `!admin toggle_crawl`")
                 return
 
             if len(args) > 0:

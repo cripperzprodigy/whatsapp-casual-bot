@@ -32,6 +32,48 @@ def is_search_enabled() -> bool:
     return getattr(settings, "SEARCH_ENABLED", True)
 
 
+def is_agentic_search_allowed() -> bool:
+    """Check if agentic search (!s) is allowed.
+    
+    Hierarchy:
+    1. If SEARCH_ENABLED=False (env var hard kill), deny.
+    2. Else, check runtime state (toggleable by owner).
+    
+    Returns
+    -------
+    bool
+        True if agentic search is allowed, False otherwise.
+    """
+    # Hard kill switch: if global SEARCH_ENABLED is False, block everything
+    if not is_search_enabled():
+        return False
+    
+    # Check runtime toggles using centralized RuntimeStateManager
+    from app.utils.state_manager import RuntimeStateManager
+    return RuntimeStateManager.is_search_allowed("agentic")
+
+
+def is_deep_crawl_allowed() -> bool:
+    """Check if deep crawl (!sc) is allowed.
+    
+    Hierarchy:
+    1. If SEARCH_ENABLED=False (env var hard kill), deny.
+    2. Else, check runtime state (toggleable by owner).
+    
+    Returns
+    -------
+    bool
+        True if deep crawl is allowed, False otherwise.
+    """
+    # Hard kill switch: if global SEARCH_ENABLED is False, block everything
+    if not is_search_enabled():
+        return False
+    
+    # Check runtime toggles using centralized RuntimeStateManager
+    from app.utils.state_manager import RuntimeStateManager
+    return RuntimeStateManager.is_search_allowed("deep")
+
+
 # 🧩 Natural language search patterns 🧩
 # Each pattern has exactly ONE capture group:
 #   Group 1: the actual search query (e.g., (.+) at end of pattern)

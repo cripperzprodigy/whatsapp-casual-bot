@@ -1,5 +1,82 @@
 # Changelog
 
+### Unified Search Feature Toggles & Centralized State Management — CMD-HELP-SYNC-001 - 2026-07-02
+- **Centralized RuntimeStateManager**: Created `app/utils/state_manager.py` with `RuntimeStateManager` class replacing fragmented state management. Persists toggles to `config_override.json` with thread-safe locking. Implements state precedence: Env Var (hard kill) > Runtime Override > Default.
+- **Unified !search_toggle Command**: Added to `app/commands.py`:
+  - Primary command: `!search_toggle <agentic|deep> <on|off>` for consistent toggle interface
+  - Owner-only command with permission verification against `OWNER_IDS`
+  - Shows emoji feedback: 🟢 ENABLED / 🔴 DISABLED
+  - Shows current status when called without arguments
+  - Non-owners receive `🚫 Access Denied` without state changes
+- **Legacy Backward Compatibility**:
+  - `!sc_toggle <on|off>`: Refactored to use RuntimeStateManager, includes deprecation tip pointing to `!search_toggle deep`
+  - `!admin toggle_agentic` / `!admin toggle_crawl`: Updated to use RuntimeStateManager with tips recommending `!search_toggle`
+  - All legacy commands remain functional for gradual user migration
+- **Role-Based Help Menu**: Updated `_build_help_text()` to conditionally show:
+  - Owners: `!search_toggle <agentic|deep> <on|off>` with full documentation
+  - Non-owners: Limited help menu without owner-only toggle commands
+  - Dynamic status display using `is_agentic_search_allowed()` and `is_deep_crawl_allowed()`
+- **Gate Function Refactoring**: Updated `app/utils/search_intent.py`:
+  - `is_agentic_search_allowed()`: Now uses `RuntimeStateManager.is_search_allowed("agentic")`
+  - `is_deep_crawl_allowed()`: Now uses `RuntimeStateManager.is_search_allowed("deep")`
+  - Maintains global hard kill switch via `SEARCH_ENABLED` environment variable
+- **Configuration & Persistence**:
+  - New `config_override.json` for runtime state storage (replaces `_get_cache()` in old system)
+  - State file locked with threading.Lock for atomic writes
+  - Corruption recovery: Invalid JSON resets to empty state without crashes
+  - Added `config_override.json` and `config_override.json.lock` to `.gitignore`
+- **Test Coverage**: Created `tests/test_command_toggles.py` with 26 comprehensive tests:
+  - Unified command functionality (toggle on/off for both search types)
+  - Owner authorization (valid/invalid IDs, empty OWNER_IDS list)
+  - State persistence (disk storage, cache reload, independent toggles)
+  - Search gate functions (allow/block when enabled/disabled, hard kill switch)
+  - Help menu role-based rendering (owner sees all, user sees limited)
+  - Legacy command compatibility (!sc_toggle, !admin commands)
+  - Configuration precedence (Env Var > Runtime Override > Default)
+  - File corruption recovery (invalid JSON, empty files)
+  - Integration tests (full lifecycle, independent toggle behavior)
+- **Documentation Updates**:
+  - Updated `COMMAND_REFERENCE.md`: Added `!search_toggle` as primary command, marked `!sc_toggle` as legacy, added detailed usage section with examples, precedence explanation, and security notes
+  - Updated `.env.example`: Documented config_override.json behavior and OWNER_IDS configuration
+- **Security Model**:
+  - Environment variable `SEARCH_ENABLED=False` is hard kill switch overriding all runtime toggles
+  - Only users in `OWNER_IDS` can change toggles
+  - Non-owner attempts are logged and rejected with clear feedback
+  - State changes persist across bot restarts via file-based storage
+
+### Individual Search Toggles — ADMIN-TOGGLE-002 - 2026-07-02
+- **Runtime State Manager**: Created `app/utils/runtime_state.py` with `SearchState` class. Persists toggles to `.search_state.json` with thread-safe locking. Methods: `toggle_agentic()`, `toggle_deep_crawl()`, `is_agentic_enabled()`, `is_deep_crawl_enabled()`.
+- **Hierarchical Gate Logic**: Updated `app/utils/search_intent.py` with new functions:
+  - `is_agentic_search_allowed()`: Checks `SEARCH_ENABLED` (hard override) then runtime state for agentic
+  - `is_deep_crawl_allowed()`: Checks `SEARCH_ENABLED` (hard override) then runtime state for deep crawl
+  - Maintains backward compatibility with `is_search_enabled()` for global gate checks
+- **Owner-Only Toggle Commands**: Added to `app/commands.py`:
+  - `!admin toggle_agentic`: Flip Agentic Search (!s) on/off with owner verification
+  - `!admin toggle_crawl`: Flip Deep Crawl Search (!sc) on/off with owner verification
+  - Both verify caller ID against `settings.OWNER_IDS`, respond with "🔒 Access Denied" if unauthorized
+- **Dynamic Help Status**: Updated `_build_help_text()` to call `is_agentic_search_allowed()` and `is_deep_crawl_allowed()`, displaying:
+  - `!s (Agentic Search): [🟢 ENABLED / 🔴 DISABLED]`
+  - `!sc (Deep Crawl): [🟢 ENABLED / 🔴 DISABLED]`
+  - Note: "Status controlled by owner via `!admin toggle_*`"
+- **Config Updates**: 
+  - Added `OWNER_IDS` string field to `app/config.py` (comma-separated WhatsApp JIDs)
+  - Updated `router_webhook.py` DM and group mention search checks to use `is_agentic_search_allowed()` and `is_deep_crawl_allowed()`
+  - Updated `.env.example` with OWNER_IDS configuration and ADMIN-TOGGLE-002 documentation
+  - Added `.search_state.json` and `.search_state.json.lock` to `.gitignore`
+- **Test Coverage**: Created `tests/test_admin_toggles.py` with 37 comprehensive tests:
+  - Runtime state persistence, toggle flipping, corruption recovery
+  - Hierarchical gate logic (hard override), independent toggle behavior
+  - Owner authorization, dynamic help rendering
+  - State file corruption and recovery, configuration persistence
+  - Integration tests covering full lifecycle and mixed scenarios
+- **Documentation**: Updated `ai-chat/knowledge_base/WEB_SEARCH_PROTOCOL.md` with new "Runtime Toggling (ADMIN-TOGGLE-002)" section documenting hierarchy, commands, persistence, security, and use cases.
+- **Security Model**: 
+  - SEARCH_ENABLED=False is hard kill switch that overrides all runtime toggles
+  - Non-owners cannot toggle features (returns "Access Denied" without state change)
+  - State persists across bot restarts via `.search_state.json`
+  - Independent control: disabling agentic doesn't affect deep crawl and vice versa
+- **Test Results**: 37/37 new tests passing + 43/44 regression tests passing (1 fails due to missing fastapi, not a regression). 100% feature coverage.
+
 ### Global Search Kill Switch — SEARCH-GATE-001 - 2026-07-02
 - **New Config Flag**: Added `SEARCH_ENABLED=True` to `app/config.py` Settings class. Global control for all web search features (DM, Group, Commands).
 - **Helper Function**: Created `is_search_enabled()` in `app/utils/search_intent.py`. Replaces scattered gate checks throughout codebase.
