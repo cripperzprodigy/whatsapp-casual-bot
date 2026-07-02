@@ -1,5 +1,80 @@
 # Architectural Decisions
 
+## ADR-039 — Language Mirroring Protocol
+
+Date    : 2026-07-02
+Status  : Accepted
+Context :
+  The Chatty AI engine's `_detect_language()` method used a direct `langdetect.detect()`
+  call and returned raw codes to the system prompt as a weak "Preferred Language: {lang}"
+  field. This was insufficient to prevent LLM training-data drift, where the model would
+  reply in English (or even Japanese/Russian) when the user spoke Chinese or Indonesian.
+  Additionally:
+  (1) Chinese variants (zh-cn, zh-tw, zh-hk) were not normalised to a unified 'zh' code.
+  (2) The Malay/Indonesian keyword heuristic was duplicated across translation.py and
+      ai_memory_engine.py with no single authoritative implementation.
+  (3) Short CJK text (< 10 chars) was incorrectly treated as "short text" and defaulted
+      to English, since each Chinese ideograph was counted as only 1 character.
+  (4) The "Reply ONLY in {lang}" constraint in the system prompt appeared BELOW the RAG
+      context block, allowing retrieved English documents to override it via positional
+      priority in the LLM's attention mechanism.
+
+Decision :
+  1. Create `app/utils/lang_detect.py` as the single authoritative language detection
+     module. It exposes:
+     - `detect_language(text, fallback='en')`: LRU-cached (maxsize=1024), CJK-aware,
+       probability-based detection using `langdetect.detect_langs()`.
+     - `language_name(code)`: Maps supported codes to human-readable names.
+     - `build_language_enforcement_block(lang_code)`: Returns the `[CRITICAL LANGUAGE RULE]`
+       system prompt section for a given language code.
+  2. CJK-aware length guard: each ideograph counts as 3 effective characters towards the
+     10-char threshold, preventing short Chinese phrases from falling back to 'en'.
+  3. Unified keyword heuristic: `_is_likely_ms_id()` merges the external
+     `data/translation_skip_keywords.txt` with a built-in `_CORE_MS_ID_WORDS` set to
+     handle greetings/colloquials absent from the curated file. Uses ≥40% token ratio.
+  4. False-positive reclassification: Tagalog (tl), Finnish (fi), Somali (so) etc. are
+     reclassified to 'ms' when the keyword heuristic confirms Malay/Indonesian content.
+  5. CRITICAL LANGUAGE RULE placement: `build_language_enforcement_block()` is injected
+     into the system prompt ABOVE `[CONTEXT MEMORY]` in both `process_message()` and
+     `generate_delayed_reply()` in `ai_memory_engine.py`. This ensures the language
+     constraint has higher positional priority than any English-language RAG context.
+  6. RAG context translation instruction: both prompt templates now include
+     "If the context is in a different language, translate relevant facts to {lang}
+     before responding" — explicitly instructing the LLM to synthesise retrieved
+     English content into the target language rather than outputting it verbatim.
+  7. `AIMemoryEngine._detect_language()` is updated to use `mirror_detect_language()`
+     as the fast-path, with the LLM-based detection as a last-resort fallback only.
+  8. `router_webhook.py` logs the detected language at the DM message entry point for
+     observability (DEBUG-level: `[LangMirror] DM chat=... detected_lang='...'`).
+
+Supported languages (primary set):
+  en — English
+  id — Indonesian
+  ms — Malay
+  zh — Chinese (all variants normalised to 'zh')
+
+Fallback:
+  Any unsupported language (Japanese, Arabic, Polish, etc.) falls back to 'en'.
+  Users can override this with `!lang <code>` to set an explicit preferred_language.
+
+Detection library: langdetect (existing dependency)
+  Rationale: Already in the stack, no new dependency required. CJK detection quality is
+  sufficient for zh vs en distinction with the normalisation layer in place.
+  Future: If sub-dialect distinction (Simplified vs Traditional) becomes required,
+  fasttext-langdetect can be added as an optional upgrade path.
+
+Consequences :
+  + Language drift eliminated: Chinese users receive Chinese replies even when RAG
+    context is entirely in English.
+  + Malay/Indonesian false-positives (Tagalog classification) correctly reclassified.
+  + LRU cache ensures detection latency ~0ms for repeated phrases after first call.
+  + Zero new runtime dependencies.
+  + Configurable via `SUPPORTED_LANGS` and `_CORE_MS_ID_WORDS` in lang_detect.py.
+  - `langdetect` seed is fixed (0) for reproducibility; this means detection is
+    deterministic but may miss rare edge cases handled by non-seeded stochastic runs.
+  - Short ambiguous phrases (< 3 words) may still be misclassified for ID/MS if the
+    keyword heuristic threshold is not met.
+
 ## DEBUG-LEAD Audit Review Corrections (2026-07-02)
 
 ### Corrections

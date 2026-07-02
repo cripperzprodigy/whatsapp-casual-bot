@@ -9,3 +9,4 @@
 | Antigravity | AI Agent / Execution Agent | Complex Bugfixes & Stability |
 | DEBUG-LEAD | Lead Orchestrator | Branch Audit & Task Generation |
 | GitHub Copilot | Feature Dev / Isolation Engineer | Pipeline Integration & Testing |
+| GitHub Copilot | 2026-07-02 00:30 UTC | NLP Engineer — LOC-MIRROR-001: Language Mirroring (ADR-039): lang_detect.py, prompt enforcement, RAG context protection, tests | Active |

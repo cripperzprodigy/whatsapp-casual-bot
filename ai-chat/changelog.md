@@ -3,7 +3,43 @@
 > For historical entries prior to 2026-06-25, see changelog_archive.md
 
 
-### Integration Test Suite Implementation (INTEGRATION-001) - 2026-07-02
+### Language Mirroring Protocol — ADR-039 (LOC-MIRROR-001) - 2026-07-02
+
+**New file: `app/utils/lang_detect.py`**
+- `detect_language(text, fallback='en')`: LRU-cached (maxsize=1024), CJK-aware probability detection. Uses `langdetect.detect_langs()` for confidence-level access rather than single-result `detect()`.
+- `language_name(code)`: Maps supported codes to human-readable names for LLM prompt injection.
+- `build_language_enforcement_block(lang_code)`: Returns a `[CRITICAL LANGUAGE RULE]` system prompt section placed **above** RAG context to prevent English-context drift.
+- CJK-aware length guard: each ideograph counts as 3 effective units, preventing short Chinese phrases (e.g. "你好，谢谢") from incorrectly falling back to English.
+- `_is_likely_ms_id()`: Merged heuristic using external `data/translation_skip_keywords.txt` **unioned** with built-in `_CORE_MS_ID_WORDS` (covers greetings absent from the curated file). 40% token-ratio threshold.
+- False-positive reclassification: Tagalog (tl), Finnish (fi), Somali (so), Swahili (sw) etc. are reclassified to 'ms' when the keyword heuristic confirms Malay/Indonesian content.
+- Chinese variant normalisation: zh-cn, zh-tw, zh-hk → 'zh' (unified code for all variants).
+- Fallback to 'en' for all unsupported languages (Polish, Japanese, Arabic, Russian, etc.).
+
+**Modified: `app/services/ai_memory_engine.py`**
+- Imports `mirror_detect_language`, `build_language_enforcement_block`, `MIRROR_SUPPORTED_LANGS` from `app/utils/lang_detect`.
+- `_detect_language()` fully rewritten: fast-path uses `mirror_detect_language()` (LRU-cached, synchronous), DM profile `preferred_language` override honoured, LLM-based detection retained as last resort only.
+- `process_message()`: injects `build_language_enforcement_block(lang)` above `[CONTEXT MEMORY]` in system prompt. Added translation instruction for RAG context in different language.
+- `generate_delayed_reply()`: same enforcement block injected (delayed-reply path).
+
+**Modified: `app/router_webhook.py`**
+- Imports `mirror_detect_language` from `app/utils/lang_detect`.
+- `_handle_dm_message()`: logs detected language at `INFO` level for observability: `[LangMirror] DM chat=... detected_lang='...'`.
+
+**New test file: `tests/test_language_mirroring.py`** — 40 tests, all pass.
+- English, Indonesian, Malay, Chinese detection accuracy.
+- Chinese variant normalisation (zh-cn, zh-tw, zh-hk).
+- Short text fallback, CJK-aware effective length.
+- Unsupported language fallback (Polish, Japanese, Arabic).
+- Code-switching handling.
+- LRU cache behaviour.
+- `language_name()` mapping.
+- `build_language_enforcement_block()` prompt correctness.
+- Language enforcement block positioned above RAG context.
+- RAG translation instruction present.
+- False-positive reclassification metadata.
+- Multi-turn language drift prevention.
+
+**Modified: `tests/conftest.py`** — updated langdetect stub strategy to import the real package when installed (required for test_language_mirroring.py). Falls back to minimal stub only when langdetect is not installed.
 - **Feature**: Developed a massive integration testing suite covering the Gateway-Backend boundary.
 - **Coverage**: Simulated Node.js gateway requests utilizing robust Python mocks for text, image, command, and group interactions.
 - **Error Propagation**: Hardened backend error handling validation for 500s, 429s, network timeouts, and JSON failures.

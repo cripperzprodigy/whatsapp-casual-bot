@@ -1,6 +1,45 @@
 # Language Detection Strategy
 
-This document details the hybrid language detection algorithm and the **EN/ID/MS Linguistic Sphere** policy used by the auto-translation feature in `app/translation.py`.
+> **Updated:** 2026-07-02 — ADR-039 Language Mirroring added a second detection module.
+> There are now **two distinct detection contexts**:
+> - **Translation detection** (`app/translation.py`) — determines if a message should be auto-translated.
+> - **Language Mirroring detection** (`app/utils/lang_detect.py`) — determines which language the AI should *reply in*.
+>
+> They serve different purposes and have different supported-language sets.
+> See also: [PREFERENCE_SCOPING.md](PREFERENCE_SCOPING.md) for per-user language preferences.
+
+---
+
+## 0. Language Mirroring Detection (ADR-039) — `app/utils/lang_detect.py`
+
+The AI Chatty engine uses a separate, optimised module for language mirroring:
+
+| Module | `app/utils/lang_detect.py` |
+|--------|--------------------------|
+| **Purpose** | Determines the language the bot should reply in |
+| **Supported** | `en`, `id`, `ms`, `zh` |
+| **Fallback** | `en` for all unsupported languages |
+| **Chinese** | zh-cn, zh-tw, zh-hk all normalised to `zh` |
+| **Caching** | LRU cache (maxsize=1024) — repeated phrases ≈ 0ms |
+| **CJK guard** | Each ideograph counts as 3 effective chars for length guard |
+
+### Prompt Injection
+
+`build_language_enforcement_block(lang_code)` produces a `[CRITICAL LANGUAGE RULE]` section injected **above** `[CONTEXT MEMORY]` in the system prompt:
+
+```
+[CRITICAL LANGUAGE RULE]
+The user is communicating in Indonesian. You MUST reply exclusively in Indonesian.
+Do not switch to English or any other language unless the user explicitly switches first.
+If the context memory below contains information in a different language, extract the
+relevant facts and synthesise your answer in Indonesian. Never output raw English context
+verbatim when replying in Indonesian.
+```
+
+This placement ensures the language constraint has higher positional priority than
+any English-language RAG documents, preventing context-induced drift.
+
+---
 
 ---
 

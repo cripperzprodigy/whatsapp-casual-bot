@@ -29,6 +29,7 @@ from app.state import get_db, add_message_to_buffer, get_chat_settings, SessionL
 from app.commands import handle_command
 from app.translation import detect_language, translate_text
 from app.config import settings, BotIdentityManager
+from app.utils.lang_detect import detect_language as mirror_detect_language
 from app.contact_sync import (
     update_contact,
     export_group_contacts,
@@ -243,6 +244,12 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
     """
     logger.info(f"DM message received: sender={sender_id}, chat={chat_id}, text_len={len(text)}, has_media={media_path is not None}")
     try:
+        # ADR-039: Log detected language at entry point for observability and debugging.
+        # The enforcement itself happens inside AIMemoryEngine.process_message().
+        if text and text.strip():
+            _detected_lang_dm = mirror_detect_language(text)
+            logger.info(f"[LangMirror] DM chat={chat_id} detected_lang='{_detected_lang_dm}'")
+
         # For DMs, always trigger Chatty
         logger.debug(f"DM: Initializing AIMemoryEngine for {chat_id}")
         engine = AIMemoryEngine(chat_id, sender_name, profile=profile)

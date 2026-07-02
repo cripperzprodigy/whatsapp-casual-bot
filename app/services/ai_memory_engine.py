@@ -23,6 +23,12 @@ from app.config import settings
 # Since AIMemoryEngine interacts with ai_client.py, we might have to import it
 from app.services.profile_service import read_profile, write_profile
 from app.ai_client import ask_llm
+# Language mirroring helpers (ADR-039)
+from app.utils.lang_detect import (
+    detect_language as mirror_detect_language,
+    build_language_enforcement_block,
+    SUPPORTED_LANGS as MIRROR_SUPPORTED_LANGS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,56 +114,75 @@ class AIMemoryEngine:
         write_profile(self.chat_id, self.profile)
 
     async def _detect_language(self, text: str) -> str:
-        # Group Check: Detect the actual message language first,
-        # falling back to the group's configured default only if detection fails.
-        # This ensures AI replies match the user's input language (e.g., Indonesian
-        # triggers get Indonesian replies) rather than always defaulting to English.
+        """Detect the user's language and return a supported ISO 639-1 code.
+
+        ADR-039 (Language Mirroring): Uses the centralised ``mirror_detect_language``
+        function from ``app/utils/lang_detect.py`` which normalises Chinese variants,
+        handles Malay/Indonesian false-positives, and caps confidence-based
+        code-switching noise.
+
+        Fallback chain:
+          1. New fast-path: ``mirror_detect_language()`` (LRU-cached, <20 ms).
+          2. Profile ``preferred_language`` override (DMs only) — user-set preference.
+          3. LLM-based detection (last resort if both above fail).
+          4. Configured default language for the domain.
+        """
+        # ── DM: honour explicit user-set language preference first ──────────
+        if "@g.us" not in self.chat_id:
+            if self.profile.get("preferred_language"):
+                return self.profile["preferred_language"]
+
+        # ── Fast-path: synchronous LRU-cached detection ──────────────────────
+        # mirror_detect_language handles: Chinese variants, MS/ID false-positives,
+        # code-switching, short text, and unsupported-language fallback.
+        try:
+            detected = mirror_detect_language(text, fallback="")
+            if detected:
+                # Persist detected language into DM profile for session continuity
+                if "@g.us" not in self.chat_id:
+                    self.profile["lang_pref"] = detected
+                    self.profile["name"] = self.sender_name
+                    self._save_profile()
+                logger.debug(
+                    f"[LangMirror] chat={self.chat_id} detected='{detected}' "
+                    f"supported={detected in MIRROR_SUPPORTED_LANGS}"
+                )
+                return detected
+        except Exception as e:
+            logger.warning(f"[LangMirror] mirror_detect_language failed: {e}")
+
+        # ── Group fallback: group-configured default language ─────────────────
         if "@g.us" in self.chat_id:
-            from app.state import get_chat_settings
-            from app.state import SessionLocal
+            from app.state import get_chat_settings, SessionLocal
             with SessionLocal() as db:
                 chat_settings = get_chat_settings(db, self.chat_id)
-                group_default_lang = chat_settings.default_target_language if chat_settings.default_target_language else getattr(settings, 'DEFAULT_GROUP_LANGUAGE', 'en')
-            
-            # Attempt live detection on the incoming message text
+                group_default = (
+                    chat_settings.default_target_language
+                    if chat_settings.default_target_language
+                    else getattr(settings, "DEFAULT_GROUP_LANGUAGE", "en")
+                )
+
+            # LLM-based detection as last resort for groups
             try:
-                detected = detect(text)
-                if detected:
-                    return detected
-            except (LangDetectException, json.JSONDecodeError, ValueError):
-                pass
-            
-            # LLM-based fallback detection
-            try:
-                from app.translation import detect_language
-                detected = await detect_language(text)
-                if detected:
-                    return detected
+                from app.translation import detect_language as llm_detect
+                llm_lang = await llm_detect(text)
+                if llm_lang:
+                    return llm_lang
             except Exception as e:
-                logger.warning(f"Group language detection fallback failed: {e}")
-            
-            # Final fallback: group's configured default language
-            return group_default_lang
+                logger.warning(f"[LangMirror] Group LLM fallback failed: {e}")
 
-        # Private DM Check
-        if self.profile.get("preferred_language"):
-            return self.profile["preferred_language"]
+            return group_default
 
+        # ── DM final fallback ─────────────────────────────────────────────────
         try:
-            lang = detect(text)
-            self.profile["lang_pref"] = lang
-            self.profile["name"] = self.sender_name # Update name just in case
-            self._save_profile()
-            return lang
-        except (LangDetectException, json.JSONDecodeError, ValueError) as e:
-            from app.translation import detect_language
-            try:
-                lang = await detect_language(text)
-                return lang
-            except (Exception) as inner_e:
-                # Swallowing here is necessary for language fallback reliability
-                logger.warning(f"Langdetect and LLM fallback both failed: {inner_e}")
-                return getattr(settings, 'DEFAULT_DM_LANGUAGE', 'en')
+            from app.translation import detect_language as llm_detect
+            llm_lang = await llm_detect(text)
+            if llm_lang:
+                return llm_lang
+        except Exception as e:
+            logger.warning(f"[LangMirror] DM LLM fallback failed: {e}")
+
+        return getattr(settings, "DEFAULT_DM_LANGUAGE", "en")
 
     async def _process_media(self, media_path: str) -> Optional[str]:
         if not settings.VISION_ENABLED or not media_path:
@@ -509,6 +534,11 @@ Output ONLY valid JSON."""
         custom_instructions = self.profile.get("system_prompt") or "None"
         summary = self.profile.get("conversation_summary") or "{}"
 
+        # ADR-039: Language enforcement block placed ABOVE RAG context so the
+        # language constraint takes priority over any English-language retrieved
+        # documents that could otherwise cause language drift.
+        lang_enforcement = build_language_enforcement_block(lang)
+
         context_section = retrieved_context if retrieved_context else "No relevant past memories found."
         system_prompt = f"""[Global Instructions]
 {base_prompt}
@@ -518,6 +548,8 @@ Name: {self.profile.get('name', 'Unknown')}
 Preferred Language: {lang}
 Custom Instructions: {custom_instructions}
 
+{lang_enforcement}
+
 [CONTEXT MEMORY]
 The following relevant past conversations have been retrieved:
 {context_section}
@@ -525,6 +557,7 @@ The following relevant past conversations have been retrieved:
 INSTRUCTION: Use this context to maintain continuity. If the user refers to
 previous topics, use the information above to answer accurately.
 If the context is irrelevant, ignore it.
+If the context is in a different language, translate relevant facts to {lang} before responding.
 
 [Recent Context Summary]
 {summary}
@@ -609,6 +642,9 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         custom_instructions = self.profile.get("system_prompt") or "None"
         summary = self.profile.get("conversation_summary") or "{}"
 
+        # ADR-039: Language enforcement block placed ABOVE RAG context (delayed reply path)
+        lang_enforcement = build_language_enforcement_block(lang)
+
         context_section = retrieved_context if retrieved_context else "No relevant past memories found."
         system_prompt = f"""[Global Instructions]
 {base_prompt}
@@ -618,6 +654,8 @@ Name: {self.profile.get('name', 'Unknown')}
 Preferred Language: {lang}
 Custom Instructions: {custom_instructions}
 
+{lang_enforcement}
+
 [CONTEXT MEMORY]
 The following relevant past conversations have been retrieved:
 {context_section}
@@ -625,6 +663,7 @@ The following relevant past conversations have been retrieved:
 INSTRUCTION: Use this context to maintain continuity. If the user refers to
 previous topics, use the information above to answer accurately.
 If the context is irrelevant, ignore it.
+If the context is in a different language, translate relevant facts to {lang} before responding.
 
 [Recent Context Summary]
 {summary}

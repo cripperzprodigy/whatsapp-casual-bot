@@ -1,7 +1,14 @@
 # Issues
 
 
-### ISSUE-017: [RESOLVED] SECURITY-001: XXE and Billion Laughs Vulnerability in Deep Crawl
+### ISSUE-018: [RESOLVED] LOC-MIRROR-001: Language Drift in AI Chatty Replies
+- **Description**: The Chatty AI engine replied in English (or occasionally Japanese/Russian) when users spoke Chinese, Indonesian, or Malay. The system prompt's `Reply ONLY in {lang}` instruction was positioned BELOW the RAG context block, allowing English-language retrieved documents to override the language constraint.
+- **Root Causes**:
+  (1) No `[CRITICAL LANGUAGE RULE]` block with explicit enforcement wording.
+  (2) Language enforcement appeared after RAG context in the prompt — lower positional priority.
+  (3) Chinese short text (< 10 chars) was incorrectly falling back to English due to a Latin-character length guard.
+  (4) No instruction to translate RAG context to target language before responding.
+- **Resolution**: Created `app/utils/lang_detect.py` with CJK-aware detection, Chinese variant normalisation, and Malay/Indonesian heuristic. Injected `build_language_enforcement_block()` above `[CONTEXT MEMORY]` in both `process_message()` and `generate_delayed_reply()`. Added RAG context translation instruction. See ADR-039.
 - **Description**: `deep_crawl_service.py` utilized raw `lxml` parsing via BeautifulSoup without disabling entity expansion, rendering it vulnerable to XXE and DoS (Billion Laughs).
 - **File References**: `app/services/deep_crawl_service.py`, `requirements.txt`
 - **Priority**: CRITICAL

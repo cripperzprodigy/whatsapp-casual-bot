@@ -38,16 +38,25 @@ if "sentence_transformers" not in sys.modules:
     _st_mod = _make_stub("sentence_transformers")
     _st_mod.SentenceTransformer = MagicMock
 
-# langdetect
-if "langdetect" not in sys.modules:
-    _ld_mod = _make_stub("langdetect", detect=MagicMock(return_value="en"), detect_langs=MagicMock(return_value=[MagicMock(lang="en", prob=0.99)]), DetectorFactory=MagicMock)
+# langdetect — use the real package if installed (required by test_language_mirroring.py)
+# Only stub if the real package is genuinely unavailable.
+try:
+    import langdetect as _real_langdetect  # noqa: F401  — keeps real pkg in sys.modules
+    from langdetect.lang_detect_exception import LangDetectException as _RealLDE  # noqa: F401
+except ImportError:
+    # Real langdetect not available — create minimal stubs
+    _ld_mod = _make_stub(
+        "langdetect",
+        detect=MagicMock(return_value="en"),
+        detect_langs=MagicMock(return_value=[MagicMock(lang="en", prob=0.99)]),
+        DetectorFactory=MagicMock(),
+    )
     _ld_exc = _make_stub("langdetect.lang_detect_exception")
 
     class _FakeLangDetectException(Exception):
         pass
 
     _ld_exc.LangDetectException = _FakeLangDetectException
-    # Make the class importable from the parent too
     _ld_mod.lang_detect_exception = _ld_exc
     sys.modules["langdetect.lang_detect_exception"] = _ld_exc
 
