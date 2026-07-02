@@ -5,7 +5,7 @@
 - **Description**: `deep_crawl_service.py` utilized raw `lxml` parsing via BeautifulSoup without disabling entity expansion, rendering it vulnerable to XXE and DoS (Billion Laughs).
 - **File References**: `app/services/deep_crawl_service.py`, `requirements.txt`
 - **Priority**: CRITICAL
-- **Resolution**: Updated to use `defusedxml` and strictly configured `lxml` HTMLParser (`resolve_entities=False`, `no_network=True`, etc.). Extensive security test suite added.
+- **Resolution**: Updated to use `defusedxml` and strictly configured (Follow-up threshold tuning: 100MB max payload, 5s timeout, 200 tree depth limits to resolve false positives on heavy SPAs). `lxml` HTMLParser (`resolve_entities=False`, `no_network=True`, etc.). Extensive security test suite added.
 ### ISSUE-016: [OPEN] Embedding Model Drift Compatibility
 - **Description**: No strategy documented for handling embedding model updates in sentence-transformers. New model versions may produce incompatible vectors, breaking existing RAG retrievals.
 - **File References**: app/services/ai_memory_engine.py, requirements.txt

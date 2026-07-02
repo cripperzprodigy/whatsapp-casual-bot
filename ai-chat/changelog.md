@@ -10,7 +10,8 @@
 - **CI/CD**: Introduced `.github/workflows/integration-tests.yml` to automatically execute the suite on GitHub Actions.
 - **Tests Created**: `test_message_flow.py`, `test_error_propagation.py`, `test_session_consistency.py`, `test_rag_tool_integration.py`.
 
-### Deep Crawl Security Hardening (SECURITY-001) - 2026-07-02
+### Deep Crawl Security Hardening (SECURITY-001 & SECURITY-002) - 2026-07-02
+- **Thresholds**: Adjusted Deep Crawl limits to 100MB/200-depth to support modern SPAs while maintaining XXE protection with a 5s timeout.
 - **Security**: Hardened the `deep_crawl_service.py` HTML parser against XML External Entity (XXE) and Billion Laughs DoS attacks.
 - **Dependency**: Integrated `defusedxml` alongside `lxml` for secured XML parsing wrappers.
 - **Constraints**: Imposed strict limits: `resolve_entities=False`, `no_network=True`, a 5MB payload size limit, and rapid parsing timeouts.

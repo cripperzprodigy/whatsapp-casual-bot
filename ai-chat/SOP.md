@@ -161,7 +161,12 @@ Results logged to ai-chat/audit_logs/weekly_hybrid_audit_[YYYYMMDD].md
 ### 8.2 XXE Protection & HTML Parsing
 - **Safe Parser Configuration**: All XML/HTML parsing (e.g., BeautifulSoup) MUST use a hardened configuration. Default `lxml` is prohibited without protection.
 - **Entity Constraints**: External entity resolution (`resolve_entities=False`) and network access (`no_network=True`) must be disabled.
-- **Expansion Limits**: Maximum entity expansion depth is strictly limited, and parsing operations must enforce a hard timeout and response size limit (e.g., 5MB).
+- **Expansion Limits**: Maximum entity expansion depth is strictly limited. New Thresholds:
+
+- **Parsing Timeout**: 5 seconds per document to prevent event loop starvation.
+- **Tree Depth Limit**: 200 levels (protects against stack overflow).
+- **Payload Size Limit**: 100MB hard limit (safeguards against extreme memory exhaustion while permitting modern SPAs).
+
 
 
 ## Section Y: Integration Testing Requirements

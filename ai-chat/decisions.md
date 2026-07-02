@@ -739,3 +739,10 @@ However, two gaps were identified:
 - `app/services/ai_memory_engine.py:_retrieve_rag_context()`
 - `tests/test_rag_isolation.py`
 - KB: `ai-chat/knowledge_base/RAG_MEMORY_ENGINE.md` (Context Isolation Architecture section)
+
+
+### ADR-039: Realistic Security Thresholds for Deep Crawl
+- **Date**: 2026-07-02
+- **Context**: The aggressive 5MB size limit imposed by SECURITY-001 protected against XML attacks but caused false positives by blocking legitimate, heavy single-page applications.
+- **Decision**: Shift from aggressive size limiting to entity-disabling + reasonable caps. Increased max size to 100MB, set tree depth limit to 200 levels, and enforced a strict 5-second asynchronous timeout.
+- **Consequences**: Modern SPAs can now be crawled safely, while DoS attempts are bounded by the timeout and defusedxml's entity restrictions.

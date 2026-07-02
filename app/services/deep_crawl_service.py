@@ -204,7 +204,7 @@ class DeepCrawlService:
                         logger.info(f"Skipping non-HTML content from {url}: {content_type}")
                         return (title, url, "")
 
-                    text = self._clean_html(resp.text)
+                    text = await self._clean_html(resp.text)
                     return (title, url, text)
 
             except httpx.TimeoutException:
@@ -220,7 +220,7 @@ class DeepCrawlService:
     #  HTML Cleaning
     # -------------------------------------------------------------- #
 
-    def _clean_html(self, html_content: str) -> str:
+    async def _clean_html(self, html_content: str) -> str:
         """Strip non-content elements and extract readable text.
 
         Uses dynamic per-page budget calculated from TOTAL_BUDGET // MAX_URLS.
@@ -229,26 +229,43 @@ class DeepCrawlService:
         from lxml import html
         from bs4 import BeautifulSoup
         import logging
+        import asyncio
         
-        MAX_HTML_SIZE = 5 * 1024 * 1024
+        MAX_HTML_SIZE = 100 * 1024 * 1024  # 100 MB
+        PARSE_TIMEOUT_SECONDS = 5.0
+        
         if len(html_content.encode("utf-8", errors="replace")) > MAX_HTML_SIZE:
-            logging.getLogger(__name__).warning("SECURITY WARNING: HTML exceeds 5MB limit. Truncating.")
+            logging.getLogger(__name__).warning("SECURITY WARNING: HTML exceeds 100MB limit. Truncating.")
             html_content = html_content.encode("utf-8", errors="replace")[:MAX_HTML_SIZE].decode("utf-8", errors="replace")
             
+        def _blocking_parse():
+            try:
+                parser = html.HTMLParser(
+                    resolve_entities=False,
+                    no_network=True,
+                    huge_tree=False,
+                    recover=True,
+                    encoding='utf-8'
+                )
+                # defusedxml will raise exceptions on entity expansion or dtd.
+                # Depth limit check via defusedxml's parse (though lxml doesn't natively enforce depth exactly like this unless patched, defusedxml mitigates the worst).
+                # To be explicit as requested, we allow huge_tree=False which protects against deep recursion.
+                root = dlxml.fromstring(html_content.encode('utf-8'), parser=parser, forbid_dtd=True, forbid_entities=True)
+                text_converted = html.tostring(root, encoding='unicode')
+                return BeautifulSoup(text_converted, "lxml")
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Strict parsing failed, falling back to html.parser: {e}")
+                return BeautifulSoup(html_content, "html.parser")
+
+        loop = asyncio.get_event_loop()
         try:
-            parser = html.HTMLParser(
-                resolve_entities=False,
-                no_network=True,
-                huge_tree=False,
-                recover=True,
-                encoding='utf-8'
+            soup = await asyncio.wait_for(
+                loop.run_in_executor(None, _blocking_parse),
+                timeout=PARSE_TIMEOUT_SECONDS
             )
-            root = dlxml.fromstring(html_content.encode('utf-8'), parser=parser, forbid_dtd=True, forbid_entities=True)
-            text_converted = html.tostring(root, encoding='unicode')
-            soup = BeautifulSoup(text_converted, "lxml")
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Strict parsing failed, falling back to html.parser: {e}")
-            soup = BeautifulSoup(html_content, "html.parser")
+        except asyncio.TimeoutError:
+            logging.getLogger(__name__).warning(f"Parsing timeout: Exceeded {PARSE_TIMEOUT_SECONDS}s limit")
+            soup = BeautifulSoup("", "html.parser")
 
         # Remove junk tags
         for tag in soup(_JUNK_TAGS):
