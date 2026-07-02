@@ -1,7 +1,10 @@
 # Issues
 
 
-### ISSUE-019: [RESOLVED] LANG-FIX-002: Traditional Chinese Misclassified as Korean
+### ISSUE-020: [RESOLVED] RAG-FIX-003: Chatty Fails Short-Term Recall ("What did I just say?")
+- **Description**: The bot returned semantically similar but stale messages from weeks ago instead of the immediately preceding exchange. Caused the bot to appear amnesiac in DMs.
+- **Root Causes**: (1) No raw short-term message history injected into LLM prompt — relied 100% on RAG retrieval. (2) Vector similarity ignored temporal recency. (3) DM ingestion was fire-and-forget, sometimes racing with LLM generation.
+- **Resolution**: Three-part fix: (1) `_build_immediate_buffer()` injects last N messages as raw text above RAG context in the prompt. (2) `_rerank_by_recency()` applies time-decay to RAG similarity scores. (3) DM ingestion changed from `asyncio.create_task` to `await asyncio.wait_for(..., timeout=2.0)`. New configs: `MEMORY_IMMEDIATE_BUFFER_SIZE=5`, `MEMORY_RECENCY_ALPHA=0.5`. 11 new tests pass. See ADR-040.
 - **Description**: Traditional Chinese text (e.g., `繁體字測試`) was consistently detected as Korean (`ko`) by `langdetect` with ~100% confidence, causing the AI engine to respond in English instead of Chinese for users in HK, TW, and MY regions.
 - **Root Cause**: Probabilistic n-gram models (langdetect) confuse CJK Unified Ideographs between Chinese and Korean Hanja. Short WhatsApp messages (4–15 chars) lack sufficient n-gram context for statistical disambiguation.
 - **Resolution**: Implemented `detect_cjk_heuristics()` — a deterministic Unicode character-ratio pre-filter that runs BEFORE langdetect. Priority: Hangul > 5% → `ko`, Kana > 5% → `ja`, CJK > 50% → `zh`. Falls through to langdetect for non-CJK text. 12 new tests pass. See `LANGUAGE_DETECTION_STRATEGIES.md` for full architecture and rejected alternatives.

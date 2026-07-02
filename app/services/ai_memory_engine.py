@@ -366,12 +366,103 @@ class AIMemoryEngine:
                 )
 
             if results["documents"] and results["documents"][0]:
-                return "\n".join(results["documents"][0])
+                # ── ADR-040: Recency-weighted re-ranking ──────────────────────
+                # Fetch more candidates than needed, then apply a time-decay
+                # multiplier so that recent messages rank higher than semantically
+                # similar but older messages.
+                alpha = getattr(settings, 'MEMORY_RECENCY_ALPHA', 0.5)
+                return await self._rerank_by_recency(
+                    results["documents"][0],
+                    results["metadatas"][0] if results.get("metadatas") else [],
+                    results["distances"][0] if results.get("distances") else [],
+                    alpha,
+                )
         except ValueError as e:
             logger.error(f"RAG retrieval error for {self.chat_id}: {e}")
         except Exception as e:
             logger.error(f"RAG retrieval unexpected error for {self.chat_id}: {e}")
         return ""
+
+    async def _rerank_by_recency(
+        self,
+        documents: list,
+        metadatas: list,
+        distances: list,
+        alpha: float = 0.5,
+    ) -> str:
+        """Re-rank retrieved documents using temporal decay.
+
+        final_score = similarity_score / (1 + alpha * days_since_message)
+
+        This ensures that a slightly less relevant but **much more recent**
+        message ranks above a perfectly relevant but **stale** message.
+        """
+        if not documents:
+            return ""
+        now = time.time()
+        scored = []
+        for i, doc in enumerate(documents):
+            # Convert ChromaDB distance to similarity (lower distance = more similar)
+            dist = distances[i] if i < len(distances) else 0.0
+            similarity = 1.0 / (1.0 + dist)
+
+            # Extract timestamp from metadata
+            meta = metadatas[i] if i < len(metadatas) else {}
+            ts = meta.get("timestamp", now)
+            age_days = (now - ts) / 86400.0
+
+            decay = 1.0 / (1.0 + alpha * age_days)
+            final = similarity * decay
+            scored.append((final, doc))
+
+            logger.debug(
+                f"[RAG Rank] doc_ts={ts}, age_days={age_days:.1f}, "
+                f"sim={similarity:.4f}, decay={decay:.4f}, final={final:.4f}"
+            )
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_k = min(settings.RAG_TOP_K, len(scored))
+        return "\n".join(doc for _, doc in scored[:top_k])
+
+    def _build_immediate_buffer(self) -> str:
+        """Return the last N messages as a formatted immediate-context block.
+
+        ADR-040: This buffer bypasses RAG entirely for short-term conversational
+        continuity.  The raw last-N messages are injected into the system prompt
+        as ``<immediate_context>...</immediate_context>`` so the LLM has direct
+        access to the most recent exchange without relying on vector search.
+        """
+        buf_size = getattr(settings, 'MEMORY_IMMEDIATE_BUFFER_SIZE', 5)
+        if buf_size <= 0 or not self.history_path.exists():
+            return ""
+
+        try:
+            with open(self.history_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except (IOError, OSError):
+            return ""
+
+        recent = []
+        for line in lines[-buf_size:]:
+            try:
+                entry = json.loads(line)
+                role = entry.get("role", "unknown")
+                content = entry.get("content", "").strip()
+                if content:
+                    prefix = "User" if role == "user" else "Assistant"
+                    recent.append(f"{prefix}: {content}")
+            except json.JSONDecodeError:
+                pass
+
+        if not recent:
+            return ""
+
+        joined = "\n".join(recent)
+        logger.debug(
+            f"[ImmediateBuffer] chat={self.chat_id}, "
+            f"lines={len(recent)}, chars={len(joined)}"
+        )
+        return f"<immediate_context>\n{joined}\n</immediate_context>"
 
     async def ingest_message(
         self,
@@ -539,6 +630,11 @@ Output ONLY valid JSON."""
         # documents that could otherwise cause language drift.
         lang_enforcement = build_language_enforcement_block(lang)
 
+        # ADR-040: Immediate buffer — inject last N messages as raw text so the
+        # LLM has direct access to short-term conversational continuity without
+        # relying on RAG retrieval (which can fetch stale semantically-similar content).
+        immediate_buffer = self._build_immediate_buffer()
+
         context_section = retrieved_context if retrieved_context else "No relevant past memories found."
         system_prompt = f"""[Global Instructions]
 {base_prompt}
@@ -550,6 +646,8 @@ Custom Instructions: {custom_instructions}
 
 {lang_enforcement}
 
+{immediate_buffer}
+
 [CONTEXT MEMORY]
 The following relevant past conversations have been retrieved:
 {context_section}
@@ -558,6 +656,9 @@ INSTRUCTION: Use this context to maintain continuity. If the user refers to
 previous topics, use the information above to answer accurately.
 If the context is irrelevant, ignore it.
 If the context is in a different language, translate relevant facts to {lang} before responding.
+
+PRIORITY: For questions about recent events, prioritize information in
+<immediate_context> over [CONTEXT MEMORY]. {immediate_buffer and 'The <immediate_context> block contains the most recent exchange — trust it over older RAG results when the user asks about something that just happened.' or ''}
 
 [Recent Context Summary]
 {summary}

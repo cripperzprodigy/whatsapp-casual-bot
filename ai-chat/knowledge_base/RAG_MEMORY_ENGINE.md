@@ -1,6 +1,6 @@
-# RAG Memory Engine — Active Ingestion Pipeline
+# RAG Memory Engine — Hybrid Context Architecture
 
-> **ADR References:** ADR-030 (2026-07-01), ADR-035 (2026-07-02), ADR-038 (2026-07-02)
+> **ADR References:** ADR-030 (2026-07-01), ADR-035 (2026-07-02), ADR-038 (2026-07-02), ADR-040 (2026-07-02)
 > **Status:** Active
 > **Files:** `app/services/ai_memory_engine.py`, `app/router_webhook.py`, `app/config.py`, `scripts/backfill_rag.py`
 
@@ -40,6 +40,8 @@ Each chat gets a completely isolated directory. DM data cannot appear in a group
 | `RAG_DEFAULT_TTL_DAYS` | int | `7` | Temporal decay TTL. Excludes messages older than N days from standard retrieval queries. Set `0` to disable. Queries containing historical keywords (e.g. "last month") bypass this filter automatically. |
 | `RAG_EMBEDDING_MODEL` | str | `all-MiniLM-L6-v2` | SentenceTransformer model. Loaded eagerly at startup to avoid blocking the event loop on first message. |
 | `DYNAMIC_SYSTEM_PROMPT` | bool | `True` | Enables the rolling JSON summary (`conversation_summary` in `profile.json`). Triggers every 5 messages. |
+| `MEMORY_IMMEDIATE_BUFFER_SIZE` | int | `5` | Number of raw past messages injected as `<immediate_context>` in the system prompt. Bypasses RAG entirely for short-term recall. Set `0` to disable. (ADR-040) |
+| `MEMORY_RECENCY_ALPHA` | float | `0.5` | Recency decay strength for RAG re-ranking. `final = similarity / (1 + alpha * days)`. Higher → recent messages dominate. (ADR-040) |
 
 ---
 
@@ -206,6 +208,79 @@ All four message paths call `ingest_message()` via `asyncio.create_task()`:
 | ChromaDB `collection.count() == 0` | Retrieval step is skipped. Prompt includes "No relevant past memories found." |
 | TTL filter raises error (n_results > filtered count) | Automatically retries without TTL filter. TTL errors are DEBUG-logged, not thrown. |
 | Historical query detected (e.g. "last month") | TTL filter is bypassed. Full history is searchable for that request. |
+
+---
+
+## 🧠 Hybrid Context Strategy (ADR-040)
+
+**Problem:** Pure RAG retrieval failed short-term recall — semantically similar but stale messages from weeks ago outranked the immediately preceding exchange.
+
+**Architecture:**
+
+```
+User Query ("What did I just say?")
+        │
+        ├─► [Path A] _build_immediate_buffer()
+        │       Reads last N messages from .jsonl as raw text
+        │       (no embedding — bypasses RAG entirely)
+        │       → <immediate_context>User: I love pizza\n...</immediate_context>
+        │
+        ├─► [Path B] _retrieve_rag_context() + _rerank_by_recency()
+        │       ChromaDB vector search → then re-rank with time-decay
+        │       final_score = similarity / (1 + alpha * days_since_msg)
+        │       → [CONTEXT MEMORY] (long-term, recency-boosted)
+        │
+        ▼
+    System Prompt:
+        {lang_enforcement}
+        {immediate_buffer}      ← above RAG
+        [CONTEXT MEMORY]        ← below buffer
+        PRIORITY: Trust <immediate_context> for recent-event questions.
+```
+
+### Immediate Buffer
+
+`_build_immediate_buffer()` reads the last `MEMORY_IMMEDIATE_BUFFER_SIZE` messages directly from the `.jsonl` history file. No embedding, no vector search — guaranteed to contain the exact most recent exchange.
+
+Format:
+```xml
+<immediate_context>
+User: I love pizza
+Assistant: That's great! What toppings?
+User: What did I just say?
+</immediate_context>
+```
+
+The priority instruction tells the LLM: "For questions about recent events, prioritize information in `<immediate_context>` over `[CONTEXT MEMORY]`."
+
+### Recency-Weighted Re-Ranking
+
+After ChromaDB returns raw similarity results, `_rerank_by_recency()` applies:
+
+```
+final_score = similarity_score / (1 + MEMORY_RECENCY_ALPHA * days_since_message)
+```
+
+| alpha | Behavior |
+|-------|----------|
+| 0.0 | Pure semantic similarity (original behavior) |
+| 0.5 | Moderate recency boost (default) |
+| 2.0 | Strong recency — recent messages dominate |
+| 10.0 | Near-total recency — only messages from today matter |
+
+### Synchronous DM Ingestion
+
+In `_handle_dm_message()`, ingestion was changed from fire-and-forget to synchronous with a 2-second timeout:
+
+```python
+# Old (fire-and-forget):
+asyncio.create_task(engine.ingest_message(...))
+
+# New (sync with timeout):
+await asyncio.wait_for(engine.ingest_message(...), timeout=2.0)
+```
+
+This guarantees the `.jsonl` entry is written before the LLM call, so the immediate buffer includes the user's most recent message. Group chats retain `asyncio.create_task()` — fire-and-forget — since strict immediacy is less critical there.
 
 ---
 

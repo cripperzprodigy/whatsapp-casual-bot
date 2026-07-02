@@ -266,9 +266,22 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
 
         # Fire-and-forget ingestion: persists raw text to history and schedules
         # async ChromaDB write. Runs concurrently with LLM generation.
-        asyncio.create_task(
-            engine.ingest_message(text, media_path, sender_id=sender_id, message_type="dm")
-        )
+        # ADR-040: DM ingestion is synchronous (with timeout guard) to ensure
+        # immediate context is available before the reply is generated.
+        # Group chats keep fire-and-forget for performance.
+        try:
+            await asyncio.wait_for(
+                engine.ingest_message(text, media_path, sender_id=sender_id, message_type="dm"),
+                timeout=2.0,
+            )
+            logger.debug(f"DM: Sync ingestion completed for {chat_id}")
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"[DM Ingest] Timeout after 2s for chat={chat_id} — "
+                f"proceeding with LLM call; context may be missing recent message"
+            )
+        except Exception as e:
+            logger.warning(f"[DM Ingest] Error during sync ingestion for {chat_id}: {e}")
 
         # Process message WITH reply generation in the same request cycle
         logger.debug(f"DM: Calling process_message with generate_reply=True for {chat_id}")

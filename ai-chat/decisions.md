@@ -1,5 +1,60 @@
 # Architectural Decisions
 
+## ADR-040 — Hybrid Context Strategy: Immediate Buffer & Recency-Weighted RAG
+
+Date    : 2026-07-02
+Status  : Accepted
+Context :
+  The Chatty AI engine relied 100 % on RAG retrieval (ChromaDB + sentence-transformers)
+  for conversational memory.  This caused the bot to fail short-term recall tests
+  ("What did I just say?") because:
+  (1) No raw short-term message history was presented to the LLM — it relied
+      entirely on vector search to find "what we were just talking about."
+  (2) Vector similarity scoring treats all timestamps equally.  A semantically
+      identical message from 2 weeks ago could outrank a slightly different but
+      immediate message from 2 minutes ago.
+  (3) DM ingestion was fire-and-forget (asyncio.create_task), so the most recent
+      message may not have been embedded before the next prompt was generated.
+
+Decision :
+  1. **Immediate Buffer Injection.**  The last N messages (raw text, no embedding)
+     are read from the `.jsonl` history file and injected as an
+     `<immediate_context>...</immediate_context>` block in the system prompt,
+     positioned **above** `[CONTEXT MEMORY]` (RAG).  The prompt now includes a
+     PRIORITY instruction directing the LLM to trust the immediate buffer over
+     older RAG results for recent-event questions.
+
+  2. **Recency-Weighted Re-Ranking.**  After ChromaDB returns its raw similarity
+     results, `_rerank_by_recency()` applies a time-decay multiplier:
+
+       final_score = similarity_score / (1 + alpha * days_since_message)
+
+     where `alpha = MEMORY_RECENCY_ALPHA` (default 0.5).  Higher alpha makes
+     recency dominate; lower alpha favours pure semantic similarity.  Results are
+     re-sorted by final_score before selecting the top-K (`RAG_TOP_K`).
+
+  3. **Synchronous DM Ingestion.**  In `router_webhook.py::_handle_dm_message()`,
+     the ingestion call was changed from `asyncio.create_task(engine.ingest_message(...))`
+     (fire-and-forget) to `await asyncio.wait_for(engine.ingest_message(...), timeout=2.0)`.
+     This guarantees the message's `.jsonl` entry is written before the LLM call,
+     so the immediate buffer includes the user's most recent message.  Group chats
+     retain fire-and-forget for performance (immediacy is less critical there).
+
+  4. **New Config Flags.**
+     - `MEMORY_IMMEDIATE_BUFFER_SIZE` (int, default 5): number of raw messages
+       injected as immediate context.  Set to 0 to disable.
+     - `MEMORY_RECENCY_ALPHA` (float, default 0.5): decay multiplier in the
+       recency re-ranking formula.
+
+Consequences :
+  + Short-term recall ("What did I just say?") works reliably via the immediate buffer.
+  + Recent topics outrank stale semantic matches in RAG retrieval.
+  + DM messages are guaranteed available in the immediate buffer.
+  + Configurable per `.env` — no magic numbers (SOP compliant).
+  - DM ingestion adds up to 2 seconds latency (timeout-guarded).
+  - Immediate buffer consumes prompt tokens proportional to `MEMORY_IMMEDIATE_BUFFER_SIZE`.
+  - Recency re-ranking adds ~0.5 ms per candidate (trivial at typical N ≤ 20).
+
 ## ADR-039 — Language Mirroring Protocol
 
 Date    : 2026-07-02

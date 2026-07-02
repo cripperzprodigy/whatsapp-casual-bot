@@ -357,6 +357,14 @@ class Settings(BaseSettings):
     # bypass this filter automatically. Configurable via RAG_DEFAULT_TTL_DAYS in .env.
     RAG_DEFAULT_TTL_DAYS: int = 7
 
+    # ── Hybrid Context Configuration (ADR-040) ──────────────────────────────
+    # Number of immediate past messages injected into the prompt as raw text
+    # (bypasses RAG for short-term conversational continuity).
+    MEMORY_IMMEDIATE_BUFFER_SIZE: int = 5
+    # Recency decay alpha for RAG re-ranking: final_score = similarity / (1 + alpha * days_since_msg).
+    # Higher values make recent messages dominate; lower values favour semantic similarity.
+    MEMORY_RECENCY_ALPHA: float = 0.5
+
     # Chatty Frequency Control Defaults
     CHATTY_DEFAULT_FREQUENCY: int = 10
     CHATTY_DEFAULT_BURST: int = 1

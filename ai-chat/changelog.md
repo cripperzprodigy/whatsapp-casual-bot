@@ -41,7 +41,15 @@
 
 **Modified: `tests/conftest.py`** — updated langdetect stub strategy to import the real package when installed (required for test_language_mirroring.py). Falls back to minimal stub only when langdetect is not installed.
 
-### CJK Heuristic Validation (Traditional Chinese → Korean Fix) — LANG-FIX-002 - 2026-07-02
+### Hybrid Context Strategy (Immediate Buffer & Recency Boost) — ADR-040 (RAG-FIX-003) - 2026-07-02
+- **Bug**: The Chatty AI engine failed short-term recall ("What did I just say?" / "What is my name?") because it relied 100% on RAG retrieval, which would return semantically similar but stale messages from weeks ago instead of the immediately preceding exchange.
+- **Root causes**: (1) No raw short-term message history was injected into the LLM prompt. (2) Vector similarity ignored temporal recency. (3) DM ingestion was fire-and-forget, so the latest message might not be embedded yet.
+- **Fix — Immediate Buffer**: Added `_build_immediate_buffer()` to `AIMemoryEngine` — reads the last N messages (configurable: `MEMORY_IMMEDIATE_BUFFER_SIZE`, default 5) from `.jsonl` history and injects them as `<immediate_context>...</immediate_context>` in the system prompt, positioned above `[CONTEXT MEMORY]`. Prompt includes PRIORITY instruction directing the LLM to trust the buffer for recent-event questions.
+- **Fix — Recency-Weighted Re-Ranking**: Added `_rerank_by_recency()` — applies time-decay multiplier `final_score = similarity / (1 + alpha * days_since_msg)` with configurable `MEMORY_RECENCY_ALPHA` (default 0.5). Recent messages now outrank stale semantic matches.
+- **Fix — Synchronous DM Ingestion**: Changed DM ingestion from `asyncio.create_task()` (fire-and-forget) to `await asyncio.wait_for(..., timeout=2.0)` in `_handle_dm_message()`. Group chats retain fire-and-forget.
+- **New config flags**: `MEMORY_IMMEDIATE_BUFFER_SIZE=5`, `MEMORY_RECENCY_ALPHA=0.5` in `.env`.
+- **Tests**: 11 new tests in `tests/test_rag_recency.py`. Full suite: 93/93 pass.
+- **Related ADR**: ADR-040.
 - **Bug**: Traditional Chinese text (e.g., `繁體字測試`) consistently misclassified as Korean (`ko`) by `langdetect` with ~100% confidence. Caused the bot to reply in English instead of Chinese for HK/TW/MY users.
 - **Root cause**: Probabilistic n-gram models confuse CJK Unified Ideographs between Chinese and Korean Hanja. Short WhatsApp messages lack sufficient context for statistical disambiguation.
 - **Fix**: Added `detect_cjk_heuristics()` in `app/utils/lang_detect.py` — a deterministic O(n) pre-filter using Unicode character-range counts for Hangul (U+AC00–D7AF), Kana (U+3040–30FF), and CJK Ideographs (U+4E00–9FFF, U+3400–4DBF). Priority: Hangul > 5% → `ko`, Kana > 5% → `ja`, CJK > 50% → `zh`. Falls through to `langdetect` when no script dominates. Integrated as step 1.5 in `detect_language()`, BEFORE the keyword heuristic.
