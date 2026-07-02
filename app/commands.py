@@ -79,6 +79,10 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     response += "• `!note add <text>`: Add a note\n"
     response += "• `!note list`: List notes\n"
     
+    # Memory & Context
+    response += "• `!rag_status`: View RAG memory stats and context window\n"
+    response += "• `!memory_clear`: Clear your conversation memory and start fresh\n"
+    
     # Setup for new bots (only shown if claim is available)
     if role == PUBLIC_ROLE and not is_group_chat:
         if is_claim_ownership_available(db):
@@ -1705,6 +1709,60 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, f"✅ Preferred language set to {code}.")
             else:
                 await send_text_message(chat_id, "Usage: !lang set <code> | !lang reset")
+
+        elif command == "!rag_status":
+            # Show RAG memory statistics
+            if not settings.ENABLE_RAG_INGESTION:
+                await send_text_message(chat_id, "⚠️ RAG (memory) feature is globally disabled. Contact @owner to enable.")
+                return
+            
+            try:
+                from app.services.ai_memory_engine import AIMemoryEngine
+                memory_engine = AIMemoryEngine(chat_id, sender_name)
+                stats = await memory_engine.get_rag_stats()
+                
+                if "error" in stats:
+                    await send_text_message(chat_id, f"❌ Error retrieving RAG stats: {stats['error']}")
+                    return
+                
+                response = "📊 *RAG Memory Status*\n\n"
+                response += f"• Stored vectors: {stats.get('chromadb_count', 0)}\n"
+                response += f"• Embedding model: {stats.get('embedding_model', 'N/A')}\n"
+                response += f"• Memory TTL: {stats.get('ttl_days', 7)} days\n"
+                response += f"• Recency decay: {stats.get('recency_alpha', 0.5)}\n"
+                response += f"• RAG enabled: {'✅ Yes' if stats.get('rag_enabled') else '❌ No'}\n"
+                response += "\nOlder messages are automatically forgotten unless you ask about them explicitly."
+                
+                await send_text_message(chat_id, response)
+            except Exception as e:
+                logger.error(f"Error in !rag_status: {e}")
+                await send_text_message(chat_id, f"❌ Error: {str(e)}")
+
+        elif command == "!memory_clear":
+            # Clear all RAG memory for this user
+            if not settings.ENABLE_RAG_INGESTION:
+                await send_text_message(chat_id, "⚠️ RAG feature is disabled. Nothing to clear.")
+                return
+            
+            try:
+                from app.services.ai_memory_engine import AIMemoryEngine
+                memory_engine = AIMemoryEngine(chat_id, sender_name)
+                success = await memory_engine.clear_all_memory()
+                
+                if success:
+                    await send_text_message(
+                        chat_id,
+                        "🧹 *Memory cleared!*\n\n"
+                        "✅ Deleted:\n"
+                        "• All stored conversation vectors\n"
+                        "• Chat history file\n\n"
+                        "The bot will start with a fresh context in the next message."
+                    )
+                else:
+                    await send_text_message(chat_id, "❌ Failed to clear memory. Check logs.")
+            except Exception as e:
+                logger.error(f"Error in !memory_clear: {e}")
+                await send_text_message(chat_id, f"❌ Error: {str(e)}")
 
         elif command == "!a":
             if len(args) > 0:

@@ -853,3 +853,53 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         except Exception as e:
             logger.error(f"Error during delayed Chatty reply: {e}")
             return None
+
+    async def get_rag_stats(self) -> Dict[str, Any]:
+        """Get statistics about RAG memory for this chat.
+        
+        Returns a dictionary with:
+        - chromadb_count: Number of vectors stored
+        - embedding_model: Current embedding model name
+        - ttl_days: Current RAG TTL setting
+        - recency_alpha: Recency decay factor
+        - rag_enabled: Whether RAG ingestion is enabled
+        """
+        try:
+            count = await asyncio.to_thread(lambda: self.collection.count())
+            return {
+                "chromadb_count": count,
+                "embedding_model": settings.RAG_EMBEDDING_MODEL,
+                "ttl_days": getattr(settings, 'RAG_DEFAULT_TTL_DAYS', 7),
+                "recency_alpha": getattr(settings, 'MEMORY_RECENCY_ALPHA', 0.5),
+                "rag_enabled": settings.ENABLE_RAG_INGESTION,
+            }
+        except Exception as e:
+            logger.error(f"Error getting RAG stats for {self.chat_id}: {e}")
+            return {"error": str(e)}
+
+    async def clear_all_memory(self) -> bool:
+        """Clear all RAG vectors and chat history for this user.
+        
+        Clears:
+        - All ChromaDB vectors for this chat
+        - All MessageBuffer entries for this chat
+        - Chat history file
+        
+        Returns True if successful, False otherwise.
+        """
+        try:
+            # Delete all vectors from ChromaDB for this chat
+            await asyncio.to_thread(
+                lambda: self.collection.delete(where={"chat_id": self.chat_id})
+            )
+            logger.info(f"Cleared ChromaDB vectors for {self.chat_id}")
+            
+            # Delete chat history file if it exists
+            if self.history_path.exists():
+                self.history_path.unlink()
+                logger.info(f"Cleared chat history file for {self.chat_id}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing memory for {self.chat_id}: {e}")
+            return False

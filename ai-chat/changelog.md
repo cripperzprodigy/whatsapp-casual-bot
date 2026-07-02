@@ -1,5 +1,36 @@
 # Changelog
 
+### RAG Memory Management Commands — CMD-GAP-FIX-001 - 2026-07-02
+- **Implemented !rag_status Command**: Shows RAG memory statistics to all users:
+  - Displays ChromaDB vector count, embedding model name, TTL setting, recency decay factor
+  - Shows RAG feature availability status
+  - Includes explanation: "Older messages are automatically forgotten unless you ask about them explicitly."
+  - Returns friendly error if RAG is disabled globally
+- **Implemented !memory_clear Command**: Allows users to clear personal conversation memory:
+  - Deletes all ChromaDB vectors for the user's chat
+  - Removes chat history file (chat_history.jsonl)
+  - Shows confirmation with detailed list of what was cleared
+  - Next message triggers fresh context without historical bias
+  - Returns friendly error if RAG is disabled globally
+- **AIMemoryEngine Enhancements** (`app/services/ai_memory_engine.py`):
+  - Added `get_rag_stats()` method: Returns dict with vector count, model name, TTL, alpha, enabled status
+  - Added `clear_all_memory()` method: Deletes ChromaDB entries for chat_id and history file
+  - Both methods support async/await for non-blocking execution
+  - Comprehensive error handling with logging
+- **Command Handlers** (`app/commands.py`):
+  - Added `elif command == "!rag_status"` block with RAG feature check, stat retrieval, formatted output
+  - Added `elif command == "!memory_clear"` block with confirmation dialog, deletion verification
+  - Both commands available to all users (no role restriction)
+  - Integrated error handling with user-friendly messages
+- **Help Menu Integration**:
+  - Added !rag_status to "Available to You" section with description: "View RAG memory stats and context window"
+  - Added !memory_clear to "Available to You" section with description: "Clear your conversation memory and start fresh"
+  - Placed in Memory & Context subsection after notes commands
+- **Documentation**:
+  - Updated `COMMAND_REFERENCE.md` Common Commands table with both commands
+  - Added example usage for both commands
+  - Explained memory TTL and context window concepts
+
 ### Unified Search Feature Toggles & Centralized State Management — CMD-HELP-SYNC-001 - 2026-07-02
 - **Centralized RuntimeStateManager**: Created `app/utils/state_manager.py` with `RuntimeStateManager` class replacing fragmented state management. Persists toggles to `config_override.json` with thread-safe locking. Implements state precedence: Env Var (hard kill) > Runtime Override > Default.
 - **Unified !search_toggle Command**: Added to `app/commands.py`:

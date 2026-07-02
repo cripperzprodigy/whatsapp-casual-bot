@@ -21,6 +21,8 @@ This document outlines the commands available to users, administrators, and the 
 | !task done <id> | User | Complete a task. | !task done 1 |
 | !note add <text> | User | Add a note. | !note add Wifi pass: 1234 |
 | !note list | User | List notes. | !note list |
+| !rag_status | User | View RAG memory stats and document count. | !rag_status |
+| !memory_clear | User | Clear your session context and conversation memory. | !memory_clear |
 
 ## Admin Commands
 | Command | Role | Description | Example |
