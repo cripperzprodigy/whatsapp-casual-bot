@@ -81,3 +81,4 @@
 | DEBUG-LEAD | 2026-06-30 00:00 UTC | Lead Orchestrator - Multi-branch audit, SOP enforcement, task generation | Active |
 | Antigravity | 2026-06-30 13:32 UTC | Feature Dev - Implement !sc Deep Crawl Search with dual-layer config | Active |
 | GitHub Copilot | 2026-07-01 00:00 UTC | Feature Dev - Activate RAG ingestion pipeline: ingest_message(), async ChromaDB writes, ENABLE_RAG_INGESTION flag, backfill script | Active |
+| GitHub Copilot | 2026-07-02 00:00 UTC | Isolation Engineer - Tasks 1-8: Snapshot Context, Preference Scoping, Session Durability, Temp File Hygiene, Tool Scratchpad, RAG Temporal Decay, Tests, Docs (ADR-036/037/038) | Active |

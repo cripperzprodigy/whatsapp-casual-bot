@@ -351,6 +351,11 @@ class Settings(BaseSettings):
     ENABLE_RAG_INGESTION: bool = True
     # Number of past messages retrieved from ChromaDB per query
     RAG_TOP_K: int = 5
+    # Temporal decay TTL: exclude messages older than N days from standard queries.
+    # Set to 0 to disable TTL filtering (retrieve all history).
+    # Queries containing historical keywords ("last month", "remember when", etc.)
+    # bypass this filter automatically. Configurable via RAG_DEFAULT_TTL_DAYS in .env.
+    RAG_DEFAULT_TTL_DAYS: int = 7
 
     # Chatty Frequency Control Defaults
     CHATTY_DEFAULT_FREQUENCY: int = 10

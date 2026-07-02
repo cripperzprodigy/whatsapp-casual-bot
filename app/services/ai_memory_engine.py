@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from filelock import FileLock
 import httpx
@@ -25,6 +25,24 @@ from app.services.profile_service import read_profile, write_profile
 from app.ai_client import ask_llm
 
 logger = logging.getLogger(__name__)
+
+
+# ── Module-level helpers ────────────────────────────────────────────────────
+
+# Keywords that signal the user is asking about historical context, which
+# bypasses the RAG TTL filter so old messages are still retrieved (Task 6).
+_HISTORICAL_QUERY_KEYWORDS = frozenset({
+    "last month", "last year", "last week", "last time",
+    "remember when", "a while ago", "previously", "before", "earlier",
+    "yesterday", "do you remember", "we talked about", "you mentioned",
+    "you said", "i told you", "we discussed",
+})
+
+
+def _is_historical_query(text: str) -> bool:
+    """Return True if *text* implies searching historical context (bypass TTL)."""
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in _HISTORICAL_QUERY_KEYWORDS)
 
 
 _global_embedding_model = None
@@ -194,7 +212,15 @@ class AIMemoryEngine:
 
         # Non-blocking ChromaDB write, guarded by feature flag
         if settings.ENABLE_RAG_INGESTION and content.strip():
-            meta = {"role": role, "timestamp": ts, "chat_id": self.chat_id}
+            ttl_days = getattr(settings, 'RAG_DEFAULT_TTL_DAYS', 7)
+            meta = {
+                "role": role,
+                "timestamp": ts,
+                "chat_id": self.chat_id,
+                # Task 6: store expiry and initial weight for temporal decay
+                "expires_at": ts + (ttl_days * 86400) if ttl_days > 0 else 0,
+                "weight": 1.0,
+            }
             if extra_meta:
                 meta.update({k: v for k, v in extra_meta.items() if k != "content"})
             try:
@@ -202,6 +228,32 @@ class AIMemoryEngine:
             except RuntimeError:
                 # No running event loop (e.g., sync test context) — skip silently
                 pass
+
+    def _read_recent_messages_snapshot(self) -> Tuple[List[Dict], float]:
+        """Capture the current recent-message window from the history file.
+
+        Returns ``(messages, snapshot_timestamp)`` where ``snapshot_timestamp``
+        is ``time.time()`` at the moment of reading.  Both values are passed to
+        ``_update_summary()`` so that summary generation and RAG retrieval operate
+        on the same temporal context for every request (Task 1 — Snapshot Context).
+        """
+        snapshot_timestamp = time.time()
+        messages: List[Dict] = []
+        if not self.history_path.exists():
+            return messages, snapshot_timestamp
+        try:
+            with open(self.history_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            for line in lines[-settings.MAX_CONTEXT_MESSAGES:]:
+                try:
+                    messages.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        except (IOError, OSError) as e:
+            logger.warning(
+                f"[Snapshot] Failed to read history for {self.chat_id}: {e}"
+            )
+        return messages, snapshot_timestamp
 
     async def _rag_ingest_async(self, content: str, meta: dict) -> None:
         """Async ChromaDB write executed in thread pool to avoid blocking the event loop."""
@@ -230,6 +282,11 @@ class AIMemoryEngine:
         filter by chat_id in the where clause. This guards against future
         architectural changes (e.g., collection consolidation) accidentally
         breaking isolation boundaries.
+
+        Temporal Decay (Task 6): By default, messages older than
+        ``RAG_DEFAULT_TTL_DAYS`` are excluded from retrieval.  Queries that
+        contain historical keywords (e.g. "last month", "remember when") bypass
+        the TTL filter so the user can still ask about older context explicitly.
         """
         if not settings.ENABLE_RAG_INGESTION:
             return ""
@@ -240,13 +297,49 @@ class AIMemoryEngine:
             query_embedding = await asyncio.to_thread(
                 lambda: self.embedding_model.encode(query_text).tolist()
             )
-            results = await asyncio.to_thread(
-                lambda: self.collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=min(settings.RAG_TOP_K, count),
-                    where={"chat_id": self.chat_id},  # Defense-in-depth isolation
+            n_results = min(settings.RAG_TOP_K, count)
+
+            # Build TTL-aware where clause
+            ttl_days = getattr(settings, 'RAG_DEFAULT_TTL_DAYS', 7)
+            use_ttl = ttl_days > 0 and not _is_historical_query(query_text)
+            if use_ttl:
+                cutoff_ts = int(time.time()) - (ttl_days * 86400)
+                where_clause = {
+                    "$and": [
+                        {"chat_id": {"$eq": self.chat_id}},
+                        {"timestamp": {"$gte": cutoff_ts}},
+                    ]
+                }
+                logger.debug(
+                    f"[RAG TTL] chat={self.chat_id}, cutoff={cutoff_ts}, "
+                    f"ttl_days={ttl_days}"
                 )
-            )
+            else:
+                where_clause = {"chat_id": self.chat_id}
+
+            try:
+                results = await asyncio.to_thread(
+                    lambda: self.collection.query(
+                        query_embeddings=[query_embedding],
+                        n_results=n_results,
+                        where=where_clause,
+                    )
+                )
+            except Exception as ttl_err:
+                # TTL filter may raise if filtered count < n_results in older
+                # ChromaDB versions.  Fall back to unfiltered query.
+                logger.debug(
+                    f"[RAG TTL] Filtered query failed for {self.chat_id}: {ttl_err}. "
+                    f"Falling back to chat_id-only filter."
+                )
+                results = await asyncio.to_thread(
+                    lambda: self.collection.query(
+                        query_embeddings=[query_embedding],
+                        n_results=n_results,
+                        where={"chat_id": self.chat_id},
+                    )
+                )
+
             if results["documents"] and results["documents"][0]:
                 return "\n".join(results["documents"][0])
         except ValueError as e:
@@ -291,23 +384,74 @@ class AIMemoryEngine:
             f"rag_enabled={settings.ENABLE_RAG_INGESTION}"
         )
 
-    async def _update_summary(self):
+    async def _update_summary(
+        self,
+        snapshot_messages: Optional[List[Dict]] = None,
+        context_timestamp: Optional[float] = None,
+    ):
+        """Generate and persist a conversation summary.
+
+        Task 1 — Snapshot Context: When *snapshot_messages* is provided it MUST
+        be the same message window that was read at the start of the current
+        request (before any new messages were appended).  This guarantees that the
+        summary and the RAG retrieval operate on the exact same temporal slice of
+        history, eliminating context drift between the two subsystems.
+
+        If *context_timestamp* is also provided, a consistency check is performed:
+        if the last message in the snapshot is more than 30 seconds older than
+        context_timestamp, a ``[CONTEXT DRIFT]`` warning is logged.
+        """
         if not settings.DYNAMIC_SYSTEM_PROMPT:
             return
 
-        # Count lines
         if not self.history_path.exists():
             return
 
         with open(self.history_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-        # Only summarize every 5 messages
+        # Only summarize every 5 messages (based on total history length)
         if len(lines) % 5 != 0:
             return
 
-        # Get last 10 messages
-        recent = "".join([json.loads(line)["role"] + ": " + json.loads(line)["content"] + "\n" for line in lines[-settings.MAX_CONTEXT_MESSAGES:]])
+        if snapshot_messages is not None:
+            # Use provided snapshot — aligned with the same request window as RAG
+            messages_to_summarize = snapshot_messages
+
+            # Consistency check: warn on significant temporal drift (Task 1)
+            if context_timestamp is not None and snapshot_messages:
+                last_msg_ts = max(
+                    (m.get("timestamp", 0) for m in snapshot_messages), default=0
+                )
+                drift = abs(context_timestamp - last_msg_ts) if last_msg_ts else 0
+                if drift > 30:
+                    logger.warning(
+                        f"[CONTEXT DRIFT] Summary and RAG context timestamps diverge "
+                        f"by {drift:.1f}s for chat={self.chat_id}. "
+                        f"snapshot_ts={last_msg_ts}, context_ts={context_timestamp:.0f}. "
+                        f"This may indicate concurrent message arrival during processing."
+                    )
+            logger.debug(
+                f"[SNAPSHOT CONTEXT] Summary using aligned snapshot: "
+                f"{len(messages_to_summarize)} msgs, context_ts="
+                f"{f'{context_timestamp:.0f}' if context_timestamp else 'N/A'}"
+            )
+        else:
+            # Fallback: re-read from file (backward compatibility for standalone calls)
+            messages_to_summarize = []
+            for line in lines[-settings.MAX_CONTEXT_MESSAGES:]:
+                try:
+                    messages_to_summarize.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+
+        if not messages_to_summarize:
+            return
+
+        recent = "".join([
+            m.get("role", "unknown") + ": " + m.get("content", "") + "\n"
+            for m in messages_to_summarize
+        ])
 
         summary_prompt = f"""You are an expert conversation analyst. Analyze the provided chat history between a user and an assistant.
 Generate a concise "Memory State" JSON object containing:
@@ -346,6 +490,11 @@ Output ONLY valid JSON."""
 
         if not generate_reply:
             return None
+
+        # 3a. Snapshot context for aligned summary generation (Task 1).
+        #     Taken AFTER the user message is appended so the snapshot includes
+        #     it, ensuring summary and RAG operate on the exact same window.
+        snapshot_messages, context_timestamp = self._read_recent_messages_snapshot()
 
         # 4. Retrieve RAG Context (async, non-blocking; guarded by ENABLE_RAG_INGESTION)
         retrieved_context = await self._retrieve_rag_context(full_text)
@@ -397,8 +546,13 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
             # 7. Append AI reply to history
             self._append_history("assistant", ai_reply)
 
-            # 8. Trigger background summary
-            await self._update_summary()
+            # 8. Trigger background summary using the snapshot captured before the
+            #    LLM call — ensures summary aligns with the same message window
+            #    as the RAG retrieval for this request (Task 1).
+            await self._update_summary(
+                snapshot_messages=snapshot_messages,
+                context_timestamp=context_timestamp,
+            )
 
             return ai_reply
         except httpx.HTTPError as e:
@@ -438,6 +592,9 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
 
         # 2. Process Language
         lang = await self._detect_language(full_text)
+
+        # 2a. Snapshot context before RAG for aligned summary generation (Task 1).
+        snapshot_messages, context_timestamp = self._read_recent_messages_snapshot()
 
         # 3. Retrieve RAG Context (async, non-blocking; guarded by ENABLE_RAG_INGESTION)
         retrieved_context = await self._retrieve_rag_context(full_text)
@@ -482,8 +639,11 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
             # 6. Append AI reply to history
             self._append_history("assistant", ai_reply)
 
-            # 7. Trigger background summary
-            await self._update_summary()
+            # 7. Trigger background summary with the aligned snapshot (Task 1).
+            await self._update_summary(
+                snapshot_messages=snapshot_messages,
+                context_timestamp=context_timestamp,
+            )
 
             return ai_reply
         except Exception as e:

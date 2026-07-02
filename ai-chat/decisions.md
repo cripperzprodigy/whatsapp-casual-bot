@@ -1,5 +1,114 @@
 # Architectural Decisions
 
+## ADR-038 — RAG Temporal Decay with Configurable TTL
+
+Date    : 2026-07-02
+Status  : Accepted
+Context :
+  The RAG retrieval logic in `_retrieve_rag_context()` performed semantic
+  search over ALL historical messages with no time-awareness. This caused
+  stale information (e.g., old lunch plans, outdated preferences) to be
+  retrieved and surfaced as if current, leading to hallucinations where the
+  bot contradicted recent statements with old ones.
+
+Decision :
+  1. Add `RAG_DEFAULT_TTL_DAYS` (default: 7) to `app/config.py`. When > 0,
+     retrieval queries include a `{"$and": [chat_id filter, timestamp >= cutoff]}`
+     ChromaDB where clause to exclude messages older than the TTL.
+  2. Implement `_is_historical_query(text)` module-level helper that detects
+     temporal keywords ("last month", "remember when", "you mentioned", etc.)
+     and bypasses TTL filtering for those queries — allowing users to
+     explicitly ask about older history when needed.
+  3. Add `expires_at` and `weight` metadata fields to every ChromaDB document
+     during ingestion in `_append_history()`. These fields support future
+     re-ranking and selective purge workflows.
+  4. Implement a fallback: if the TTL-filtered query raises an exception
+     (e.g., `n_results > filtered_count` in older ChromaDB versions), the
+     system transparently retries with a chat_id-only filter.
+  5. Set `RAG_DEFAULT_TTL_DAYS=0` to disable TTL filtering entirely.
+
+Consequences :
+  + Standard queries automatically exclude stale context, reducing hallucinations.
+  + Users can still access historical context by phrasing queries with
+    temporal markers — no functionality loss.
+  + Configurable via `.env` — no magic numbers in code (SOP compliant).
+  - Requires ChromaDB `$and` operator support. Older collection versions
+    without `timestamp` metadata gracefully fall back to no-TTL query.
+
+## ADR-037 — Session State Durability and Optimistic Locking
+
+Date    : 2026-07-02
+Status  : Accepted
+Context :
+  Critical per-session fields (current_tool, typing_state, tool_scratchpad)
+  were stored exclusively in a Python in-memory dict. A process crash or
+  restart lost all session state, potentially leaving chats in inconsistent
+  states (e.g., stuck `is_processing=True`). Under high concurrency, two
+  concurrent coroutines updating the same chat's state could corrupt it
+  silently.
+
+Decision :
+  1. Add `SessionState` SQLAlchemy model to `app/state.py` with fields:
+     `chat_id` (PK), `current_tool`, `typing_state`, `tool_scratchpad` (JSON),
+     `session_version` (optimistic lock counter), `is_processing`, `last_active`.
+  2. Implement `get_or_create_session_state(db, chat_id)` and
+     `update_session_state_atomic(db, chat_id, updates, expected_version)`.
+     The latter increments `session_version` on success and returns `False`
+     on version mismatch (concurrent modification), allowing callers to
+     detect and handle conflicts explicitly.
+  3. Implement `recover_stale_sessions(db, stale_age_seconds=300)` which
+     resets any session stuck with `is_processing=True` whose `last_active`
+     is older than the threshold. Called automatically in `init_db()` on
+     every startup.
+  4. The `SessionState` table is created automatically via
+     `Base.metadata.create_all()` — backward compatible with existing
+     SQLite databases.
+
+Consequences :
+  + Critical session fields survive process restarts.
+  + Concurrent updates are detected at the application level via the version
+    counter rather than relying on database row-level locking.
+  + Startup recovery eliminates "phantom in-flight" sessions after crashes.
+  - Every critical state write now incurs a SQLite commit. This is
+    acceptable given the infrequency of state changes vs message throughput.
+
+## ADR-036 — Preference Scoping: Per-(user_id, chat_id) Persona Isolation
+
+Date    : 2026-07-02
+Status  : Accepted
+Context :
+  User preferences (tone, persona, language) were stored in per-chat
+  `profile.json` files keyed by `chat_id`. However, nothing prevented
+  code paths that looked up a sender's individual profile from applying
+  DM-configured persona settings (e.g. "casual tone", custom emoji style)
+  to group chat interactions, or vice versa.
+
+Decision :
+  1. Define two preference tiers in `app/services/profile_service.py`:
+     - PERSONA keys: `{"tone", "emoji_style", "persona", "system_prompt"}` —
+       scoped strictly to `(user_id, chat_id)`. A DM persona NEVER appears
+       in a group lookup.
+     - GLOBAL keys: `{"preferred_language", "lang_pref"}` — stored in a
+       per-user global file and visible across all chats (fallback chain).
+  2. Add functions `read_scoped_preferences()`, `write_scoped_preference()`,
+     and `get_effective_preference()` to `profile_service.py`.
+  3. Storage layout:
+     - Scoped: `./data/prefs/{safe_user_id}/{safe_chat_id}.json`
+     - Global: `./data/prefs/{safe_user_id}/global.json`
+  4. Provide `scripts/migrate_preferences_scope.py` to copy existing DM
+     profile.json data into the new global file format for existing users.
+     The script is idempotent and supports `--dry-run`.
+  5. Fallback chain for `get_effective_preference(user_id, chat_id, key)`:
+     - Check `(user_id, chat_id)` scoped file first.
+     - For PERSONA keys: stop — return default (no cross-chat bleed).
+     - For GLOBAL keys: fall back to `(user_id, global)` → default.
+
+Consequences :
+  + DM persona settings are fully isolated from group contexts.
+  + Language preference remains globally available (user can set once).
+  + Existing data is preserved via idempotent migration script.
+  + New scoped preference API is backward compatible with existing profile reads.
+
 ## ADR-030 — Active RAG Ingestion Pipeline
 
 Date    : 2026-07-01

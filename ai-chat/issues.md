@@ -1,4 +1,29 @@
 # Issues
+### 12. RAG Temporal Decay — Stale Context Retrieved as Current (Resolved — ADR-038)
+- **Issue**: RAG retrieval returned all historical messages with no time-weighting, surfacing stale information (e.g., old plans, outdated preferences) as if current, causing hallucinations.
+- **Cause**: `_retrieve_rag_context()` performed semantic search over the entire ChromaDB collection with no timestamp filtering. No TTL mechanism existed.
+- **Resolution**: Added `RAG_DEFAULT_TTL_DAYS=7` config flag (configurable via `.env`). Standard queries now filter by `timestamp >= cutoff` in ChromaDB. Historical queries (containing "last month", "remember when", etc.) bypass TTL. `_append_history()` now stores `expires_at` and `weight` metadata on every vector document. Fallback handles older ChromaDB versions gracefully. See ADR-038.
+
+### 11. Tool Execution Logs Pollute Conversation History (Resolved — Task 5)
+- **Issue**: Tool execution logs were appended directly to the main conversation history, bloating context windows and reducing LLM response quality.
+- **Cause**: No isolated scratchpad mechanism existed for tool execution output.
+- **Resolution**: Created `app/services/tool_executor.py` with `ToolExecutor` class. All tool logs route to `session_state["tool_scratchpad"]`. The scratchpad is injected as a `<tool_scratchpad>` block in the LLM system prompt only while a tool is active, and cleared on successful resolution. Main conversation history is never polluted.
+
+### 10. Session State Race Conditions and Loss on Restart (Resolved — ADR-037)
+- **Issue**: Critical per-session fields (current_tool, typing_state) were in-memory only, lost on process restart. Concurrent coroutines updating the same chat state could corrupt it silently.
+- **Cause**: Session state stored in plain Python dicts with no persistence, no versioning, and no conflict detection.
+- **Resolution**: Added `SessionState` SQLAlchemy model to `app/state.py` with optimistic locking via `session_version` counter. `update_session_state_atomic()` returns `False` on version mismatch. `recover_stale_sessions()` resets stuck in-flight sessions on startup. See ADR-037.
+
+### 9. Temporary Files Persist Indefinitely After Request Completion (Resolved — Task 4)
+- **Issue**: Audio, image, and PDF temp files created during message processing were never cleaned up, risking disk fill and data leakage.
+- **Cause**: No request-scoped cleanup context existed for temporary file management.
+- **Resolution**: Created `app/utils/file_utils.py` with `TempFileContext` async context manager. Creates unique per-request directories (`/tmp/bot_{uuid}/`). `__aexit__` uses `shutil.rmtree` unconditionally regardless of success or exception. `cleanup_orphaned_temp_dirs()` removes any `bot_*` dirs older than 1 hour at startup.
+
+### 8. User Preferences Leak Between DM and Group Contexts (Resolved — ADR-036)
+- **Issue**: Persona preferences (tone, emoji style) set in a DM could bleed into group chat interactions for the same user, causing formal DM personas to appear in casual group chats.
+- **Cause**: Preference storage was not scoped to `(user_id, chat_id)` — a single global file per user allowed cross-context leakage.
+- **Resolution**: Implemented a two-tier preference scoping system in `profile_service.py`. PERSONA keys are strictly scoped to `(user_id, chat_id)` — no fallback across contexts. GLOBAL keys (language) use a per-user global fallback. Migration script provided (`scripts/migrate_preferences_scope.py`). See ADR-036.
+
 ### 7. RAG Context Isolation Audit (Resolved — No Bug Found)
 - **Issue**: Suspected cross-chat context leakage in RAG retrieval — user messages from Group chats potentially appearing in DM queries and vice versa.
 - **Cause**: Audit revealed the hypothesis was incorrect. Each `chat_id` already maps to a separate `ChromaDB.PersistentClient` at `./data/contacts/{safe_id}/vector_db/`, providing complete filesystem-level isolation. No `where` clause existed in retrieval queries, but this was inconsequential since each collection is chat-specific.

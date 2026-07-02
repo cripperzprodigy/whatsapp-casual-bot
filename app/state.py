@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Boolean, JSON, Integer, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.config import settings
 
 Base = declarative_base()
@@ -97,6 +97,36 @@ class BotAdmin(Base):
     )
     is_active = Column(Boolean, default=True, nullable=False)
 
+
+class SessionState(Base):
+    """SQLite-backed session state for critical per-chat fields (Task 3 — Durability).
+
+    Provides:
+    - Persistence across process restarts for fields that must survive crashes.
+    - Optimistic locking via ``session_version`` (etag) to detect concurrent writes.
+    - Recovery support: rows stuck with ``is_processing=True`` after a crash are
+      reset by ``recover_stale_sessions()`` on startup.
+    """
+
+    __tablename__ = 'session_state'
+
+    chat_id = Column(String, primary_key=True, index=True)
+    current_tool = Column(String, nullable=True)
+    typing_state = Column(Boolean, default=False)
+    tool_scratchpad = Column(JSON, nullable=True, default=list)
+    # Optimistic locking counter — increment on every write.
+    session_version = Column(Integer, default=0, nullable=False)
+    is_processing = Column(Boolean, default=False)
+    last_active = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args={"check_same_thread": False},
@@ -109,6 +139,14 @@ def init_db():
     from app.db_migration import migrate_group_contact_ledger
     migrate_group_contact_ledger()
     Base.metadata.create_all(bind=engine)
+    # Recovery mode: reset stale in-flight sessions from previous crash (Task 3)
+    with SessionLocal() as db:
+        recovered = recover_stale_sessions(db)
+        if recovered:
+            import logging
+            logging.getLogger(__name__).info(
+                f"[Startup Recovery] Reset {recovered} stale session(s)."
+            )
 
 def get_global_setting(db, key: str, default: str = None) -> str:
     setting = db.query(GlobalSettings).filter(GlobalSettings.key == key).first()
@@ -144,6 +182,91 @@ def get_chat_settings(db, chat_id: str) -> ChatSettings:
         db.commit()
         db.refresh(settings_obj)
     return settings_obj
+
+
+# ── Session State helpers (Task 3 — Durability & Optimistic Locking) ─────────
+
+
+def get_or_create_session_state(db, chat_id: str) -> "SessionState":
+    """Return the persistent SessionState row for *chat_id*, creating it if absent."""
+    row = db.query(SessionState).filter(SessionState.chat_id == chat_id).first()
+    if not row:
+        row = SessionState(chat_id=chat_id)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def update_session_state_atomic(
+    db,
+    chat_id: str,
+    updates: dict,
+    expected_version: int,
+) -> bool:
+    """Update session state fields using optimistic locking.
+
+    Returns True if the update succeeded (version matched), False if a concurrent
+    write was detected (version mismatch — caller should retry or abort).
+
+    The ``session_version`` counter is always incremented on success.
+    """
+    row = db.query(SessionState).filter(SessionState.chat_id == chat_id).first()
+    if not row:
+        # Row doesn't exist yet — safe to create and set version=1
+        row = SessionState(chat_id=chat_id, session_version=1, **updates)
+        db.add(row)
+        db.commit()
+        return True
+
+    if row.session_version != expected_version:
+        # Concurrent modification detected
+        import logging
+        logging.getLogger(__name__).warning(
+            f"[SessionState] Optimistic lock conflict for chat={chat_id}: "
+            f"expected_version={expected_version}, actual={row.session_version}"
+        )
+        return False
+
+    for key, value in updates.items():
+        setattr(row, key, value)
+    row.session_version = row.session_version + 1
+    row.last_active = datetime.now(timezone.utc)
+    db.commit()
+    return True
+
+
+def recover_stale_sessions(db, stale_age_seconds: int = 300) -> int:
+    """Reset any sessions stuck in processing state older than *stale_age_seconds*.
+
+    Call once at startup to clean up sessions left mid-flight by a crashed process.
+    Returns the number of sessions reset.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_age_seconds)
+    stale = (
+        db.query(SessionState)
+        .filter(
+            SessionState.is_processing == True,  # noqa: E712
+            SessionState.last_active < cutoff,
+        )
+        .all()
+    )
+    count = 0
+    for row in stale:
+        row.is_processing = False
+        row.current_tool = None
+        row.tool_scratchpad = []
+        row.session_version = row.session_version + 1
+        logger.warning(
+            f"[Recovery] Reset stale session for chat={row.chat_id} "
+            f"(last_active={row.last_active})"
+        )
+        count += 1
+    if count:
+        db.commit()
+    return count
 
 def add_message_to_buffer(  # Issue 13: added return type
     db,

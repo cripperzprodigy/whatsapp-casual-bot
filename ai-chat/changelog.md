@@ -1,5 +1,50 @@
 # Changelog
 
+### Isolation Fixes: Snapshot Context, Preference Scoping, Session Durability, Temp Hygiene, Tool Scratchpad, RAG TTL — ADR-036/037/038 (2026-07-02)
+
+**Task 1 — Snapshot Context / Summary Staleness Fix** (`app/services/ai_memory_engine.py`)
+- Added `_read_recent_messages_snapshot()` method that captures the exact recent-message window (up to `MAX_CONTEXT_MESSAGES`) at the moment a request begins processing, returning `(messages, snapshot_timestamp)`.
+- Modified `_update_summary()` to accept optional `snapshot_messages` and `context_timestamp` parameters. When a snapshot is provided, summary generation uses that exact message window instead of re-reading the file — ensuring summary and RAG retrieval operate on the same temporal slice of history.
+- Added `[CONTEXT DRIFT]` warning log when `snapshot_timestamp` vs `context_timestamp` diverge by more than 30 seconds, surfacing race conditions under high concurrency.
+- Updated `process_message()` and `generate_delayed_reply()` to call `_read_recent_messages_snapshot()` before RAG retrieval and pass the snapshot to `_update_summary()`.
+
+**Task 2 — Group-Specific User Preferences** (`app/services/profile_service.py`, `scripts/migrate_preferences_scope.py`)
+- Added `PERSONA_PREFERENCE_KEYS` and `GLOBAL_PREFERENCE_KEYS` frozensets defining the scoping policy: persona keys (`tone`, `emoji_style`, `persona`, `system_prompt`) are scoped to `(user_id, chat_id)` tuples; global keys (`preferred_language`, `lang_pref`) fall back to user-level global storage.
+- Added `_get_scoped_pref_path(user_id, chat_id)` and `_get_global_pref_path(user_id)` path helpers. Storage layout: `./data/prefs/{safe_user_id}/{safe_chat_id}.json` (scoped) and `./data/prefs/{safe_user_id}/global.json` (global).
+- Added `read_scoped_preferences(user_id, chat_id)`, `write_scoped_preference(user_id, chat_id, key, value)`, and `get_effective_preference(user_id, chat_id, key, default)` — the full preference scoping API.
+- Created `scripts/migrate_preferences_scope.py`: idempotent migration script that copies existing DM `profile.json` data into the new `global.json` format. Supports `--dry-run` and `--chat-id` flags. Run via `python -m scripts.migrate_preferences_scope`.
+
+**Task 3 — Session State Durability & Optimistic Locking** (`app/state.py`)
+- Added `SessionState` SQLAlchemy model (`session_state` table) with `chat_id` PK, `current_tool`, `typing_state`, `tool_scratchpad` (JSON), `session_version` (optimistic lock etag), `is_processing`, and `last_active` columns. Auto-created via `Base.metadata.create_all()` — backward compatible with existing DBs.
+- Added `get_or_create_session_state(db, chat_id)` helper.
+- Added `update_session_state_atomic(db, chat_id, updates, expected_version)`: increments `session_version` on success; returns `False` on version mismatch (concurrent write detected) without raising.
+- Added `recover_stale_sessions(db, stale_age_seconds=300)`: resets sessions stuck in `is_processing=True` state whose `last_active` is older than the threshold. Called automatically in `init_db()` on every startup.
+
+**Task 4 — Temp File Hygiene** (`app/utils/file_utils.py`)
+- Created `TempFileContext` async context manager. Creates a unique per-request directory at `<tmpdir>/bot_{uuid}/{prefix}/`. `__aexit__` aggressively wipes the entire `bot_{uuid}` root via `shutil.rmtree`, unconditionally (success or exception).
+- Created `cleanup_orphaned_temp_dirs(max_age_seconds=3600)` async function for startup hygiene: removes any `/tmp/bot_*` directories older than the threshold.
+
+**Task 5 — Tool Execution Scratchpad Isolation** (`app/services/tool_executor.py`)
+- Created `ToolExecutor` class with `log_to_scratchpad()`, `get_scratchpad_prompt()`, `clear_scratchpad()`, and `is_tool_active()` methods.
+- Tool logs append to `session_state["tool_scratchpad"]` (never `conversation_history`), keeping the main history clean.
+- `get_scratchpad_prompt()` returns a `<tool_scratchpad>` block for LLM injection only when a tool is active; returns `""` otherwise.
+- `execute(tool_name)` async context manager: sets `current_tool`, logs TOOL START/DONE, and clears the scratchpad on success. On exception, preserves the scratchpad for retry/debugging and re-raises.
+
+**Task 6 — RAG Temporal Decay** (`app/services/ai_memory_engine.py`, `app/config.py`)
+- Added `RAG_DEFAULT_TTL_DAYS: int = 7` to `app/config.py`. Set to `0` to disable TTL filtering. Fully configurable via `.env` — no magic numbers (SOP compliant).
+- Added `_is_historical_query(text)` module-level helper: returns `True` for queries containing temporal keywords like "last month", "remember when", "you mentioned", etc.
+- Updated `_retrieve_rag_context()`: standard queries add a `{"$and": [chat_id filter, timestamp >= cutoff]}` ChromaDB where clause; historical queries bypass TTL. On filter failure (older ChromaDB versions), automatically falls back to chat_id-only filter.
+- Updated `_append_history()` to include `expires_at` (epoch seconds) and `weight` (float) in every ChromaDB document metadata for future re-ranking and purge support.
+
+**Task 7 — Tests** (`tests/test_isolation_fixes.py`)
+- 25 new tests across 6 test classes:
+  - `TestSnapshotContext`: snapshot capture, summary uses snapshot, snapshot passed to _update_summary, context drift warning.
+  - `TestPreferenceScoping`: DM persona not visible in group, global language visible in group, scoped pref overrides global.
+  - `TestSessionDurability`: create row, optimistic lock success, conflict detection, stale session recovery, fresh session not reset.
+  - `TestTempFileHygiene`: dir deleted on success, dir deleted on exception, no-prefix variant, orphan cleanup, recent dirs preserved.
+  - `TestToolScratchpad`: tool log not in history, empty prompt, prompt contains logs, clear, success clears, error preserves, history export clean.
+  - `TestRAGTemporalDecay`: TTL filter applied, historical query bypasses TTL, TTL=0 disables filter, metadata includes expires_at, edge cases.
+
 ### RAG Context Isolation — Defense-in-Depth Hardening — ADR-035 (2026-07-02)
 - **Audit finding**: Per-chat filesystem isolation via separate `ChromaDB.PersistentClient` directories already prevents cross-chat context leakage. No live bug exists.
 - **New `_retrieve_rag_context()` method** (`app/services/ai_memory_engine.py`): Extracted and consolidated duplicated RAG retrieval logic from `process_message()` and `generate_delayed_reply()` into a single reusable async method. Eliminates ~40 lines of code duplication.
