@@ -1,4 +1,11 @@
 # Issues
+
+
+### ISSUE-017: [RESOLVED] SECURITY-001: XXE and Billion Laughs Vulnerability in Deep Crawl
+- **Description**: `deep_crawl_service.py` utilized raw `lxml` parsing via BeautifulSoup without disabling entity expansion, rendering it vulnerable to XXE and DoS (Billion Laughs).
+- **File References**: `app/services/deep_crawl_service.py`, `requirements.txt`
+- **Priority**: CRITICAL
+- **Resolution**: Updated to use `defusedxml` and strictly configured `lxml` HTMLParser (`resolve_entities=False`, `no_network=True`, etc.). Extensive security test suite added.
 ### ISSUE-016: [OPEN] Embedding Model Drift Compatibility
 - **Description**: No strategy documented for handling embedding model updates in sentence-transformers. New model versions may produce incompatible vectors, breaking existing RAG retrievals.
 - **File References**: app/services/ai_memory_engine.py, requirements.txt
@@ -11,7 +18,8 @@
 - **Priority**: MEDIUM
 - **Related ADR**: ADR-037
 
-### ISSUE-014: [OPEN] Error Propagation Gaps Between Gateway and Backend
+### ISSUE-014: [RESOLVED] Error Propagation Gaps Between Gateway and Backend
+- **Resolution**: Implemented comprehensive integration test suite (`tests/integration/gateway_backend/`) verifying 500 errors, timeouts, rate limits (429), and malformed responses. All error propagation paths are now formally covered.
 - **Description**: No documented error propagation strategy between TypeScript gateway and Python backend under failure scenarios. If Python backend returns 5xx errors or times out, gateway behavior is undefined.
 - **File References**: src/bot/handler.ts, app/main.py
 - **Priority**: MEDIUM

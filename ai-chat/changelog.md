@@ -2,6 +2,20 @@
 
 > For historical entries prior to 2026-06-25, see changelog_archive.md
 
+
+### Integration Test Suite Implementation (INTEGRATION-001) - 2026-07-02
+- **Feature**: Developed a massive integration testing suite covering the Gateway-Backend boundary.
+- **Coverage**: Simulated Node.js gateway requests utilizing robust Python mocks for text, image, command, and group interactions.
+- **Error Propagation**: Hardened backend error handling validation for 500s, 429s, network timeouts, and JSON failures.
+- **CI/CD**: Introduced `.github/workflows/integration-tests.yml` to automatically execute the suite on GitHub Actions.
+- **Tests Created**: `test_message_flow.py`, `test_error_propagation.py`, `test_session_consistency.py`, `test_rag_tool_integration.py`.
+
+### Deep Crawl Security Hardening (SECURITY-001) - 2026-07-02
+- **Security**: Hardened the `deep_crawl_service.py` HTML parser against XML External Entity (XXE) and Billion Laughs DoS attacks.
+- **Dependency**: Integrated `defusedxml` alongside `lxml` for secured XML parsing wrappers.
+- **Constraints**: Imposed strict limits: `resolve_entities=False`, `no_network=True`, a 5MB payload size limit, and rapid parsing timeouts.
+- **Tests Created**: Added `tests/test_security_deep_crawl.py` suite comprising over 10 tests confirming explicit blocking of XXE payloads, malicious SVG vectors, and nested entities.
+
 ## 2026-07-02 - DEBUG-LEAD Audit Review
 Reviewed
 Secondary agent branch audit of feature/wabot-v3.1

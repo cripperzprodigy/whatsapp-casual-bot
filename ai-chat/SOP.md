@@ -156,3 +156,16 @@ DEBUG-LEAD must conduct a weekly audit checking:
 - Unresolved placeholder detection
 - Handshake compliance in chatpad.md
 Results logged to ai-chat/audit_logs/weekly_hybrid_audit_[YYYYMMDD].md
+
+
+### 8.2 XXE Protection & HTML Parsing
+- **Safe Parser Configuration**: All XML/HTML parsing (e.g., BeautifulSoup) MUST use a hardened configuration. Default `lxml` is prohibited without protection.
+- **Entity Constraints**: External entity resolution (`resolve_entities=False`) and network access (`no_network=True`) must be disabled.
+- **Expansion Limits**: Maximum entity expansion depth is strictly limited, and parsing operations must enforce a hard timeout and response size limit (e.g., 5MB).
+
+
+## Section Y: Integration Testing Requirements
+
+- **Mandate**: All cross-service flows (WhatsApp Gateway -> Python Backend -> Response) MUST have integration test coverage.
+- **Scenarios**: Tests must cover Successful Message Flow, Error Propagation, Session State Consistency, RAG Ingestion, and Tool Execution.
+- **Constraints**: The entire integration test suite must complete in under 5 minutes and run hermetically via CI/CD.

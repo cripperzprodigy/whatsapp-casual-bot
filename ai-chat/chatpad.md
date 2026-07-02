@@ -386,3 +386,4 @@ Completed 8-task isolation fix sprint (ADR-036/037/038). All 30 tests pass.
 - `ToolExecutor` available but not yet integrated into active tool paths — integrate when agentic search tools are extended.
 - Preference migration requires one manual run: `python -m scripts.migrate_preferences_scope`.
 - `SessionState` table auto-creates on next `init_db()` — no manual migration needed.
+| Antigravity | 2026-07-02 01:32 | INT-001/SEC-001 | feature/wabot-v3.1 | COMPLETED |

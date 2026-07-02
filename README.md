@@ -1,4 +1,5 @@
 # WhatsApp Casual Bot
+[![Integration Tests](https://github.com/cripperzprodigy/whatsapp-casual-bot/actions/workflows/integration-tests.yml/badge.svg)](https://github.com/cripperzprodigy/whatsapp-casual-bot/actions/workflows/integration-tests.yml)
 
 > [!IMPORTANT]
 > **🤖 AI AGENTS & COLLABORATION HUB:** If you are an AI assistant assigned to modify this codebase, you MUST read the master onboarding directive located at [`ai-chat/README.md`](./ai-chat/README.md) BEFORE making any changes. The `ai-chat` directory is our dedicated **AI Collaboration Workspace**. It is where information exchange, task plans, issues, bugs, and architectural decisions are continuously documented to ensure progressive, safe codebase improvements.
@@ -354,3 +355,22 @@ Before executing ANY task, ALL agents (new or existing) MUST:
 6. CLOSE: Upon task completion, update your chatpad.md entry to 'COMPLETED' and update all relevant ai-chat files (changelog, issues, decisions, SOP if changed).
 
 VIOLATION CONSEQUENCE: Any work performed without completing this protocol is considered INVALID and will be rejected by DEBUG-LEAD.
+
+
+## Running Integration Tests
+
+To run the full suite of integration tests spanning the Node.js Gateway and Python FastAPI backend scenarios (mocked boundaries):
+
+1. Install test dependencies:
+   ```bash
+   pip install pytest pytest-asyncio httpx respx
+   ```
+2. Run the suite:
+   ```bash
+   pytest tests/integration/ -v
+   ```
+3. Generate coverage:
+   ```bash
+   pytest tests/integration/ --cov=app --cov-report=term-missing
+   ```
+**Note**: Integration tests are automatically run on PR via GitHub Actions.

@@ -40,7 +40,7 @@ if "sentence_transformers" not in sys.modules:
 
 # langdetect
 if "langdetect" not in sys.modules:
-    _ld_mod = _make_stub("langdetect", detect=MagicMock(return_value="en"), DetectorFactory=MagicMock)
+    _ld_mod = _make_stub("langdetect", detect=MagicMock(return_value="en"), detect_langs=MagicMock(return_value=[MagicMock(lang="en", prob=0.99)]), DetectorFactory=MagicMock)
     _ld_exc = _make_stub("langdetect.lang_detect_exception")
 
     class _FakeLangDetectException(Exception):

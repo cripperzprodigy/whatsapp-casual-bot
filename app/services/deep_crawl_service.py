@@ -220,12 +220,35 @@ class DeepCrawlService:
     #  HTML Cleaning
     # -------------------------------------------------------------- #
 
-    def _clean_html(self, html: str) -> str:
+    def _clean_html(self, html_content: str) -> str:
         """Strip non-content elements and extract readable text.
 
         Uses dynamic per-page budget calculated from TOTAL_BUDGET // MAX_URLS.
         """
-        soup = BeautifulSoup(html, "lxml")
+        import defusedxml.lxml as dlxml
+        from lxml import html
+        from bs4 import BeautifulSoup
+        import logging
+        
+        MAX_HTML_SIZE = 5 * 1024 * 1024
+        if len(html_content.encode("utf-8", errors="replace")) > MAX_HTML_SIZE:
+            logging.getLogger(__name__).warning("SECURITY WARNING: HTML exceeds 5MB limit. Truncating.")
+            html_content = html_content.encode("utf-8", errors="replace")[:MAX_HTML_SIZE].decode("utf-8", errors="replace")
+            
+        try:
+            parser = html.HTMLParser(
+                resolve_entities=False,
+                no_network=True,
+                huge_tree=False,
+                recover=True,
+                encoding='utf-8'
+            )
+            root = dlxml.fromstring(html_content.encode('utf-8'), parser=parser, forbid_dtd=True, forbid_entities=True)
+            text_converted = html.tostring(root, encoding='unicode')
+            soup = BeautifulSoup(text_converted, "lxml")
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Strict parsing failed, falling back to html.parser: {e}")
+            soup = BeautifulSoup(html_content, "html.parser")
 
         # Remove junk tags
         for tag in soup(_JUNK_TAGS):
