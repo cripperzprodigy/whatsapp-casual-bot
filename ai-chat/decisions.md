@@ -1,5 +1,43 @@
 # Architectural Decisions
 
+## ADR-042 — Natural Language Web Search Trigger & Time-Aware Synthesis
+
+Date    : 2026-07-02
+Status  : Accepted
+Context :
+  The web search capabilities (`!sc` deep crawl) were only accessible via explicit
+  commands.  Users writing natural phrases like "search for FIFA results" or
+  "look up the weather" received a standard Chatty LLM reply — potentially
+  hallucinated — instead of a live web search.  Additionally, the LLM synthesiser
+  had no awareness of the current date/time, making relative terms ("latest",
+  "yesterday", "recent") unresolvable.
+
+Decision :
+  1. Create `app/utils/search_intent.py` with `detect_search_intent(text)`
+     — a regex-based intent detector matching 10+ natural-language patterns
+     (search/look up/google/find/what are the latest/can you search for/etc.).
+     Start-anchored patterns and a false-positive exclusion list prevent
+     conversational phrases like "I looked for my keys" from triggering.
+
+  2. In `router_webhook.py::_handle_dm_message()`, intercept incoming DM
+     text BEFORE the Chatty LLM call: if `detect_search_intent()` returns
+     True AND `deep_crawl_enabled=True` AND `CHATTY_SEARCH_DEFAULT=True`,
+     route the message to `DeepCrawlService.search_and_crawl(query)`.
+     The handler AWAITS the result (search-then-reply, not fire-and-forget).
+     A 15-second timeout prevents hanging.
+
+  3. In `DeepCrawlService._synthesize()`, prepend a `[SYSTEM TIME: {UTC}]`
+     header to every LLM synthesis prompt, instructing the model to interpret
+     "latest", "recent", "yesterday" relative to the injected timestamp.
+
+Consequences :
+  + Users can use natural language to trigger web search without learning `!sc`.
+  + Synthesised answers correctly reflect today's date.
+  + Fallback messages sent on timeout or search failure (no silent drops).
+  - Start-anchored patterns may miss some mid-sentence search requests (e.g.
+    "I was wondering if you could search for..."); these still fall through to
+    the Chatty engine, which may use its TOOLS block to indicate web search.
+
 ## ADR-041 — Chatty Time Awareness & Web Search Integration
 
 Date    : 2026-07-02

@@ -3,6 +3,12 @@
 > For historical entries prior to 2026-06-25, see changelog_archive.md
 
 
+### Natural Language Web Search + Time-Aware Synthesis — ADR-042 (WEB-SEARCH-FIX-001) - 2026-07-02
+- **Natural intent detection**: New `app/utils/search_intent.py` with `detect_search_intent()` matching 10+ natural language patterns ("search for X", "look up Y", "google Z", "what are the latest X", "can you find X", etc.). Start-anchored regex prevents false positives ("I looked for my keys" ≠ search).
+- **Search-then-reply flow**: `router_webhook.py` DM handler intercepts search intent BEFORE the Chatty LLM call, routes to `DeepCrawlService`, AWAITS result (enforced wait), then sends the synthesised answer. 15-second timeout guard with graceful fallback message.
+- **Time-aware synthesis**: `DeepCrawlService._synthesize()` now prepends `[SYSTEM TIME: {UTC}]` to every LLM prompt, enabling correct resolution of "latest", "recent", "yesterday" queries.
+- **Tests**: 23 new tests in `tests/test_web_search_flow.py` — all 116 tests pass.
+
 ### Config Sync: .env.example & Documentation Audit — CONFIG-FIX-003 - 2026-07-02
 - **Added to `.env.example`**: `ENABLE_RAG_INGESTION`, `RAG_TOP_K`, `RAG_DEFAULT_TTL_DAYS`, `MEMORY_IMMEDIATE_BUFFER_SIZE`, `MEMORY_RECENCY_ALPHA`, `CHATTY_SEARCH_DEFAULT`, `ENFORCE_WHITELIST`, `BOT_IDENTITY_CACHE_TTL`.
 - **Updated**: `CHATTY_ENABLED_LANGUAGES` changed from `en,id,ms` → `en,id,ms,zh` in both `.env.example` and `app/config.py` (aligns with ADR-039 Chinese support).

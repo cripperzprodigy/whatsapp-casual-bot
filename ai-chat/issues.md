@@ -1,6 +1,10 @@
 # Issues
 
 
+### ISSUE-023: [RESOLVED] WEB-SEARCH-FIX-001: Natural Language Search Not Triggering + No Time Awareness
+- **Description**: "search for X" / "look up Y" / "what are the latest Z" in DMs did NOT trigger `!sc` deep crawl — the LLM replied with a potentially hallucinated answer. Also, no current date/time injected into synthesis, so "latest" queries were temporally blind.
+- **Resolution**: `search_intent.py` with 10+ regex patterns, intercepted in DM handler before Chatty. `DeepCrawlService._synthesize()` now prepends `[SYSTEM TIME: UTC]`. 23 new tests. See ADR-042.
+
 ### ISSUE-022: [RESOLVED] CONFIG-FIX-003: .env.example Missing New Config Vars
 - **Description**: `.env.example` was missing `MEMORY_IMMEDIATE_BUFFER_SIZE`, `MEMORY_RECENCY_ALPHA`, `ENABLE_RAG_INGESTION`, `RAG_TOP_K`, `RAG_DEFAULT_TTL_DAYS`, `CHATTY_SEARCH_DEFAULT`, `ENFORCE_WHITELIST`, and `BOT_IDENTITY_CACHE_TTL`. `CHATTY_ENABLED_LANGUAGES` also omitted `zh` despite ADR-039 Chinese support.
 - **Resolution**: All missing vars added to `.env.example` with inline comments. `CHATTY_ENABLED_LANGUAGES` updated to `en,id,ms,zh` in both `.env.example` and `app/config.py`. README config table expanded. Full audit confirms zero missing vars.

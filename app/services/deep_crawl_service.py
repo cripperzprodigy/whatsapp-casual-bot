@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
+from datetime import datetime, timezone
 from typing import List, Tuple
 from urllib.parse import urlparse
 
@@ -320,7 +321,14 @@ class DeepCrawlService:
     # -------------------------------------------------------------- #
 
     async def _synthesize(self, query: str, context: str, snippet_fallback: bool) -> str:
-        """Send aggregated context to the LLM for synthesis."""
+        """Send aggregated context to the LLM for synthesis.
+
+        WEB-SEARCH-FIX-001: Injects current UTC timestamp so the LLM can
+        resolve relative temporal terms ("latest", "recent", "yesterday")
+        accurately in the synthesised answer.
+        """
+        current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
         fallback_note = ""
         if snippet_fallback:
             fallback_note = (
@@ -330,6 +338,8 @@ class DeepCrawlService:
             )
 
         prompt = (
+            f"[SYSTEM TIME: {current_time}]\n"
+            f"Interpret 'latest', 'recent', 'yesterday', 'today' relative to this time.\n\n"
             f"Original Query: '{query}'\n\n"
             f"Using the following {'page contents' if not snippet_fallback else 'search snippets'}, "
             f"write a comprehensive, detailed answer. "

@@ -30,6 +30,7 @@ from app.commands import handle_command
 from app.translation import detect_language, translate_text
 from app.config import settings, BotIdentityManager
 from app.utils.lang_detect import detect_language as mirror_detect_language
+from app.utils.search_intent import detect_search_intent
 from app.contact_sync import (
     update_contact,
     export_group_contacts,
@@ -263,6 +264,50 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
         final_user_input = text
         if context_tuple and context_tuple[0] == "reply":
             final_user_input = f"User is replying to your previous message: '{context_tuple[1]}'. Their new message is: '{text}'"
+
+        # ── WEB-SEARCH-FIX-001: Natural language search intent detection ────
+        # If the user's message implies a web search ("search for X", "look up Y",
+        # "what are the latest Z"), intercept and route to the deep crawl service
+        # BEFORE the standard Chatty LLM call.  This enforces search-then-reply.
+        search_triggered = False
+        if text and text.strip() and not text.strip().startswith("!"):
+            is_search, search_query = detect_search_intent(text)
+            if is_search and search_query:
+                from app.config import settings as _cfg
+                if getattr(_cfg, "deep_crawl_enabled", True) and getattr(_cfg, "CHATTY_SEARCH_DEFAULT", True):
+                    logger.info(f"[SearchIntent] DM chat={chat_id} natural search: '{search_query}'")
+                    search_triggered = True
+                    try:
+                        await send_text_message(
+                            chat_id,
+                            f"🔍 Searching the web for: {search_query}...",
+                        )
+                        from app.services.search_service import HybridSearchService
+                        from app.services.deep_crawl_service import DeepCrawlService
+                        mode = getattr(_cfg, "SEARCH_PROVIDER_MODE", "hybrid")
+                        searxng_url = getattr(_cfg, "SEARXNG_BASE_URL", None)
+                        search_svc = HybridSearchService(mode, searxng_url)
+                        deep_crawl = DeepCrawlService(search_service=search_svc)
+                        # Enforced wait — search completes before reply
+                        search_result = await asyncio.wait_for(
+                            deep_crawl.search_and_crawl(search_query),
+                            timeout=15.0,
+                        )
+                        await send_long_message(chat_id, search_result)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"[SearchIntent] Search timed out for chat={chat_id}")
+                        await send_text_message(
+                            chat_id,
+                            "⚠️ Search took too long. Please try again or use `!s` for a faster search.",
+                        )
+                    except Exception as e:
+                        logger.error(f"[SearchIntent] Search error for chat={chat_id}: {e}")
+                        await send_text_message(
+                            chat_id,
+                            "⚠️ I couldn't search the web right now. Please try again later.",
+                        )
+                    # Search path complete — do NOT fall through to Chatty LLM
+                    return
 
         # Fire-and-forget ingestion: persists raw text to history and schedules
         # async ChromaDB write. Runs concurrently with LLM generation.
