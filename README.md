@@ -195,11 +195,13 @@ The bot supports three roles:
 - `!botid` - Show bot identity status.
 
 #### Owner-only commands
+- `!rag_status` - 📊 View RAG memory stats and system-wide vector counts.
+- `!memory_clear [help|list|me|user|group|all]` - **Granular memory management**: `help` (show subcommands), `list` (active collections), `me` (clear self), `user <jid>` (clear user), `group <gid>` (clear group), `all --confirm` (nuclear purge with safety lock).
+- `!resolve [@mention|<jid>|group|global]` - Resolve phone numbers. Checks message mentions first, then accepts direct JID arguments. Supports `group` (current group) and `global` (all groups).
 - `!sc_toggle <on|off>` - Toggle Deep Crawl feature globally.
 - `!config toggle <feature> <state>` - Advanced configuration toggles.
 - `!contacts global` - View all contacts across all groups.
 - `!contacts export` - Export global contact ledger.
-- `!resolve @mention|group|global` - Force resolve phone numbers.
 - `!pm global <text>` - Send a direct message to all groups.
 - `!pm flood limit|interval <val>` - Update PM flood control settings.
 - `!owner grant <jid>` - Grant owner privileges.
