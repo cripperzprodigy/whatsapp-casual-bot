@@ -377,7 +377,9 @@ class Settings(BaseSettings):
     CHATTY_DELAY_MIN: int = 5
     CHATTY_DELAY_MAX: int = 10
     CHATTY_DELAY_MODE: str = "debounce"
-    CHATTY_ENABLED_LANGUAGES: str = "en,id,ms"
+    # Languages supported by the Chatty AI engine for auto-selection.
+    # Includes 'zh' for Chinese (Simplified & Traditional) per ADR-039.
+    CHATTY_ENABLED_LANGUAGES: str = "en,id,ms,zh"
     DEFAULT_GROUP_LANGUAGE: str = "en"
     DEFAULT_DM_LANGUAGE: str = "en"
 

@@ -1,6 +1,10 @@
 # Issues
 
 
+### ISSUE-022: [RESOLVED] CONFIG-FIX-003: .env.example Missing New Config Vars
+- **Description**: `.env.example` was missing `MEMORY_IMMEDIATE_BUFFER_SIZE`, `MEMORY_RECENCY_ALPHA`, `ENABLE_RAG_INGESTION`, `RAG_TOP_K`, `RAG_DEFAULT_TTL_DAYS`, `CHATTY_SEARCH_DEFAULT`, `ENFORCE_WHITELIST`, and `BOT_IDENTITY_CACHE_TTL`. `CHATTY_ENABLED_LANGUAGES` also omitted `zh` despite ADR-039 Chinese support.
+- **Resolution**: All missing vars added to `.env.example` with inline comments. `CHATTY_ENABLED_LANGUAGES` updated to `en,id,ms,zh` in both `.env.example` and `app/config.py`. README config table expanded. Full audit confirms zero missing vars.
+
 ### ISSUE-021: [RESOLVED] Chatty Time Awareness & Web Search (ADR-041)
 - **Description**: LLM had no awareness of current date/time, causing temporal hallucinations. No path for auto web search within conversational Chatty flow.
 - **Resolution**: Added `_build_time_context()` (Singapore timezone), `_should_trigger_search()` keyword matcher, `_build_search_tools_section()`, `CHATTY_SEARCH_DEFAULT=True` config, and `!chatty search on|off` per-chat toggle. See ADR-041.

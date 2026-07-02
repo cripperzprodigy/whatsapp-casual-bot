@@ -3,6 +3,12 @@
 > For historical entries prior to 2026-06-25, see changelog_archive.md
 
 
+### Config Sync: .env.example & Documentation Audit — CONFIG-FIX-003 - 2026-07-02
+- **Added to `.env.example`**: `ENABLE_RAG_INGESTION`, `RAG_TOP_K`, `RAG_DEFAULT_TTL_DAYS`, `MEMORY_IMMEDIATE_BUFFER_SIZE`, `MEMORY_RECENCY_ALPHA`, `CHATTY_SEARCH_DEFAULT`, `ENFORCE_WHITELIST`, `BOT_IDENTITY_CACHE_TTL`.
+- **Updated**: `CHATTY_ENABLED_LANGUAGES` changed from `en,id,ms` → `en,id,ms,zh` in both `.env.example` and `app/config.py` (aligns with ADR-039 Chinese support).
+- **README.md**: RAG config table expanded from 4 to 8 rows — now includes `MEMORY_IMMEDIATE_BUFFER_SIZE`, `MEMORY_RECENCY_ALPHA`, `CHATTY_SEARCH_DEFAULT`, `CHATTY_ENABLED_LANGUAGES`.
+- **Audit result**: All `app/config.py` Settings fields are now present in `.env.example`. Zero undocumented env vars. No `os.getenv()` usage found in codebase — all config goes through Pydantic Settings.
+
 ### Chatty Time Awareness & Web Search Integration — ADR-041 - 2026-07-02
 - **Always-on time**: `_build_time_context()` injects `[CURRENT TIME]` with `Asia/Singapore` zone (stdlib `zoneinfo`). LLM answers "what day/time is it?" accurately.
 - **Auto web search trigger**: `_should_trigger_search()` keyword matcher + `_build_search_tools_section()` injecting `[TOOLS]` when user asks for real-time info. Keywords: "latest", "news", "weather", "stock", "search the web", etc.

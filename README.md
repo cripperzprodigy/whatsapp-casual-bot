@@ -96,7 +96,7 @@ If you are using LM Studio:
 
 *See `.env.example` for a complete breakdown of every variable.*
 
-### Key RAG Configuration
+### Key RAG & Memory Configuration
 
 | Variable | Default | Description |
 |---|---|---|
@@ -104,6 +104,10 @@ If you are using LM Studio:
 | `RAG_TOP_K` | `5` | Number of past messages retrieved per query |
 | `RAG_DEFAULT_TTL_DAYS` | `7` | Exclude messages older than N days from retrieval (set `0` to disable) |
 | `RAG_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | SentenceTransformer model for embeddings |
+| `MEMORY_IMMEDIATE_BUFFER_SIZE` | `5` | Number of recent messages injected directly into prompt (bypasses RAG for short-term recall) |
+| `MEMORY_RECENCY_ALPHA` | `0.5` | Recency decay factor for RAG re-ranking (0.0=flat, higher=strong recency bias) |
+| `CHATTY_SEARCH_DEFAULT` | `true` | Enable auto web search integration in Chatty replies |
+| `CHATTY_ENABLED_LANGUAGES` | `en,id,ms,zh` | Languages supported by the Chatty AI engine |
 
 ---
 
