@@ -2,11 +2,35 @@
 
 # Master Governance Document (SOP)
 
-## Registration Protocol
-Any agents starting work in this repository must log their presence in `agents/AGENT_REGISTRY.md` before executing any code changes.
+## Protocol Quick Reference
 
-## Coding Constraints
+| Action | Command / Location |
+|---|---|
+| **Entry Point** | `ai-chat/SOP.md` (You are here) |
+| **Tasks** | `ai-chat/issues.md` |
+| **Branch Format** | `task/[issue-id]-[short-name]` |
+| **Activity Tracking** | Git Commits & Branch Names (Do NOT use chatpad.md) |
+| **Archive Run** | `python ai-chat/utils/archive_rotation.py` |
+
+## 1. Agent Onboarding & Pre-Flight Check
+
+Any agents starting work in this repository MUST execute the following Git-Native flow:
+
+1. `git fetch && git pull`
+2. Run Pre-Flight Archive Check: `python ai-chat/utils/archive_rotation.py`
+3. Read `ai-chat/SOP.md` (THIS FILE)
+4. Check `ai-chat/issues.md` for assigned tasks
+5. Create task branch: `task/[issue-id]-[short-name]`
+6. Execute task
+7. Commit atomically (code + docs in the SAME commit)
+8. Push and PR
+
+*(Note: As of 2026-07-02, chatpad.md is deprecated. Agent activity is now tracked exclusively via Git commits and branch names.)*
+
+## 2. Coding Constraints
 Strict adherence to the project's architecture is required.
+- **Atomic Documentation Rule:** No code change is complete without its corresponding documentation update in the SAME commit. Commits containing code changes but missing updates to `changelog.md`, `issues.md`, or `decisions.md` (as applicable) will be rejected by CI.
+
 - **Language Purism:** Python 3.12 strict typing enforced. Type hints mandatory on all public APIs, function parameters, and return values. Private functions may omit return type hints if inference is trivial. No implicit any types permitted. mypy strict mode enabled in CI.
 - **Modularity:** Ensure code is well-structured and separated into logical, independent modules.
 - **Interface Parity:** Interfaces should remain consistent across modules.
@@ -136,7 +160,6 @@ The following files have a maximum line count of 1000 lines:
 - issues.md
 - changelog.md
 - decisions.md
-- chatpad.md
 
 When any of these files exceeds 1000 lines, the oldest content (all lines except the most recent 200) MUST be moved to ai-chat/archive/[filename]_archive_[YYYYMMDD_HHMM].md.
 
@@ -154,7 +177,6 @@ DEBUG-LEAD must conduct a weekly audit checking:
 - File line counts
 - Duplicate detection in tables
 - Unresolved placeholder detection
-- Handshake compliance in chatpad.md
 Results logged to ai-chat/audit_logs/weekly_hybrid_audit_[YYYYMMDD].md
 
 

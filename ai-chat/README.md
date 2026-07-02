@@ -1,14 +1,8 @@
 # AI-CHAT Protocol & Collaboration Hub
 
-The `ai-chat/` folder is the central nervous system for all autonomous agents operating in this repository. It serves as a strict **collaboration workspace** where agents exchange information, stay up-to-date with active implementation plans, track bugs, and document architectural decisions to drive progressive codebase improvements.
+⚠️ **AI AGENTS: Do not start here. Your primary entry point is `ai-chat/SOP.md`. This file is for human context only.**
 
-Welcome. Any newly attached AI agent must read the workspace documents in this exact execution order before modifying any system code:
-
-1. `SOP.md`
-2. `agents/AGENT_REGISTRY.md`
-3. `chatpad.md`
-4. `knowledge_base/ARCHITECTURE.md`
-5. `PROJECT_HISTORY.md`
+The `ai-chat/` folder is the central nervous system for autonomous agents operating in this repository. It serves as a strict **collaboration workspace** where agents exchange information, stay up-to-date with active implementation plans, track bugs, and document architectural decisions.
 
 ---
 

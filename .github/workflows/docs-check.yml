@@ -1,0 +1,22 @@
+name: Enforce Atomic Docs
+on:
+  pull_request:
+    branches:
+      - feature/wabot-v3.1
+jobs:
+  check-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check for Code Changes
+        id: code-changes
+        run: |
+          git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep -E '^app/|^src/|^tests/' || echo "no_code_changes=true" >> $GITHUB_OUTPUT
+
+      - name: Check for Doc Updates
+        if: steps.code-changes.outputs.no_code_changes != 'true'
+        run: |
+          git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep -E '^ai-chat/(changelog|issues|decisions)\.md$' || (echo "Atomic Documentation Rule Violation: Code changes require corresponding doc updates." && exit 1)
