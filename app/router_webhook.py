@@ -280,7 +280,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
                     try:
                         await send_text_message(
                             chat_id,
-                            f"🔍 Searching the web for: {search_query}...",
+                            f"🔍 Searching for: {search_query}...",
                         )
                         from app.services.search_service import HybridSearchService
                         from app.services.deep_crawl_service import DeepCrawlService

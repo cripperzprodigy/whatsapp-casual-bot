@@ -1,5 +1,12 @@
 # Issues
 
+### ISSUE-027: [RESOLVED] Search Timeout Config
+- **Description**: Web searches were timing out (~35s) because `LLM_SEARCH_TIMEOUT` was missing from `.env.example` and `config.py` and defaulted too low.
+- **Resolution**: Wired `LLM_SEARCH_TIMEOUT` correctly through config, env, and code, defaulting to 90s, passing it to `ask_llm`.
+
+### ISSUE-026: [RESOLVED] Query Redundancy
+- **Description**: The regex patterns in `search_intent.py` captured the trigger words ("the web for") along with the actual query, leading to redundant user-facing messages and potential search indexing noise.
+- **Resolution**: Refactored `search_intent.py` patterns to use capture groups extracting only the target entity. Updated the feedback message in `router_webhook.py` to `Searching for: {query}...` and added extensive tests.
 
 ### ISSUE-023: [RESOLVED] WEB-SEARCH-FIX-001: Natural Language Search Not Triggering + No Time Awareness
 - **Description**: "search for X" / "look up Y" / "what are the latest Z" in DMs did NOT trigger `!sc` deep crawl — the LLM replied with a potentially hallucinated answer. Also, no current date/time injected into synthesis, so "latest" queries were temporally blind.

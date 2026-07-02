@@ -37,6 +37,8 @@ The web search system supports both explicit commands and natural language trigg
 | `^search the web for X` | "search the web for AI trends" |
 | `^look up online X` | "look up online the score" |
 
+*Note: All regex patterns use a specific Capture Group 1 to extract ONLY the targeted query (X) while discarding the trigger prefix words. E.g., "search the web for batam news" extracts strictly "batam news".*
+
 ### False Positive Exclusions
 
 These inputs do NOT trigger search:
