@@ -1,6 +1,11 @@
 # Issues
 
 
+### ISSUE-019: [RESOLVED] LANG-FIX-002: Traditional Chinese Misclassified as Korean
+- **Description**: Traditional Chinese text (e.g., `繁體字測試`) was consistently detected as Korean (`ko`) by `langdetect` with ~100% confidence, causing the AI engine to respond in English instead of Chinese for users in HK, TW, and MY regions.
+- **Root Cause**: Probabilistic n-gram models (langdetect) confuse CJK Unified Ideographs between Chinese and Korean Hanja. Short WhatsApp messages (4–15 chars) lack sufficient n-gram context for statistical disambiguation.
+- **Resolution**: Implemented `detect_cjk_heuristics()` — a deterministic Unicode character-ratio pre-filter that runs BEFORE langdetect. Priority: Hangul > 5% → `ko`, Kana > 5% → `ja`, CJK > 50% → `zh`. Falls through to langdetect for non-CJK text. 12 new tests pass. See `LANGUAGE_DETECTION_STRATEGIES.md` for full architecture and rejected alternatives.
+
 ### ISSUE-018: [RESOLVED] LOC-MIRROR-001: Language Drift in AI Chatty Replies
 - **Description**: The Chatty AI engine replied in English (or occasionally Japanese/Russian) when users spoke Chinese, Indonesian, or Malay. The system prompt's `Reply ONLY in {lang}` instruction was positioned BELOW the RAG context block, allowing English-language retrieved documents to override the language constraint.
 - **Root Causes**:

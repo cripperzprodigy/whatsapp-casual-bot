@@ -158,6 +158,122 @@ def _is_likely_ms_id(text: str) -> bool:
     return (match_count / len(tokens)) >= 0.40
 
 
+# ── CJK Heuristic Validation — Option B (LANG-FIX-002) ─────────────────────
+#
+# Probabilistic detectors (langdetect) frequently misclassify Traditional
+# Chinese as Korean because both share CJK Unified Ideographs and Hanja.
+# Short messages lack sufficient n-gram context for statistical models.
+#
+# This deterministic pre-filter analyses Unicode character ranges to
+# disambiguate Chinese (zh), Japanese (ja), and Korean (ko) before falling
+# back to langdetect.  Architecture decision: Option B — lightweight,
+# O(n) character-scan; Option C (fasttext dual-model) was REJECTED due to
+# ~50 MB dependency and added latency.  See ADR-039 appendix and
+# LANGUAGE_DETECTION_STRATEGIES.md for full rationale.
+
+# Unicode ranges used for CJK disambiguation:
+#   Hangul Syllables:   U+AC00–U+D7AF  (가–힣)
+#   Hangul Jamo:        U+1100–U+11FF  (ᄀ–ᇿ)
+#   Hiragana:           U+3040–U+309F  (ぁ–ゟ)
+#   Katakana:           U+30A0–U+30FF  (゠–ヿ)
+#   CJK Unified:        U+4E00–U+9FFF  (一–鿿)  ← covers >99 % of common usage
+#   CJK Extension A:    U+3400–U+4DBF  (㐀–䶿)
+
+# Thresholds (empirically tuned for short chat messages):
+_HANGUL_THRESHOLD: float = 0.05     # > 5 % Hangul → Korean
+_KANA_THRESHOLD:   float = 0.05     # > 5 % Kana   → Japanese
+_CJK_THRESHOLD:    float = 0.50     # > 50 % CJK without Kana/Hangul → Chinese
+
+
+def _count_meaningful(text: str) -> int:
+    """Return the count of characters that carry orthographic signal."""
+    return sum(1 for c in text if c.isalnum() or c in "　。")
+
+
+def detect_cjk_heuristics(text: str) -> Optional[str]:
+    """Determine CJK language from character-ratio analysis alone.
+
+    Algorithm (Option B)
+    --------------------
+    1. Scan every character in *text* and count Hangul, Kana, and CJK
+       Unified Ideograph occurrences.
+    2. Compute the ratio of each script relative to meaningful characters.
+    3. Priority order:
+       a. Hangul ratio > _HANGUL_THRESHOLD  → 'ko'
+       b. Kana   ratio > _KANA_THRESHOLD    → 'ja'
+       c. CJK    ratio > _CJK_THRESHOLD     → 'zh'
+       d. Otherwise                          → None (fall through to langdetect)
+
+    Parameters
+    ----------
+    text:
+        Raw (un-stripped) message text.
+
+    Returns
+    -------
+    Optional[str]
+        'zh', 'ja', 'ko', or None when the text does not contain sufficient
+        CJK signal for a definitive heuristic decision.
+    """
+    if not text:
+        return None
+
+    hangul = 0
+    kana = 0
+    cjk = 0
+
+    for ch in text:
+        code = ord(ch)
+        # Hangul Syllables (AC00–D7AF) and Jamo (1100–11FF)
+        if 0xAC00 <= code <= 0xD7AF or 0x1100 <= code <= 0x11FF:
+            hangul += 1
+        # Hiragana + Katakana (3040–30FF)
+        elif 0x3040 <= code <= 0x30FF:
+            kana += 1
+        # CJK Unified Ideographs (4E00–9FFF) and Extension A (3400–4DBF)
+        elif 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF:
+            cjk += 1
+
+    total = _count_meaningful(text)
+    if total == 0:
+        return None
+
+    hangul_ratio = hangul / total
+    kana_ratio = kana / total
+    cjk_ratio = cjk / total
+
+    # Priority: Hangul first (avoid misclassifying Korean as Chinese),
+    #           Kana second (avoid misclassifying Japanese as Chinese),
+    #           CJK third  (catch Traditional Chinese before it hits langdetect).
+
+    if hangul_ratio > _HANGUL_THRESHOLD:
+        logger.debug(
+            f"[CJK Heuristic] hangul={hangul}/{total} ({hangul_ratio:.2f}) "
+            f"→ 'ko'"
+        )
+        return "ko"
+
+    if kana_ratio > _KANA_THRESHOLD:
+        logger.debug(
+            f"[CJK Heuristic] kana={kana}/{total} ({kana_ratio:.2f}) "
+            f"→ 'ja'"
+        )
+        return "ja"
+
+    if cjk_ratio > _CJK_THRESHOLD:
+        logger.debug(
+            f"[CJK Heuristic] cjk={cjk}/{total} ({cjk_ratio:.2f}) "
+            f"→ 'zh'"
+        )
+        return "zh"
+
+    logger.debug(
+        f"[CJK Heuristic] ambiguous — cjk={cjk_ratio:.2f} "
+        f"hangul={hangul_ratio:.2f} kana={kana_ratio:.2f} → fall-through"
+    )
+    return None
+
+
 # ── Primary public API ────────────────────────────────────────────────────────
 
 @lru_cache(maxsize=1024)
@@ -202,6 +318,20 @@ def detect_language(text: str, fallback: str = "en") -> str:
             f"eff={_effective_length(stripped)}) → fallback '{fallback}'"
         )
         return fallback
+
+    # 1.5 CJK heuristic pre-check (LANG-FIX-002 — Option B).
+    #     Must run BEFORE keyword heuristic so Traditional Chinese (which
+    #     langdetect classifies as ko) is caught by character-ratio analysis.
+    cjk_result = detect_cjk_heuristics(stripped)
+    if cjk_result is not None:
+        # Only return if the result is in our supported set; otherwise
+        # fall through so langdetect has a chance to find a supported lang.
+        if cjk_result in SUPPORTED_LANGS:
+            return cjk_result
+        logger.debug(
+            f"[LangDetect] CJK heuristic → '{cjk_result}' (not in supported set) "
+            f"— falling through to langdetect"
+        )
 
     # 2. Keyword heuristic (fast-path for Malay/Indonesian)
     if _is_likely_ms_id(stripped):

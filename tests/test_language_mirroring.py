@@ -310,3 +310,83 @@ class TestMultiTurnDriftPrevention:
         zh_result = _call_detect("你好！今天我想用中文和你交流。请问有什么可以帮忙的？")
         assert id_result in ("id", "ms")
         assert zh_result == "zh"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  CJK Heuristic Validation Tests — LANG-FIX-002 (Option B)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCJKHeuristics:
+    """Verify the deterministic Unicode character-ratio heuristic for CJK
+    disambiguation (Traditional Chinese / Korean / Japanese)."""
+
+    def test_traditional_chinese_short(self):
+        """'繁體字測試' — langdetect says ko:1.000, heuristic must force zh."""
+        result = _call_detect("繁體字測試")
+        assert result == "zh", (
+            f"Traditional Chinese short phrase should be 'zh', got '{result}'"
+        )
+
+    def test_traditional_chinese_longer(self):
+        """Longer Traditional Chinese with mixed punctuation."""
+        result = _call_detect("繁體中文是華人地區使用的語言，香港和台灣都使用繁體字。")
+        assert result == "zh"
+
+    def test_simplified_chinese_still_zh(self):
+        """Simplified Chinese must continue to detect as 'zh' (no regression)."""
+        result = _call_detect("你好，你是谁？今天天气很好。")
+        assert result == "zh"
+
+    def test_korean_hangul_detected(self):
+        """Full Hangul text must be detected as Korean (not zh)."""
+        # Note: ko is NOT in SUPPORTED_LANGS, so unsupported → fallback to 'en'.
+        # The heuristic returns 'ko' which is correctly identified even though
+        # the call_detect api ultimately falls back to 'en' for unsupported langs.
+        from app.utils.lang_detect import detect_cjk_heuristics
+        assert detect_cjk_heuristics("안녕하세요") == "ko"
+
+    def test_japanese_kana_detected(self):
+        """Hiragana text must be detected as Japanese by heuristic."""
+        from app.utils.lang_detect import detect_cjk_heuristics
+        assert detect_cjk_heuristics("こんにちは") == "ja"
+
+    def test_mixed_japanese_kanji_kana(self):
+        """Japanese with mixed Kanji + Kana must return 'ja'."""
+        from app.utils.lang_detect import detect_cjk_heuristics
+        assert detect_cjk_heuristics("漢字とひらがな") == "ja"
+
+    def test_pure_english_bypasses_cjk_heuristic(self):
+        """English text must return None from the heuristic (no false zh)."""
+        from app.utils.lang_detect import detect_cjk_heuristics
+        assert detect_cjk_heuristics("Hello, how are you?") is None
+
+    def test_indonesian_bypasses_cjk_heuristic(self):
+        """Indonesian text must return None (no false zh)."""
+        from app.utils.lang_detect import detect_cjk_heuristics
+        assert detect_cjk_heuristics("Halo, apa kabar?") is None
+
+    def test_empty_string_returns_none(self):
+        """Empty input must return None."""
+        from app.utils.lang_detect import detect_cjk_heuristics
+        assert detect_cjk_heuristics("") is None
+
+    def test_heuristic_correctly_counts_mixed_cjk(self):
+        """CJK + Latin mixed text with dominant CJK should return 'zh'."""
+        from app.utils.lang_detect import detect_cjk_heuristics
+        # 你好 today 天气很好 → mostly CJK, one English word
+        result = detect_cjk_heuristics("你好 today 天气很好")
+        assert result == "zh", f"Expected 'zh', got {result}"
+
+    def test_korean_with_hanja_still_ko(self):
+        """Korean with occasional Hanja must still return 'ko' due to Hangul."""
+        from app.utils.lang_detect import detect_cjk_heuristics
+        # Korean text with a Hanja character
+        result = detect_cjk_heuristics("안녕하세요 學生입니다")
+        assert result == "ko"
+
+    def test_integration_traditional_cn_full_pipeline(self):
+        """Full detect_language pipeline: Traditional Chinese → zh."""
+        result = _call_detect("繁體中文測試，你好世界。")
+        assert result == "zh", (
+            f"Integration test: expected 'zh', got '{result}'"
+        )

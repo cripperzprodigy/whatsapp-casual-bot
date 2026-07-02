@@ -40,7 +40,14 @@
 - Multi-turn language drift prevention.
 
 **Modified: `tests/conftest.py`** — updated langdetect stub strategy to import the real package when installed (required for test_language_mirroring.py). Falls back to minimal stub only when langdetect is not installed.
-- **Feature**: Developed a massive integration testing suite covering the Gateway-Backend boundary.
+
+### CJK Heuristic Validation (Traditional Chinese → Korean Fix) — LANG-FIX-002 - 2026-07-02
+- **Bug**: Traditional Chinese text (e.g., `繁體字測試`) consistently misclassified as Korean (`ko`) by `langdetect` with ~100% confidence. Caused the bot to reply in English instead of Chinese for HK/TW/MY users.
+- **Root cause**: Probabilistic n-gram models confuse CJK Unified Ideographs between Chinese and Korean Hanja. Short WhatsApp messages lack sufficient context for statistical disambiguation.
+- **Fix**: Added `detect_cjk_heuristics()` in `app/utils/lang_detect.py` — a deterministic O(n) pre-filter using Unicode character-range counts for Hangul (U+AC00–D7AF), Kana (U+3040–30FF), and CJK Ideographs (U+4E00–9FFF, U+3400–4DBF). Priority: Hangul > 5% → `ko`, Kana > 5% → `ja`, CJK > 50% → `zh`. Falls through to `langdetect` when no script dominates. Integrated as step 1.5 in `detect_language()`, BEFORE the keyword heuristic.
+- **Tests**: 12 new tests in `TestCJKHeuristics` (52 total, all pass). Covers Traditional/Simplified Chinese, Korean Hangul, Japanese Kana+Kanji, mixed CJK/Latin, English bypass, and full integration pipeline.
+- **Documentation**: New KB file `LANGUAGE_DETECTION_STRATEGIES.md` documents Option B (implemented) and Option C / rejected (fasttext dual-model verification) with algorithm details, Unicode ranges, threshold rationale, and full test coverage matrix.
+- **Related**: ADR-039 Appendix B, ISSUE-019 (below).
 - **Coverage**: Simulated Node.js gateway requests utilizing robust Python mocks for text, image, command, and group interactions.
 - **Error Propagation**: Hardened backend error handling validation for 500s, 429s, network timeouts, and JSON failures.
 - **CI/CD**: Introduced `.github/workflows/integration-tests.yml` to automatically execute the suite on GitHub Actions.
