@@ -3,6 +3,12 @@
 > For historical entries prior to 2026-06-25, see changelog_archive.md
 
 
+### Chatty Time Awareness & Web Search Integration — ADR-041 - 2026-07-02
+- **Always-on time**: `_build_time_context()` injects `[CURRENT TIME]` with `Asia/Singapore` zone (stdlib `zoneinfo`). LLM answers "what day/time is it?" accurately.
+- **Auto web search trigger**: `_should_trigger_search()` keyword matcher + `_build_search_tools_section()` injecting `[TOOLS]` when user asks for real-time info. Keywords: "latest", "news", "weather", "stock", "search the web", etc.
+- **New config**: `CHATTY_SEARCH_DEFAULT=True` (via `.env`). Per-chat toggle: `!chatty search on|off`.
+- **!help updated**: `!chatty search <on|off>` added to admin commands section.
+
 ### Language Mirroring Protocol — ADR-039 (LOC-MIRROR-001) - 2026-07-02
 
 **New file: `app/utils/lang_detect.py`**

@@ -5,6 +5,8 @@ import os
 import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
+from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from filelock import FileLock
 import httpx
@@ -49,6 +51,22 @@ def _is_historical_query(text: str) -> bool:
     """Return True if *text* implies searching historical context (bypass TTL)."""
     text_lower = text.lower()
     return any(kw in text_lower for kw in _HISTORICAL_QUERY_KEYWORDS)
+
+# Keywords that indicate the user wants real-time / searchable information.
+# When CHATTY_SEARCH_DEFAULT=True, these trigger auto web search integration.
+_SEARCH_TRIGGER_KEYWORDS: frozenset[str] = frozenset({
+    "latest", "news", "weather", "stock", "price", "today's", "this week",
+    "current", "breaking", "recent", "just happened", "just announced",
+    "what time", "what day", "what date", "who won", "who is winning",
+    "score", "election", "update", "announcement", "search the web",
+    "look up", "find out", "google", "check online",
+})
+
+
+def _should_trigger_search(text: str) -> bool:
+    """Return True if the user's message warrants an automatic web search."""
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in _SEARCH_TRIGGER_KEYWORDS)
 
 
 _global_embedding_model = None
@@ -464,6 +482,48 @@ class AIMemoryEngine:
         )
         return f"<immediate_context>\n{joined}\n</immediate_context>"
 
+    def _build_time_context(self) -> str:
+        """Return a [CURRENT TIME] section with Asia/Singapore time.
+
+        ADR-041: Always-on time awareness ensures the LLM can answer temporal
+        questions ("what day is it?", "what time?") without hallucinating dates.
+        Falls back to UTC+8 offset when tzdata is not installed (Windows).
+        """
+        try:
+            tz = ZoneInfo("Asia/Singapore")
+            now = datetime.now(tz)
+            label = now.strftime("%A, %Y-%m-%d %H:%M:%S %Z")
+        except Exception:
+            from datetime import timezone as dt_timezone, timedelta
+            tz = dt_timezone(timedelta(hours=8))
+            now = datetime.now(tz)
+            label = now.strftime("%A, %Y-%m-%d %H:%M:%S UTC+8")
+        return (
+            f"[CURRENT TIME]\n"
+            f"{label}\n"
+            f"Use this for all temporal questions. The user is likely in Singapore (UTC+8)."
+        )
+
+    def _build_search_tools_section(self, user_text: str) -> str:
+        """Return a [TOOLS] section when search integration should be active.
+
+        ADR-041: When CHATTY_SEARCH_DEFAULT is True and the user's text matches
+        search-trigger keywords, we inform the LLM that it may blend web search
+        results naturally into the reply.
+        """
+        search_enabled = getattr(settings, 'CHATTY_SEARCH_DEFAULT', True)
+        if not search_enabled:
+            return ""
+        if not _should_trigger_search(user_text):
+            return ""
+        return (
+            "[TOOLS]\n"
+            "You have access to web search for real-time information. "
+            "When presenting facts, use a natural conversational tone such as: "
+            "\"I checked recent sources and...\" or \"Based on current information, ...\". "
+            "Blend search results smoothly into your reply without raw formatting."
+        )
+
     async def ingest_message(
         self,
         text: str,
@@ -646,6 +706,8 @@ Custom Instructions: {custom_instructions}
 
 {lang_enforcement}
 
+{self._build_time_context()}
+
 {immediate_buffer}
 
 [CONTEXT MEMORY]
@@ -659,6 +721,8 @@ If the context is in a different language, translate relevant facts to {lang} be
 
 PRIORITY: For questions about recent events, prioritize information in
 <immediate_context> over [CONTEXT MEMORY]. {immediate_buffer and 'The <immediate_context> block contains the most recent exchange — trust it over older RAG results when the user asks about something that just happened.' or ''}
+
+{self._build_search_tools_section(full_text)}
 
 [Recent Context Summary]
 {summary}

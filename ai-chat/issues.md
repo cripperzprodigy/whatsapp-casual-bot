@@ -1,6 +1,10 @@
 # Issues
 
 
+### ISSUE-021: [RESOLVED] Chatty Time Awareness & Web Search (ADR-041)
+- **Description**: LLM had no awareness of current date/time, causing temporal hallucinations. No path for auto web search within conversational Chatty flow.
+- **Resolution**: Added `_build_time_context()` (Singapore timezone), `_should_trigger_search()` keyword matcher, `_build_search_tools_section()`, `CHATTY_SEARCH_DEFAULT=True` config, and `!chatty search on|off` per-chat toggle. See ADR-041.
+
 ### ISSUE-020: [RESOLVED] RAG-FIX-003: Chatty Fails Short-Term Recall ("What did I just say?")
 - **Description**: The bot returned semantically similar but stale messages from weeks ago instead of the immediately preceding exchange. Caused the bot to appear amnesiac in DMs.
 - **Root Causes**: (1) No raw short-term message history injected into LLM prompt — relied 100% on RAG retrieval. (2) Vector similarity ignored temporal recency. (3) DM ingestion was fire-and-forget, sometimes racing with LLM generation.

@@ -1,5 +1,41 @@
 # Architectural Decisions
 
+## ADR-041 — Chatty Time Awareness & Web Search Integration
+
+Date    : 2026-07-02
+Status  : Accepted
+Context :
+  The Chatty AI engine had no awareness of the current date/time, causing LLM
+  hallucinations on temporal questions ("What day is it?", "What's the weather?").
+  Additionally, users asking for real-time or factual information had no path to
+  automatically retrieve web search results within the conversational flow.
+
+Decision :
+  1. **Always-On Singapore Time Awareness.**  `_build_time_context()` injects a
+     `[CURRENT TIME]` block into the system prompt using `Asia/Singapore` timezone
+     via Python's `zoneinfo.ZoneInfo`.  This is zero-overhead (no API call) and
+     ensures the LLM can answer "what day is it?" or "what time?" accurately.
+
+  2. **Auto Web Search Trigger.**  `_should_trigger_search(text)` checks incoming
+     user text against `_SEARCH_TRIGGER_KEYWORDS` (e.g. "latest", "news",
+     "weather", "stock", "search the web").  When matched AND `CHATTY_SEARCH_DEFAULT`
+     is True, `_build_search_tools_section()` injects a `[TOOLS]` block telling
+     the LLM it can blend web search results naturally into its reply.
+
+  3. **New Config Flag.**  `CHATTY_SEARCH_DEFAULT` (bool, default True) in
+     `app/config.py`.  Toggle per-chat via `!chatty search on|off`.
+
+  4. **Natural Blending.**  The TOOLS instruction encourages conversational
+     phrasing: "I checked recent sources and..." rather than raw search output.
+
+Consequences :
+  + LLM can answer temporal questions without hallucinating dates.
+  + Users asking for real-time info get search-integrated responses.
+  + Zero added dependencies — timezone uses stdlib `zoneinfo`.
+  + Per-chat toggle via `!chatty search on|off`.
+  - Time-only block adds ~80 bytes to every system prompt.
+  - Search trigger is keyword-based, not semantic — may miss nuanced requests.
+
 ## ADR-040 — Hybrid Context Strategy: Immediate Buffer & Recency-Weighted RAG
 
 Date    : 2026-07-02

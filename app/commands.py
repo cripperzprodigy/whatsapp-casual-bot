@@ -83,6 +83,7 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     if role in [ADMIN_ROLE, OWNER_ROLE]:
         response += "\n*🛡️ Admin Commands:*\n"
         response += "• `!chatty <on|off>`: Toggle continuous AI conversation\n"
+        response += "• `!chatty search <on|off>`: Toggle auto web search for chatty\n"
         response += "• `!chatty_freq <val>`: Set AI response frequency\n"
         response += "• `!chatty_burst <val>`: Set AI burst count\n"
         response += "• `!chatty_delay <min> <max>`: Set human-like delay\n"

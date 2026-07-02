@@ -365,6 +365,12 @@ class Settings(BaseSettings):
     # Higher values make recent messages dominate; lower values favour semantic similarity.
     MEMORY_RECENCY_ALPHA: float = 0.5
 
+    # ── Chatty Web Search Integration (ADR-041) ─────────────────────────────
+    # When True, the AI engine may perform automatic web searches when it detects
+    # queries needing real-time or factual information, blending results naturally
+    # into the reply.  Toggle per-chat via !chatty search on|off.
+    CHATTY_SEARCH_DEFAULT: bool = True
+
     # Chatty Frequency Control Defaults
     CHATTY_DEFAULT_FREQUENCY: int = 10
     CHATTY_DEFAULT_BURST: int = 1

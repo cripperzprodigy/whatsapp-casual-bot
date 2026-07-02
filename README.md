@@ -10,7 +10,7 @@ A highly capable, AI-powered WhatsApp bot with long-term memory (RAG), auto-tran
 ## Core Features
 
 - **Native QR Login:** Replicates the seamless OpenClaw QR-login and linked-device experience without relying on heavy external gateways.
-- **🤖 Chatty AI (Long-Term Memory):** Continuous conversational AI with RAG-powered long-term memory. Remembers facts across sessions via ChromaDB vector storage. Configurable per-group frequency, burst, and human-like delay. See `!chatty` below.
+- **🤖 Chatty AI (Long-Term Memory):** Continuous conversational AI with RAG-powered long-term memory, always-on Singapore time awareness, and auto web search integration. Remembers facts across sessions via ChromaDB. Configurable frequency, burst, human-like delay, and search toggle. (ADR-040, ADR-041)
 - **🗣️ Language Mirroring:** Detects user language (EN/ID/MS/ZH) and replies in the same language — no English drift. Traditional Chinese fix prevents Korean misclassification. (ADR-039)
 - **Auto-Translation:** Automatically detect and translate incoming messages. Configurable globally or per group. EN/ID/MS linguistic sphere prevents unnecessary translation between mutually-intelligible languages.
 - **🔍 Agentic & Deep Crawl Search:** `!s` performs iterative AI-refined web search. `!sc` fetches full web page content for deep research (owner-gated).
