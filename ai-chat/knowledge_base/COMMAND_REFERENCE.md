@@ -29,7 +29,7 @@ This document outlines the commands available to users, administrators, and the 
 | !chatty_freq <val> | Admin | Set AI response frequency. | !chatty_freq 5 |
 | !chatty_burst <val> | Admin | Set AI burst count. | !chatty_burst 2 |
 | !chatty_delay <min> <max> | Admin | Set human-like delay for AI responses. | !chatty_delay 2 5 |
-| !chatty_mode <mode> | Admin | Set delay strategy (debounce or 	hrottle). | !chatty_mode debounce |
+| !chatty_mode <mode> | Admin | Set delay strategy (debounce or throttle). | !chatty_mode debounce |
 | !chatty_status | Admin | View current AI chatter settings for the group. | !chatty_status |
 | !auto <on|off> | Admin | Toggle auto-translate for this chat. | !auto on |
 | !auto global | Admin | Reset auto-translate for this chat to global defaults. | !auto global |
@@ -39,7 +39,6 @@ This document outlines the commands available to users, administrators, and the 
 | !contacts list | Admin | View group contacts. | !contacts list |
 | !pm group <text> | Admin | Send a direct message to the current group. | !pm group Hello everyone |
 | !pm @user <text> | Admin | Send a direct message to a specific user. | !pm @1234567890 Hello |
-| !export ledger | Admin | Export group contacts to a CSV file. | !export ledger |
 | !broadcast <msg> | Admin | Send a message to all chats. | !broadcast System maintenance at 12AM |
 | !stats | Admin | View system statistics. | !stats |
 | !botid | Admin | Show bot identity status. | !botid |

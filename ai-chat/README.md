@@ -6,9 +6,11 @@ The `ai-chat/` folder is the central nervous system for autonomous agents operat
 
 ---
 
-## Latest ai-chat Updates (2026-07-01)
+## Latest ai-chat Updates (2026-07-02)
 
-- **RAG Active Ingestion Pipeline (ADR-030)**: The RAG engine is now fully active. All messages (DM and Group, all 4 paths) are asynchronously ingested via `asyncio.create_task(engine.ingest_message(...))`. ChromaDB embedding writes run in a thread pool via `asyncio.to_thread()`. New config flags: `ENABLE_RAG_INGESTION` and `RAG_TOP_K`. System prompt upgraded with explicit `[CONTEXT MEMORY]` section. Backfill script at `scripts/backfill_rag.py`. See [RAG_MEMORY_ENGINE.md](./knowledge_base/RAG_MEMORY_ENGINE.md).
+- **Language Mirroring Protocol (ADR-039)**: The AI engine now mirrors the user's language — Chinese replies to Chinese input, Indonesian to Indonesian. `[CRITICAL LANGUAGE RULE]` block placed above RAG context to prevent English drift. CJK heuristic (Option B) fixes Traditional Chinese → Korean misclassification. See [LANGUAGE_DETECTION_STRATEGIES.md](./knowledge_base/LANGUAGE_DETECTION_STRATEGIES.md).
+- **Isolation Fixes (ADR-036/037/038)**: Snapshot context aligns summary & RAG windows. Per-chat preference scoping prevents DM persona leak to groups. SQLite session durability with optimistic locking. Temp file context manager for per-request cleanup. Tool execution scratchpad isolates internal logs from conversation history. RAG temporal decay with configurable TTL.
+- **RAG Active Ingestion Pipeline (ADR-030)**: ChromaDB writes run in thread pool. New config flags: `ENABLE_RAG_INGESTION`, `RAG_TOP_K`, `RAG_DEFAULT_TTL_DAYS`. See [RAG_MEMORY_ENGINE.md](./knowledge_base/RAG_MEMORY_ENGINE.md).
 - **Contact Sync Architecture Overhaul**: `!contacts list`, `!contacts global`, and `!contacts export` now query `GroupContactLedger` DB instead of filesystem. Live WhatsApp network resolution via batch endpoint, hierarchical group-sorted output, timestamped CSV exports with group name enrichment. See [CONTACT_SYNC_ARCHITECTURE.md](./knowledge_base/CONTACT_SYNC_ARCHITECTURE.md).
 - **Group AI Language Detection Fix**: `_detect_language()` in `ai_memory_engine.py` now performs live detection on the incoming message text for group chats instead of returning a static default. 3-tier fallback: langdetect → LLM → group default.
 - **SOP Cleanup**: Removed full duplicate content block, added new mandatory standards for AI Engine Language Detection and Contact Management.
@@ -24,22 +26,26 @@ The `ai-chat/` folder is the central nervous system for autonomous agents operat
 
 | Document | Description |
 |---|---|
-| [ARCHITECTURE.md](./knowledge_base/ARCHITECTURE.md) | System-wide architecture overview |
+| [ARCHITECTURE_KNOWLEDGE_BASE.md](./knowledge_base/ARCHITECTURE_KNOWLEDGE_BASE.md) | Full architecture, data flows, DB schema, message routing |
 | [WISP_PROTOCOL.md](./knowledge_base/WISP_PROTOCOL.md) | WhatsApp Inter-Service Protocol (Python ↔ Node.js gateway) |
 | [CHATTY_FEATURE.md](./knowledge_base/CHATTY_FEATURE.md) | Long-term memory conversational AI (`!chatty`) |
-| [RAG_MEMORY_ENGINE.md](./knowledge_base/RAG_MEMORY_ENGINE.md) | Active RAG ingestion pipeline, async flow, config flags, backfill |
+| [RAG_MEMORY_ENGINE.md](./knowledge_base/RAG_MEMORY_ENGINE.md) | Active RAG ingestion, async flow, snapshot context, temporal TTL |
+| [PREFERENCE_SCOPING.md](./knowledge_base/PREFERENCE_SCOPING.md) | Per-(user,chat) persona isolation (ADR-036) |
+| [TEMP_FILE_HYGIENE.md](./knowledge_base/TEMP_FILE_HYGIENE.md) | Request-scoped temp file cleanup |
+| [TOOL_EXECUTOR_SCRATCHPAD.md](./knowledge_base/TOOL_EXECUTOR_SCRATCHPAD.md) | Isolated tool execution logs |
+| [LANGUAGE_DETECTION.md](./knowledge_base/LANGUAGE_DETECTION.md) | Translation & mirroring detection, EN/ID/MS linguistic sphere |
+| [LANGUAGE_DETECTION_STRATEGIES.md](./knowledge_base/LANGUAGE_DETECTION_STRATEGIES.md) | CJK disambiguation — heuristic vs fasttext (Option B implemented) |
 | [AGENTIC_SEARCH_FEATURE.md](./knowledge_base/AGENTIC_SEARCH_FEATURE.md) | Multi-hop agentic search (`!s`) workflow and architecture |
-| [MESSAGE_CHUNKING.md](./knowledge_base/MESSAGE_CHUNKING.md) | Outbound message splitting algorithm and `send_long_message()` |
-| [WHOAMI_LID_REGISTRATION.md](./knowledge_base/WHOAMI_LID_REGISTRATION.md) | Bot identity discovery, `!whoami`, and LID persistence |
-| [ERROR_HANDLING_DUPLICATE_PREVENTION.md](./knowledge_base/ERROR_HANDLING_DUPLICATE_PREVENTION.md) | Single-Response Contract and duplicate message prevention |
-| [LANGUAGE_DETECTION.md](./knowledge_base/LANGUAGE_DETECTION.md) | Hybrid language detection with keyword heuristic for Malay/Indonesian |
-| [BOT_IDENTITY_AND_ROUTING.md](./knowledge_base/BOT_IDENTITY_AND_ROUTING.md) | JID normalization, LID routing, and identity management |
-| [CONTACT_SYNC_ARCHITECTURE.md](./knowledge_base/CONTACT_SYNC_ARCHITECTURE.md) | Contact sync, GroupContactLedger, live batch resolution, and smart cache |
-| [COMMAND_REFERENCE.md](./knowledge_base/COMMAND_REFERENCE.md) | Bot command reference and usage guide |
-| [GATEWAY_API.md](./knowledge_base/GATEWAY_API.md) | Node.js WhatsApp Gateway API endpoints |
+| [COMMAND_REFERENCE.md](./knowledge_base/COMMAND_REFERENCE.md) | Full command reference across all roles |
 | [CONFIGURATION_GUIDE.md](./knowledge_base/CONFIGURATION_GUIDE.md) | Environment variables and runtime configuration |
+| [SESSION_PERSISTENCE_GUIDE.md](./knowledge_base/SESSION_PERSISTENCE_GUIDE.md) | WhatsApp session storage and recovery |
+| [BOT_IDENTITY_AND_ROUTING.md](./knowledge_base/BOT_IDENTITY_AND_ROUTING.md) | JID normalization, LID routing, identity management |
+| [CONTACT_SYNC_ARCHITECTURE.md](./knowledge_base/CONTACT_SYNC_ARCHITECTURE.md) | Contact sync, GroupContactLedger, batch resolution |
+| [MESSAGE_CHUNKING.md](./knowledge_base/MESSAGE_CHUNKING.md) | Outbound message splitting algorithm |
+| [ERROR_HANDLING_DUPLICATE_PREVENTION.md](./knowledge_base/ERROR_HANDLING_DUPLICATE_PREVENTION.md) | Single-Response Contract |
+| [WHOAMI_LID_REGISTRATION.md](./knowledge_base/WHOAMI_LID_REGISTRATION.md) | Bot identity discovery, `!whoami` |
+| [GATEWAY_API.md](./knowledge_base/GATEWAY_API.md) | Node.js WhatsApp Gateway API endpoints |
 | [BACKUP_RESTORE_FEATURE.md](./knowledge_base/BACKUP_RESTORE_FEATURE.md) | Migration and backup utilities |
-| [translation_architecture.md](./knowledge_base/translation_architecture.md) | Translation pipeline and semantic chunking |
-| [SEARXNG_DEPLOYMENT_GUIDE.md](./knowledge_base/SEARXNG_DEPLOYMENT_GUIDE.md) | Comprehensive SearXNG Docker installation and network configuration for Agentic Search |
+| [SEARXNG_DEPLOYMENT_GUIDE.md](./knowledge_base/SEARXNG_DEPLOYMENT_GUIDE.md) | SearXNG Docker installation for Agentic Search |
 
 

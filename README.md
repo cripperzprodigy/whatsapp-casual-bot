@@ -5,16 +5,20 @@
 > **🤖 AI AGENTS & COLLABORATION HUB:** If you are an AI assistant assigned to modify this codebase, you MUST read the master onboarding directive located at [`ai-chat/README.md`](./ai-chat/README.md) BEFORE making any changes. The `ai-chat` directory is our dedicated **AI Collaboration Workspace**. It is where information exchange, task plans, issues, bugs, and architectural decisions are continuously documented to ensure progressive, safe codebase improvements.
 
 
-A highly capable, passive WhatsApp bot built with Python and FastAPI, designed specifically for small private groups. It provides powerful AI translation, an assistant mode for tasks/notes, and silent contact synchronization to maintain an offline roster.
+A highly capable, AI-powered WhatsApp bot with long-term memory (RAG), auto-translation, language mirroring, agentic search, contact sync, and role-based permissions. Built with Python FastAPI + Node.js microservice.
 
 ## Core Features
 
 - **Native QR Login:** Replicates the seamless OpenClaw QR-login and linked-device experience without relying on heavy external gateways.
-- **Auto-Translation:** Automatically detect and translate incoming messages to a default language (e.g., all messages translated to English). Configurable globally or per group.
-- **Assistant Tools:** Generate summaries of recent group chats using AI, assign tasks, and write notes.
-- **Unified AI Architecture:** Configure a single, OpenAI-compatible AI endpoint. Easily switch between Local AI (LM Studio, Ollama) and Cloud AI (OpenAI, Groq) directly via the `.env` file without changing code.
-- **Isolated Roster Ledgers:** Maintains a completely isolated contact ledger per group. If a user joins Group A, their name and details are tracked completely independently of Group B. The bot automatically sweeps the entire group upon joining to build the ledger, passively updates it as users speak (never deleting anyone), and silently exports beautifully formatted CSV and Markdown rosters to `exports/groups/<group_id>/` (throttled for performance).
+- **🤖 Chatty AI (Long-Term Memory):** Continuous conversational AI with RAG-powered long-term memory. Remembers facts across sessions via ChromaDB vector storage. Configurable per-group frequency, burst, and human-like delay. See `!chatty` below.
+- **🗣️ Language Mirroring:** Detects user language (EN/ID/MS/ZH) and replies in the same language — no English drift. Traditional Chinese fix prevents Korean misclassification. (ADR-039)
+- **Auto-Translation:** Automatically detect and translate incoming messages. Configurable globally or per group. EN/ID/MS linguistic sphere prevents unnecessary translation between mutually-intelligible languages.
+- **🔍 Agentic & Deep Crawl Search:** `!s` performs iterative AI-refined web search. `!sc` fetches full web page content for deep research (owner-gated).
+- **Assistant Tools:** AI summaries of recent chat, task management, notes, and general AI Q&A via `!a`.
+- **Unified AI Architecture:** Single OpenAI-compatible endpoint. Easily switch between Local AI (LM Studio, Ollama) and Cloud AI (OpenAI, Groq) via `.env`.
+- **Isolated Roster Ledgers:** Per-group contact isolation with active sweep on join + passive updates. Auto-exports CSV/Markdown rosters.
 - **Security Whitelist:** Configure exactly which chats the bot is allowed to interact with.
+- **Session Durability:** SQLite-backed session state with optimistic locking. Auto-recovery on startup. WhatsApp session persistence across restarts.
 
 ---
 
@@ -24,7 +28,7 @@ The bot relies on a Python (FastAPI) backend for logic, and a lightweight intern
 
 ### Option 1: Quick Launch Scripts (Recommended)
 
-Make sure you have both **Python 3.10+** and **Node.js 18+** installed on your system.
+Make sure you have both **Python 3.12+** and **Node.js 18+** installed on your system.
 
 1. Clone the repository.
 2. Setup your `.env` file (see the Configuration section below).
@@ -92,6 +96,15 @@ If you are using LM Studio:
 
 *See `.env.example` for a complete breakdown of every variable.*
 
+### Key RAG Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_RAG_INGESTION` | `true` | Master kill-switch for ChromaDB writes/retrieval |
+| `RAG_TOP_K` | `5` | Number of past messages retrieved per query |
+| `RAG_DEFAULT_TTL_DAYS` | `7` | Exclude messages older than N days from retrieval (set `0` to disable) |
+| `RAG_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | SentenceTransformer model for embeddings |
+
 ---
 
 ## 📚 Commands Reference
@@ -116,14 +129,20 @@ Here is how the bot passively reacts to messages in your WhatsApp group:
 - `!target <lang>|global` - Set the default target language for the chat, or reset it to the global configuration.
 - `!ignore add|remove <lang>` - Add or remove explicit languages from the auto-translate ignore list for this chat.
 - `!ignore global` - Reset the ignore list to use the `GLOBAL_IGNORED_LANGUAGES` environment configuration.
-- `!ignore list` - Show explicitly ignored languages, or indicate if it's following the global config.
 - `!t <lang> <text>` - Manually translate text to a specific language.
 - `!t auto <text>` - Manually translate text to the default target language.
+- `!lang set <code>` - (DM Only) Set your preferred AI reply language.
+- `!lang reset` - (DM Only) Revert to automatic language detection.
+- `!globaltrans on|off` - (Owner only) Toggle global auto-translate on/off.
+
+### AI & Search
 - `!a <text>` - Ask the AI any general question or request.
+- `!s <query>` - Agentic search with iterative AI refinement.
+- `!sc <query>` - Deep crawl search (fetches full content from top websites).
+- `!search <query>` - Quick web search via AI.
+- `!summary` - Summarize recent chat history.
 
 ### Group Assistant
-- `!summary [short|full]` - Uses the AI to summarize the last 30 messages in the group.
-- `!search <query>` - Ask the AI to perform a simulated web search to answer a query.
 - `!task add <desc>` - Add an open task.
 - `!task list` - List open tasks.
 - `!task done <id>` - Mark a task as completed.
@@ -140,31 +159,44 @@ The bot supports three roles:
 - `!help` - Shows commands available to your current role.
 - `!ping` - Check whether the bot is responsive.
 - `!a <text>` - Ask the AI any general question or request.
+- `!s <query>` - Agentic search with iterative AI refinement.
+- `!sc <query>` - Deep crawl search (if enabled by owner).
+- `!search <query>` - Quick simulated web search.
+- `!summary` - Summarize recent messages via AI.
 - `!t <lang> <text>` - Translate text to a specific language.
 - `!t auto <text>` - Translate text to the chat's default target language.
-- `!summary [short|full]` - Summarize recent messages via AI.
-- `!search <query>` - Simulate a web search answer.
+- `!lang set <code>` - (DM Only) Set preferred reply language.
+- `!lang reset` - (DM Only) Revert preferred language.
 - `!task add <desc>` / `!task list` / `!task done <id>` - Create, list, and complete tasks.
 - `!note add <text>` / `!note list` - Add and view notes.
-- `!ignore list` - View the chat's currently ignored languages.
 
 #### Admin + Owner commands
+- `!chatty <on|off>` - Toggle continuous AI conversation.
+- `!chatty_freq <val>` - Set AI response frequency.
+- `!chatty_burst <val>` - Set AI burst count.
+- `!chatty_delay <min> <max>` - Set human-like delay for AI replies.
+- `!chatty_mode <debounce|throttle>` - Set delay strategy.
+- `!chatty_status` - View current AI chatter settings.
 - `!auto on|off` - Enable or disable auto-translation for the chat.
-- `!auto global` - Reset this chat's auto-translate setting to the global `.env` configuration.
-- `!target <lang>` - Set the chat's default target language for auto-translation.
-- `!target global` - Reset this chat's target language to the global `.env` configuration.
+- `!auto global` - Reset this chat's auto-translate to the global `.env` configuration.
+- `!target <lang>` - Set the chat's default target language.
+- `!target global` - Reset target language to the global `.env` configuration.
 - `!ignore add|remove <lang>` - Manage the chat-level ignored-language list.
-- `!ignore global` - Reset the chat's ignored-language list to the global `.env` configuration.
-- `!broadcast <message>` - Broadcast a message to all active chats.
-- `!stats` - Show system statistics.
-- `!export ledger` - Export the active contact ledger to CSV.
+- `!ignore global` - Reset the ignored-language list to global defaults.
 - `!contacts list` - View active contacts in the current group.
 - `!pm @user <text>` - Send a direct message to a specific user.
 - `!pm group <text>` - Send a direct message to all members in the current group.
+- `!broadcast <message>` - Broadcast a message to all active chats.
+- `!stats` - Show system statistics.
+- `!botid` - Show bot identity status.
 
 #### Owner-only commands
-- `!contacts global` - View a global summary of all active contacts across all groups.
-- `!pm global <text>` - Send a direct message to all members across all groups.
+- `!sc_toggle <on|off>` - Toggle Deep Crawl feature globally.
+- `!config toggle <feature> <state>` - Advanced configuration toggles.
+- `!contacts global` - View all contacts across all groups.
+- `!contacts export` - Export global contact ledger.
+- `!resolve @mention|group|global` - Force resolve phone numbers.
+- `!pm global <text>` - Send a direct message to all groups.
 - `!pm flood limit|interval <val>` - Update PM flood control settings.
 - `!owner grant <jid>` - Grant owner privileges.
 - `!owner revoke <jid>` - Revoke owner privileges.
@@ -173,6 +205,9 @@ The bot supports three roles:
 - `!admin grant <jid>` - Grant admin privileges.
 - `!admin revoke <jid>` - Revoke admin privileges.
 - `!admin list` - Show active admins.
+- `!whoami` - Register the bot's WhatsApp LID (for @mention detection).
+- `!forget-me` - Clear the bot's known LIDs.
+- `!globaltrans on|off` - Toggle global auto-translate.
 - `!shutdown` / `!restart` - Control the bot process lifecycle.
 
 #### Bootstrap ownership
@@ -346,13 +381,13 @@ Before executing ANY task, ALL agents (new or existing) MUST:
    - ai-chat/decisions.md (latest section only if archived)
    - ai-chat/issues.md (latest section only if archived)
 3. VALIDATE: Run the Pre-Task Validation Checklist:
-   - Check line counts of all interaction files (issues.md, changelog.md, decisions.md, chatpad.md)
-   - If ANY file >1000 lines, execute Archival Procedure immediately
+   - Run: `python ai-chat/utils/archive_rotation.py`
+   - If ANY governance file >1000 lines, execute Archival Procedure immediately
    - Verify no unresolved placeholders in SOP.md
    - Verify AGENT_REGISTRY.md integrity (no duplicates, all timestamps resolved)
-4. SIGN: Add your handshake signature to ai-chat/chatpad.md: Format: `| [AgentName] | [YYYY-MM-DD HH:MM UTC] | [TaskID] | [Branch] | STARTED |`
+4. SIGN: Register your presence in ai-chat/agents/AGENT_REGISTRY.md before executing any code changes.
 5. PROCEED: Only after steps 1-4 are complete may you begin your assigned task.
-6. CLOSE: Upon task completion, update your chatpad.md entry to 'COMPLETED' and update all relevant ai-chat files (changelog, issues, decisions, SOP if changed).
+6. CLOSE: Upon task completion, update all relevant ai-chat files (changelog, issues, decisions) in the SAME commit as your code changes (Atomic Documentation Rule).
 
 VIOLATION CONSEQUENCE: Any work performed without completing this protocol is considered INVALID and will be rejected by DEBUG-LEAD.
 
