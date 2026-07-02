@@ -8,6 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator, Field
 from typing import Optional
 
+
+
 logger = logging.getLogger(__name__)
 
 class BotIdentityManager:
@@ -244,7 +246,14 @@ class Settings(BaseSettings):
     DEFAULT_MODEL_NAME: str = "gpt-3.5-turbo"
 
     # ------------------------------------------------------------------ #
-    #  Database
+    #  Web Search Timeouts
+    # ------------------------------------------------------------------ #
+    LLM_SEARCH_TIMEOUT: int = Field(default=45, ge=10)
+    CRAWL_CONNECTION_TIMEOUT: int = Field(default=10, ge=1)
+    CRAWL_TOTAL_TIMEOUT: int = Field(default=30, ge=1)
+
+    # ------------------------------------------------------------------ #
+    #  Database Config
     # ------------------------------------------------------------------ #
     DATABASE_URL: str = "sqlite:///./bot.db"
 

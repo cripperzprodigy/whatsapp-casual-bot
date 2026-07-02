@@ -240,20 +240,17 @@ class DeepCrawlService:
             html_content = html_content.encode("utf-8", errors="replace")[:MAX_HTML_SIZE].decode("utf-8", errors="replace")
             
         def _blocking_parse():
+            from lxml import etree
             try:
-                parser = html.HTMLParser(
+                parser = etree.XMLParser(
+                    recover=True,
                     resolve_entities=False,
                     no_network=True,
                     huge_tree=False,
-                    recover=True,
-                    encoding='utf-8'
+                    dtd_validation=False
                 )
-                # defusedxml will raise exceptions on entity expansion or dtd.
-                # Depth limit check via defusedxml's parse (though lxml doesn't natively enforce depth exactly like this unless patched, defusedxml mitigates the worst).
-                # To be explicit as requested, we allow huge_tree=False which protects against deep recursion.
-                root = dlxml.fromstring(html_content.encode('utf-8'), parser=parser, forbid_dtd=True, forbid_entities=True)
-                text_converted = html.tostring(root, encoding='unicode')
-                return BeautifulSoup(text_converted, "lxml")
+                tree = dlxml.fromstring(html_content.encode('utf-8', errors='replace'), parser=parser)
+                return BeautifulSoup(tree, "lxml")
             except Exception as e:
                 logging.getLogger(__name__).warning(f"Strict parsing failed, falling back to html.parser: {e}")
                 return BeautifulSoup(html_content, "html.parser")

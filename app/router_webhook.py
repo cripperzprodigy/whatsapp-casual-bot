@@ -291,7 +291,7 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
                         # Enforced wait — search completes before reply
                         search_result = await asyncio.wait_for(
                             deep_crawl.search_and_crawl(search_query),
-                            timeout=float(getattr(_cfg, "CHATTY_SEARCH_TIMEOUT_SECONDS", 15)),
+                            timeout=float(getattr(_cfg, "LLM_SEARCH_TIMEOUT", 45)),
                         )
                         await send_long_message(chat_id, search_result)
                     except asyncio.TimeoutError:

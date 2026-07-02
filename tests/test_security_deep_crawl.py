@@ -133,3 +133,29 @@ async def test_parsing_timeout(service, monkeypatch):
     # The graceful fallback in the parser timeout is returning empty text (or beautifulsoup with "")
     # which results in empty string or truncated.
     assert result == ""
+
+# New XML Parser Integrity Test
+@pytest.mark.asyncio
+async def test_xml_parser_integrity(service, monkeypatch):
+    import defusedxml.lxml as dlxml
+    from lxml import etree
+    
+    # We will spy on etree.XMLParser
+    parser_called = False
+    original_parser = etree.XMLParser
+    
+    def spy_parser(*args, **kwargs):
+        nonlocal parser_called
+        parser_called = True
+        # Ensure security flags are set
+        assert kwargs.get("resolve_entities") is False
+        assert kwargs.get("no_network") is True
+        return original_parser(*args, **kwargs)
+        
+    monkeypatch.setattr(etree, "XMLParser", spy_parser)
+    
+    html = "<html><body><h1>Parser Test</h1></body></html>"
+    result = await service._clean_html(html)
+    
+    assert parser_called is True, "lxml.etree.XMLParser was not called"
+    assert "Parser Test" in result

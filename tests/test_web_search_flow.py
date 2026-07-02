@@ -252,3 +252,63 @@ class TestHallucinationPrevention:
         assert "some context here" in prompt
         # The prompt must instruct the LLM to use the context
         assert "using the following" in prompt.lower()
+
+# ── Test 6: Timeout Configuration Application ─────────────────────────────────
+
+class TestTimeoutConfiguration:
+
+    @pytest.mark.asyncio
+    async def test_search_timeout_uses_configured_llm_search_timeout(self, monkeypatch):
+        """Verify the router uses LLM_SEARCH_TIMEOUT when waiting for deep crawl."""
+        from app.router_webhook import _handle_dm_message
+        from app.whatsapp_gateway import WhatsAppWebhookPayload
+        from types import SimpleNamespace
+        import asyncio
+
+        # We will mock deep_crawl.search_and_crawl to just delay and return "done"
+        async def fake_search_and_crawl(query):
+            await asyncio.sleep(0.01)
+            return "done"
+
+        # Mock the deep crawl service creation
+        with patch("app.services.deep_crawl_service.DeepCrawlService") as MockService:
+            mock_instance = MockService.return_value
+            mock_instance.search_and_crawl = AsyncMock(side_effect=fake_search_and_crawl)
+            
+            # We must also mock asyncio.wait_for to capture the timeout argument
+            original_wait_for = asyncio.wait_for
+            wait_for_kwargs = {}
+            
+            async def spy_wait_for(coro, timeout=None):
+                wait_for_kwargs["timeout"] = timeout
+                return await original_wait_for(coro, timeout=timeout)
+                
+            monkeypatch.setattr(asyncio, "wait_for", spy_wait_for)
+            
+            # Create dummy args for _handle_dm_message
+            # We just want to trigger the search path
+            from app.config import settings
+            settings.LLM_SEARCH_TIMEOUT = 999  # Custom timeout for test
+            settings.deep_crawl_enabled = True
+            settings.CHATTY_SEARCH_DEFAULT = True
+            
+            # Mock translation, DB, send_text_message to avoid side effects
+            with patch("app.router_webhook.send_text_message", new=AsyncMock()), \
+                 patch("app.router_webhook.send_long_message", new=AsyncMock()), \
+                 patch("app.router_webhook.mirror_detect_language", return_value="en"), \
+                 patch("app.services.ai_memory_engine.AIMemoryEngine"):
+                
+                # "search for something" triggers search intent
+                await _handle_dm_message(
+                    chat_id="123@lid",
+                    sender_id="123@lid",
+                    sender_name="Test",
+                    text="search for something",
+                    media_path=None,
+                    msg_key=SimpleNamespace(id="msg1", participant="123@lid"),
+                    profile={}
+                )
+            
+            # Assert wait_for was called with the configured timeout
+            assert "timeout" in wait_for_kwargs
+            assert wait_for_kwargs["timeout"] == float(999)
