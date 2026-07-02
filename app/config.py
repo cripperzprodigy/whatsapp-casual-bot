@@ -370,6 +370,9 @@ class Settings(BaseSettings):
     # queries needing real-time or factual information, blending results naturally
     # into the reply.  Toggle per-chat via !chatty search on|off.
     CHATTY_SEARCH_DEFAULT: bool = True
+    # Max seconds to wait for a natural-language-triggered search to complete.
+    # If exceeded, the bot sends a timeout message rather than hanging.
+    CHATTY_SEARCH_TIMEOUT_SECONDS: int = 15
 
     # Chatty Frequency Control Defaults
     CHATTY_DEFAULT_FREQUENCY: int = 10
