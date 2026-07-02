@@ -11,6 +11,8 @@
 ### ISSUE-028: [RESOLVED] Group Search Mentions
 - **Description**: Natural language search intents in group chats were entirely ignored to prevent spam, forcing users to use explicit `!sc` commands.
 - **Resolution**: Enabled natural language search in groups *if* the bot is mentioned (e.g. `@BotName search for X`). Implemented a 60-second rate limit per group to prevent abuse, and added query cleaning to remove trigger phrases before executing the deep crawl.
+
+### ISSUE-027: [RESOLVED] Search Timeout Config
 - **Description**: Web searches were timing out (~35s) because `LLM_SEARCH_TIMEOUT` was missing from `.env.example` and `config.py` and defaulted too low.
 - **Resolution**: Wired `LLM_SEARCH_TIMEOUT` correctly through config, env, and code, defaulting to 90s, passing it to `ask_llm`.
 
