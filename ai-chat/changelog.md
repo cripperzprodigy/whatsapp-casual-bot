@@ -1,5 +1,10 @@
 # Changelog
 
+### Config Cleanup & Documentation Fixes - 2026-07-02
+- **Dead Config Variables Removed**: Removed `CRAWL_TOTAL_TIMEOUT`, `CHATTY_SEARCH_TIMEOUT_SECONDS`, and `deep_crawl_timeout_seconds` from `config.py` and `.env.example`.
+- **Config Rename**: Renamed the legacy `crawl_timeout_seconds` to `CRAWL_CONNECTION_TIMEOUT` to unify the naming standard across the `config.py` definitions and consuming services (`deep_crawl_service.py`, `agentic_search_service.py`, `commands.py`).
+- **Comment Fix**: Corrected a stale doc comment in `search_intent.py` regarding the number of capture groups inside the regex compilation strings.
+
 ### Search Fixes - SEARCH-FIX-004 - 2026-07-02
 - **Timeout Wiring**: Added `LLM_SEARCH_TIMEOUT` config with default=90s. Wired explicit timeout routing from `config.py` through `router_webhook.py`, `deep_crawl_service.py` to the underlying `ask_llm` OpenAI client, ensuring that complex multi-site deep crawls have adequate time for synthesis without hard aborts.
 - **Query Extraction Fix**: Refactored regex patterns in `search_intent.py` to use capture groups `()` isolating the target query instead of including trigger words (e.g. "search the web for X" now extracts just "X"). Updated feedback string to cleanly state `Searching for: X...` without redundancy.

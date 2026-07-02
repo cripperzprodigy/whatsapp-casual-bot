@@ -16,10 +16,9 @@ Design principles:
 import re
 from typing import Optional, Tuple
 
-# ── Natural language search patterns ─────────────────────────────────────────
-# Each pattern has exactly TWO capture groups:
-#   Group 1: optional filler word (for, up, for the, etc.)
-#   Group 2: the actual search query
+# 🧩 Natural language search patterns 🧩
+# Each pattern has exactly ONE capture group:
+#   Group 1: the actual search query (e.g., (.+) at end of pattern)
 #
 # Patterns are start-anchored (^) to avoid false positives in the middle of
 # narrative sentences like "I looked for my keys this morning".

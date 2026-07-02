@@ -250,8 +250,6 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     LLM_SEARCH_TIMEOUT: int = Field(default=90, description="Timeout in seconds for web search LLM synthesis")
     GROUP_SEARCH_COOLDOWN: int = Field(default=60, description="Cooldown in seconds between mention-triggered searches in groups")
-    CRAWL_CONNECTION_TIMEOUT: int = Field(default=10, ge=1)
-    CRAWL_TOTAL_TIMEOUT: int = Field(default=30, ge=1)
 
     # ------------------------------------------------------------------ #
     #  Database Config
@@ -270,8 +268,7 @@ class Settings(BaseSettings):
 
     deep_crawl_enabled: bool = True
     deep_crawl_max_urls: int = Field(default=5, ge=1, le=20)
-    deep_crawl_timeout_seconds: int = Field(default=10, ge=1)
-    crawl_timeout_seconds: float = Field(default=15.0, ge=1.0)
+    crawl_connection_timeout: int = Field(default=10, ge=1)
     max_total_context_chars: int = Field(default=15000, ge=1000)
     llm_timeout_seconds: int = Field(default=300, ge=10)
 
@@ -380,9 +377,6 @@ class Settings(BaseSettings):
     # queries needing real-time or factual information, blending results naturally
     # into the reply.  Toggle per-chat via !chatty search on|off.
     CHATTY_SEARCH_DEFAULT: bool = True
-    # Max seconds to wait for a natural-language-triggered search to complete.
-    # If exceeded, the bot sends a timeout message rather than hanging.
-    CHATTY_SEARCH_TIMEOUT_SECONDS: int = 15
 
     # Chatty Frequency Control Defaults
     CHATTY_DEFAULT_FREQUENCY: int = 10
@@ -462,8 +456,7 @@ class Settings(BaseSettings):
         _clamp("search_max_results", 1, 20, 5)
         _clamp("deep_crawl_max_urls", 1, 20, 5)
         _clamp("llm_timeout_seconds", 10, 1200, 300)
-        _clamp("deep_crawl_timeout_seconds", 1, 60, 10)
-        _clamp("crawl_timeout_seconds", 1.0, 60.0, 15.0, is_int=False)
+        _clamp("crawl_connection_timeout", 1, 60, 10)
         _clamp("max_total_context_chars", 1000, 100000, 15000)
         _clamp("agentic_max_iterations", 1, 10, 3)
         _clamp("search_results_per_query", 1, 50, 10)

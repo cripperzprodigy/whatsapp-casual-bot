@@ -1,5 +1,13 @@
 # Issues
 
+### ISSUE-030: [RESOLVED] Stale Comment in search_intent.py
+- **Description**: The comment in `search_intent.py` inaccurately stated that the regex patterns contained exactly TWO capture groups.
+- **Resolution**: Corrected the comment to reflect the reality that each pattern contains exactly ONE capture group `(.+)`.
+
+### ISSUE-029: [RESOLVED] Dead Configuration Variables
+- **Description**: Dead configuration variables `CRAWL_CONNECTION_TIMEOUT`, `CRAWL_TOTAL_TIMEOUT`, `CHATTY_SEARCH_TIMEOUT_SECONDS`, and `deep_crawl_timeout_seconds` were declared in `config.py` and `.env.example` but had zero consumers, while the active codebase still referenced `crawl_timeout_seconds`.
+- **Resolution**: Removed all four dead variables entirely. Renamed the legacy `crawl_timeout_seconds` to `CRAWL_CONNECTION_TIMEOUT` across all configurations, validation clauses, and consuming services (`deep_crawl_service.py`, `agentic_search_service.py`, `commands.py`) to unify the variable names.
+
 ### ISSUE-028: [RESOLVED] Group Search Mentions
 - **Description**: Natural language search intents in group chats were entirely ignored to prevent spam, forcing users to use explicit `!sc` commands.
 - **Resolution**: Enabled natural language search in groups *if* the bot is mentioned (e.g. `@BotName search for X`). Implemented a 60-second rate limit per group to prevent abuse, and added query cleaning to remove trigger phrases before executing the deep crawl.

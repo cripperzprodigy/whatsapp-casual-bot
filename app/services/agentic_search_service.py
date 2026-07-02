@@ -53,7 +53,7 @@ class AgenticSearchOrchestrator:
                 # Search Step Timeout: 3.0 seconds
                 results = await asyncio.wait_for(
                     self.search_service.search(current_query, max_results=self.results_per_query),
-                    timeout=settings.crawl_timeout_seconds
+                    timeout=settings.crawl_connection_timeout
                 )
 
                 # Format results and append

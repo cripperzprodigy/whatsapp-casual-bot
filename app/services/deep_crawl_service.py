@@ -96,7 +96,7 @@ class DeepCrawlService:
     ):
         self.search_service = search_service
         self.max_urls = settings.deep_crawl_max_urls
-        self.timeout = settings.crawl_timeout_seconds
+        self.timeout = settings.crawl_connection_timeout
         self.max_context_chars = settings.max_total_context_chars
         self.llm_timeout = settings.llm_timeout_seconds
         

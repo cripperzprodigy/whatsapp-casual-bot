@@ -863,7 +863,7 @@ async def handle_command(  # Issue 13: added return type
                 query = " ".join(args)
 
                 max_urls = getattr(app_settings, "deep_crawl_max_urls", 5)
-                crawl_timeout = float(getattr(app_settings, "crawl_timeout_seconds", 15.0))
+                crawl_timeout = int(getattr(app_settings, "crawl_connection_timeout", 10))
                 est_seconds = max_urls * crawl_timeout
                 await send_text_message(
                     chat_id,
