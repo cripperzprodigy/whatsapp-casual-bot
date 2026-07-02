@@ -332,3 +332,25 @@ By default, enabling `!chatty` does not mean the bot will reply to every single 
 The `!summary` feature is fully capable of dynamically processing vast contexts. Modify the `SUMMARY_MESSAGE_LIMIT` inside `.env` to analyze between 10 and 2000 recent messages at once depending on the capacities of your chosen LLM.
 
 For Private DM users, the bot supports completely freezing linguistic outputs to your preference without triggering costly auto-detection algorithms on subsequent messages. Just send `!lang set fr` to lock your profile to French.
+
+
+## AI Agent Onboarding Protocol (MANDATORY)
+
+Before executing ANY task, ALL agents (new or existing) MUST:
+
+1. SYNC: Ensure you are on the correct branch and have pulled latest remote changes. Command: `git fetch && git pull origin [branch-name]`
+2. READ: Completely read the following files in order:
+   - README.md (this file)
+   - ai-chat/SOP.md
+   - ai-chat/decisions.md (latest section only if archived)
+   - ai-chat/issues.md (latest section only if archived)
+3. VALIDATE: Run the Pre-Task Validation Checklist:
+   - Check line counts of all interaction files (issues.md, changelog.md, decisions.md, chatpad.md)
+   - If ANY file >1000 lines, execute Archival Procedure immediately
+   - Verify no unresolved placeholders in SOP.md
+   - Verify AGENT_REGISTRY.md integrity (no duplicates, all timestamps resolved)
+4. SIGN: Add your handshake signature to ai-chat/chatpad.md: Format: `| [AgentName] | [YYYY-MM-DD HH:MM UTC] | [TaskID] | [Branch] | STARTED |`
+5. PROCEED: Only after steps 1-4 are complete may you begin your assigned task.
+6. CLOSE: Upon task completion, update your chatpad.md entry to 'COMPLETED' and update all relevant ai-chat files (changelog, issues, decisions, SOP if changed).
+
+VIOLATION CONSEQUENCE: Any work performed without completing this protocol is considered INVALID and will be rejected by DEBUG-LEAD.

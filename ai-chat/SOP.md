@@ -7,7 +7,7 @@ Any agents starting work in this repository must log their presence in `agents/A
 
 ## Coding Constraints
 Strict adherence to the project's architecture is required.
-- **Language Purism:** [Placeholder for specific language rules]
+- **Language Purism:** Python 3.12 strict typing enforced. Type hints mandatory on all public APIs, function parameters, and return values. Private functions may omit return type hints if inference is trivial. No implicit any types permitted. mypy strict mode enabled in CI.
 - **Modularity:** Ensure code is well-structured and separated into logical, independent modules.
 - **Interface Parity:** Interfaces should remain consistent across modules.
 - **Error Handling:** Implement robust error handling strategies.
@@ -116,3 +116,43 @@ See ADR-014 and ADR-017 in decisions.md.
 
 ### Network & Batch API Communication
 - **Gateway Batching**: When making external or cross-container API calls over the WhatsApp gateway (e.g. contact resolutions), batch requests appropriately to prevent hitting underlying API rate limits. Maximum batch size for `wwebjs` queries is 10 items, with a minimum 0.2s inter-batch delay.
+
+## Audit Requirements
+
+All branch audits MUST include:
+- Memory leak analysis for async task pipelines
+- Error propagation review across service boundaries
+- Migration path documentation for breaking changes
+- Dependency drift risk assessment (embedding models, vector schemas)
+
+**Enforcement Rule:** DEBUG-LEAD must review all agent-generated audit reports before task generation. Findings must be validated, corrected if necessary, and missing issues added.
+
+
+## Section X: Documentation Hygiene Enforcement
+
+### X.1 Hard Line Count Limits
+
+The following files have a maximum line count of 1000 lines:
+- issues.md
+- changelog.md
+- decisions.md
+- chatpad.md
+
+When any of these files exceeds 1000 lines, the oldest content (all lines except the most recent 200) MUST be moved to ai-chat/archive/[filename]_archive_[YYYYMMDD_HHMM].md.
+
+### X.2 Archival Format
+- Archive Folder: ai-chat/archive/
+- Filename Pattern: [original_name]_archive_[YYYYMMDD_HHMM].md
+- Active File Header: "> Archived [DATE]: Content prior to line [X] moved to archive/[filename]_archive_[YYYYMMDD].md"
+- Archive File Header: See templates/archival_header_template.md
+
+### X.3 Pre-Flight Check Requirement
+NO agent may begin coding without completing the Pre-Task Validation Checklist defined in README.md. Work performed without this checklist is INVALID.
+
+### X.4 Weekly Hygiene Audit
+DEBUG-LEAD must conduct a weekly audit checking:
+- File line counts
+- Duplicate detection in tables
+- Unresolved placeholder detection
+- Handshake compliance in chatpad.md
+Results logged to ai-chat/audit_logs/weekly_hybrid_audit_[YYYYMMDD].md

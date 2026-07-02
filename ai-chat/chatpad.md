@@ -1,3 +1,11 @@
+# Agent Handshake Log
+
+This file tracks all agent sessions. Every agent MUST add an entry before starting work and update it upon completion.
+
+| Agent Name | Timestamp (UTC) | Task ID | Branch | Status | Notes |
+|------------|-----------------|---------|--------|--------|-------|
+|     "      |                 |         |        |        |       |
+
 # Chatpad
 
 1. **Purpose:** Active conversation, debugging, and brainstorming platform for all active AI agents.

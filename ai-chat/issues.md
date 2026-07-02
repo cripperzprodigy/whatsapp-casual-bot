@@ -1,4 +1,28 @@
 # Issues
+### ISSUE-016: [OPEN] Embedding Model Drift Compatibility
+- **Description**: No strategy documented for handling embedding model updates in sentence-transformers. New model versions may produce incompatible vectors, breaking existing RAG retrievals.
+- **File References**: app/services/ai_memory_engine.py, requirements.txt
+- **Priority**: LOW
+- **Related ADR**: ADR-035, ADR-038
+
+### ISSUE-015: [OPEN] Session State Persistence Migration Path undocumented
+- **Description**: ADR-037 introduced SQLite session state persistence with optimistic locking. No migration strategy documented for existing users with in-memory sessions. Potential data loss or inconsistency during deployment.
+- **File References**: app/state.py, ai-chat/decisions.md (ADR-037)
+- **Priority**: MEDIUM
+- **Related ADR**: ADR-037
+
+### ISSUE-014: [OPEN] Error Propagation Gaps Between Gateway and Backend
+- **Description**: No documented error propagation strategy between TypeScript gateway and Python backend under failure scenarios. If Python backend returns 5xx errors or times out, gateway behavior is undefined.
+- **File References**: src/bot/handler.ts, app/main.py
+- **Priority**: MEDIUM
+- **Related ADR**: None (gap identified)
+
+### ISSUE-013: [OPEN] Memory Leak Risk in RAG Ingestion Pipeline
+- **Description**: Fire-and-forget asyncio.create_task() calls in RAG ingestion (ADR-030) lack semaphore or backpressure mechanism. Under sustained high throughput, tasks may accumulate faster than thread pool can process embeddings, causing memory growth and event loop saturation.
+- **File References**: app/services/ai_memory_engine.py, router_webhook.py (lines 120-165)
+- **Priority**: HIGH
+- **Related ADR**: ADR-030
+
 ### 12. RAG Temporal Decay — Stale Context Retrieved as Current (Resolved — ADR-038)
 - **Issue**: RAG retrieval returned all historical messages with no time-weighting, surfacing stale information (e.g., old plans, outdated preferences) as if current, causing hallucinations.
 - **Cause**: `_retrieve_rag_context()` performed semantic search over the entire ChromaDB collection with no timestamp filtering. No TTL mechanism existed.

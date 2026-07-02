@@ -1,5 +1,19 @@
 # Architectural Decisions
 
+## DEBUG-LEAD Audit Review Corrections (2026-07-02)
+
+### Corrections
+- **Correction-001**: Issue closure velocity is legitimate due to coordinated sprint work; however, technical debt tracking is still required
+- **Correction-002**: SQLite bottleneck (ADR-037) downgraded from MEDIUM to LOW pending load testing; session writes occur on state transitions, not per message
+- **Correction-003**: ChromaDB  operator fallback requires explicit version detection and testing
+
+### Corrected Task Prioritization
+- **Priority 1 (Critical)**: DOC-HYGIENE-001, INTEGRATION-001, SECURITY-001
+- **Priority 2 (High)**: VALIDATION-001, VALIDATION-002, PERFORMANCE-001
+- **Priority 3 (Medium)**: DOC-HYGIENE-002, DEBT-001, MEMORY-001
+- **Priority 4 (Low)**: CROSS-BRANCH-001, MIGRATION-001, DRIFT-001
+
+
 ## ADR-038 — RAG Temporal Decay with Configurable TTL
 
 Date    : 2026-07-02
