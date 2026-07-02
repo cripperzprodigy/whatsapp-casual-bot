@@ -75,7 +75,7 @@ DM Message: "look up latest FIFA results"
         │
         ├─► await asyncio.wait_for(
         │       DeepCrawlService.search_and_crawl("latest FIFA results"),
-        │       timeout=15.0
+        │       timeout=settings.LLM_SEARCH_TIMEOUT (90s)
         │   )
         │
         ├─► Search result returned → send_long_message(result)
@@ -96,5 +96,6 @@ DM Message: "what's the weather like?" (no intent)
 | `CHATTY_SEARCH_DEFAULT` | `True` | Enable/disable natural language search in Chatty |
 | `DEEP_CRAWL_ENABLED` | `True` | Enable/disable deep crawl globally |
 | `DEEP_CRAWL_MAX_URLS` | `5` | URLs crawled per query |
+| `LLM_SEARCH_TIMEOUT` | `90` | LLM Timeout for Search Synthesis (seconds) |
 | `CRAWL_TIMEOUT_SECONDS` | `15` | Per-URL fetch timeout |
 | `MAX_TOTAL_CONTEXT_CHARS` | `15000` | Max context sent to LLM |

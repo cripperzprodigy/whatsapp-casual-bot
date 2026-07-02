@@ -1,5 +1,8 @@
 # Changelog
 
+### Search Timeout Wiring - CONFIG-SYNC-001 - 2026-07-02
+- **Timeout Wiring**: Added `LLM_SEARCH_TIMEOUT` config with default=90s. Wired explicit timeout routing from `config.py` through `router_webhook.py`, `deep_crawl_service.py` to the underlying `ask_llm` OpenAI client, ensuring that complex multi-site deep crawls have adequate time for synthesis without hard aborts.
+
 > For historical entries prior to 2026-06-25, see changelog_archive.md
 
 

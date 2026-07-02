@@ -43,7 +43,8 @@ async def ask_llm(
     ] = "generic",
     system_override: Optional[str] = None,
     image_path: Optional[str] = None,
-    max_tokens_override: Optional[int] = None
+    max_tokens_override: Optional[int] = None,
+    timeout: Optional[int] = None
 ) -> str:
     """
     Unified interface to call the LLM based on task type and
@@ -93,6 +94,9 @@ async def ask_llm(
             "temperature": temperature,
             "max_tokens": max_tokens_override or settings.LLM_MAX_TOKENS,
         }
+
+        if timeout is not None:
+            kwargs["timeout"] = timeout
 
         # Support JSON mode if requested
         if task_type == "json":

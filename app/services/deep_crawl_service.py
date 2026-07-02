@@ -109,12 +109,12 @@ class DeepCrawlService:
     #  Public Entry Point (Single-Response Contract)
     # -------------------------------------------------------------- #
 
-    async def search_and_crawl(self, query: str) -> str:
-        """Top-level entry.  ALWAYS returns str — never raises."""
+    async def search_and_crawl(self, query: str, timeout: int = 90) -> str:
+        """Top-level entry.  ALWAYS returns str - never raises."""
         try:
             return await asyncio.wait_for(
-                self._execute_deep_crawl(query),
-                timeout=self.llm_timeout + 60.0,
+                self._execute_deep_crawl(query, timeout=timeout),
+                timeout=timeout + 60.0,
             )
         except asyncio.TimeoutError:
             logger.warning(f"DeepCrawlService global timeout for query '{query}'")
@@ -127,7 +127,7 @@ class DeepCrawlService:
     #  Internal Orchestration
     # -------------------------------------------------------------- #
 
-    async def _execute_deep_crawl(self, query: str) -> str:
+    async def _execute_deep_crawl(self, query: str, timeout: int = 90) -> str:
         # 1. Search for top URLs via existing HybridSearchService
         try:
             results: List[SearchResult] = await asyncio.wait_for(
@@ -154,7 +154,7 @@ class DeepCrawlService:
                 return "⚠️ All URLs were blocked by security filters, and fallback to snippets is disabled."
             logger.warning("All URLs blocked by SSRF filter. Falling back to snippet synthesis.")
             snippet_context = self._format_snippets(results)
-            return await self._synthesize(query, snippet_context, snippet_fallback=True)
+            return await self._synthesize(query, snippet_context, snippet_fallback=True, timeout=timeout)
 
         # 3. Fetch and parse pages concurrently (bounded by semaphore)
         tasks = [
@@ -172,13 +172,13 @@ class DeepCrawlService:
             # All fetches failed — fallback to snippet-based answer
             logger.warning("All page fetches failed. Falling back to snippet synthesis.")
             snippet_context = self._format_snippets(results)
-            return await self._synthesize(query, snippet_context, snippet_fallback=True)
+            return await self._synthesize(query, snippet_context, snippet_fallback=True, timeout=timeout)
 
         # 4. Aggregate context with dynamic budget
         context = self._aggregate_context(contents)
 
         # 5. Synthesize via LLM
-        return await self._synthesize(query, context, snippet_fallback=False)
+        return await self._synthesize(query, context, snippet_fallback=False, timeout=timeout)
 
     # -------------------------------------------------------------- #
     #  Fetch + Parse
@@ -328,7 +328,7 @@ class DeepCrawlService:
     #  LLM Synthesis
     # -------------------------------------------------------------- #
 
-    async def _synthesize(self, query: str, context: str, snippet_fallback: bool) -> str:
+    async def _synthesize(self, query: str, context: str, snippet_fallback: bool, timeout: int = 90) -> str:
         """Send aggregated context to the LLM for synthesis.
 
         WEB-SEARCH-FIX-001: Injects current UTC timestamp so the LLM can
@@ -363,8 +363,9 @@ class DeepCrawlService:
                     prompt=prompt,
                     task_type="search_answer",
                     system_override=DEEP_CRAWL_SYNTHESIZER_SYSTEM,
+                    timeout=timeout,
                 ),
-                timeout=self.llm_timeout,
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             logger.warning("Deep crawl synthesis timed out.")

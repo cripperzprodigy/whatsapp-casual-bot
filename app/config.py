@@ -248,7 +248,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     #  Web Search Timeouts
     # ------------------------------------------------------------------ #
-    LLM_SEARCH_TIMEOUT: int = Field(default=45, ge=10)
+    LLM_SEARCH_TIMEOUT: int = Field(default=90, description="Timeout in seconds for web search LLM synthesis")
     CRAWL_CONNECTION_TIMEOUT: int = Field(default=10, ge=1)
     CRAWL_TOTAL_TIMEOUT: int = Field(default=30, ge=1)
 

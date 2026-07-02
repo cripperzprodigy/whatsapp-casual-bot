@@ -288,10 +288,14 @@ async def _handle_dm_message(chat_id: str, sender_id: str, sender_name: str, tex
                         searxng_url = getattr(_cfg, "SEARXNG_BASE_URL", None)
                         search_svc = HybridSearchService(mode, searxng_url)
                         deep_crawl = DeepCrawlService(search_service=search_svc)
+                        
+                        search_timeout = int(getattr(_cfg, "LLM_SEARCH_TIMEOUT", 90))
+                        logger.debug(f"[SearchIntent] Using LLM_SEARCH_TIMEOUT={search_timeout}s")
+                        
                         # Enforced wait — search completes before reply
                         search_result = await asyncio.wait_for(
-                            deep_crawl.search_and_crawl(search_query),
-                            timeout=float(getattr(_cfg, "LLM_SEARCH_TIMEOUT", 45)),
+                            deep_crawl.search_and_crawl(search_query, timeout=search_timeout),
+                            timeout=search_timeout,
                         )
                         await send_long_message(chat_id, search_result)
                     except asyncio.TimeoutError:
