@@ -3,6 +3,7 @@
 ### Search Fixes - SEARCH-FIX-004 - 2026-07-02
 - **Timeout Wiring**: Added `LLM_SEARCH_TIMEOUT` config with default=90s. Wired explicit timeout routing from `config.py` through `router_webhook.py`, `deep_crawl_service.py` to the underlying `ask_llm` OpenAI client, ensuring that complex multi-site deep crawls have adequate time for synthesis without hard aborts.
 - **Query Extraction Fix**: Refactored regex patterns in `search_intent.py` to use capture groups `()` isolating the target query instead of including trigger words (e.g. "search the web for X" now extracts just "X"). Updated feedback string to cleanly state `Searching for: X...` without redundancy.
+- **Group Search Mentions (GROUP-SEARCH-001)**: Enabled natural language search in group chats exclusively via bot mentions (e.g. `@CasualBot search for X`). Implemented strict rate limiting per group (default 60s cooldown, configurable via `GROUP_SEARCH_COOLDOWN`) and robust query cleaning to discard trigger phrases.
 
 > For historical entries prior to 2026-06-25, see changelog_archive.md
 

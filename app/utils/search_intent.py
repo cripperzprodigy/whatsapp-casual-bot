@@ -44,8 +44,23 @@ _FALSE_POSITIVE_PATTERNS: list[re.Pattern] = [
     re.compile(r"(?i)^find\s+(?:it|them|out)\s*$"),  # "find it" / "find out"
     re.compile(r"(?i)\blooked\b"),  # past tense — "I looked for..."
     re.compile(r"(?i)\bsearched\b"),  # past tense — "I searched for..."
+    re.compile(r"(?i)^google told me\b"), # "Google told me..."
 ]
 
+TRIGGER_PHRASES = [
+    r'(can you|could you|please)\s+',
+    r'(search for|look up|find|google)\s+'
+]
+
+def clean_query(text: str, bot_name: str) -> str:
+    """Removes bot mention and common conversational trigger phrases to isolate the raw search query."""
+    # Remove bot mention
+    text = re.sub(rf'@{re.escape(bot_name)}\s*', '', text, flags=re.IGNORECASE)
+    # Remove trigger phrases
+    for phrase in TRIGGER_PHRASES:
+        text = re.sub(phrase, '', text, flags=re.IGNORECASE)
+    # Trim and normalize whitespace
+    return ' '.join(text.split())
 
 def detect_search_intent(text: str) -> Tuple[bool, Optional[str]]:
     """Determine if *text* implies a web search request.

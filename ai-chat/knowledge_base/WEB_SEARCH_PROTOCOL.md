@@ -101,3 +101,20 @@ DM Message: "what's the weather like?" (no intent)
 | `LLM_SEARCH_TIMEOUT` | `90` | LLM Timeout for Search Synthesis (seconds) |
 | `CRAWL_TIMEOUT_SECONDS` | `15` | Per-URL fetch timeout |
 | `MAX_TOTAL_CONTEXT_CHARS` | `15000` | Max context sent to LLM |
+
+---
+
+## Group Chat Mention-Triggered Search (GROUP-SEARCH-001)
+
+Natural language search is disabled by default in groups to prevent spam on casual conversation (e.g. "let's search for a restaurant"). It can only be triggered via an explicit bot mention.
+
+**Rules:**
+1. **Mention Requirement**: The message must contain `@BotName` (case-insensitive).
+2. **Query Cleaning**: The mention itself and conversational trigger phrases ("can you", "please") are stripped using `clean_query()` before the query reaches the search engine.
+3. **Rate Limiting**: To prevent API abuse, group searches are restricted to one search per `GROUP_SEARCH_COOLDOWN` (default 60s) per group chat. If triggered while on cooldown, the bot replies with a ⏳ warning.
+
+**Examples:**
+- ✅ `"@CasualBot search for Batam news"` → Cleans to `"Batam news"`, executes search.
+- ✅ `"hey @CasualBot can you look up f1 results"` → Cleans to `"f1 results"`, executes search.
+- ❌ `"search for Batam news"` → Ignored (no mention).
+- ❌ `"I saw a search result on Google"` → Ignored (no mention, false positive).

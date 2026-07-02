@@ -7,10 +7,13 @@ import json
 import asyncio
 import random
 from typing import Dict
+from collections import defaultdict
 from pathlib import Path
 from filelock import FileLock
 from app.services.profile_service import read_profile, write_profile
 from app.services.ai_memory_engine import AIMemoryEngine
+
+_group_search_cooldowns = defaultdict(float)
 
 import httpx
 import sqlalchemy.exc
@@ -370,6 +373,53 @@ async def _handle_group_message(chat_id: str, sender_id: str, sender_name: str, 
     has_reply_context = (context_tuple is not None) and (context_tuple[0] == "reply")
     is_explicit_mention = is_text_mention or has_reply_context
     logger.info(f"Group message received: chat={chat_id}, sender={sender_id}, TextMention={is_text_mention}, ReplyContext={has_reply_context}, bot_id={bot_id}")
+
+    # --- GROUP SEARCH MENTION TRIGGER ---
+    if text and getattr(settings, "deep_crawl_enabled", True) and getattr(settings, "CHATTY_SEARCH_DEFAULT", True):
+        bot_name = getattr(settings, "BOT_NAME", "CasualBot")
+        mention_str = f"@{bot_name.lower()}"
+        idx = text.lower().find(mention_str)
+        is_mentioned_for_search = idx != -1
+        if is_mentioned_for_search:
+            from app.utils.search_intent import detect_search_intent, clean_query
+            text_after_mention = text[idx + len(mention_str):].strip()
+            is_search, _ = detect_search_intent(text_after_mention)
+            if is_search:
+                now = time.time()
+                cooldown = getattr(settings, "GROUP_SEARCH_COOLDOWN", 60)
+                if now - _group_search_cooldowns[chat_id] < cooldown:
+                    await send_text_message(chat_id, f"⏳ Please wait {cooldown}s between searches.")
+                    return
+                _group_search_cooldowns[chat_id] = now
+                clean_q = clean_query(text, bot_name)
+                try:
+                    await send_text_message(chat_id, f"🔍 Searching for: {clean_q}...")
+                    from app.services.search_service import HybridSearchService
+                    from app.services.deep_crawl_service import DeepCrawlService
+                    mode = getattr(settings, "SEARCH_SERVICE_MODE", "searxng")
+                    searxng_url = getattr(settings, "SEARXNG_BASE_URL", None)
+                    search_svc = HybridSearchService(mode, searxng_url)
+                    deep_crawl = DeepCrawlService(search_service=search_svc)
+                    
+                    search_timeout = int(getattr(settings, "LLM_SEARCH_TIMEOUT", 90))
+                    search_result = await asyncio.wait_for(
+                        deep_crawl.search_and_crawl(clean_q, timeout=search_timeout),
+                        timeout=search_timeout,
+                    )
+                    await send_long_message(chat_id, search_result)
+                except asyncio.TimeoutError:
+                    await send_text_message(chat_id, "⏳ The search took too long and timed out. Please try a simpler query.")
+                except Exception as e:
+                    logger.error(f"Group Search Error: {e}")
+                    await send_text_message(chat_id, "❌ An error occurred while searching.")
+                return
+        else:
+            from app.utils.search_intent import detect_search_intent
+            is_search, _ = detect_search_intent(text)
+            if is_search:
+                logger.debug("Group search ignored: bot not mentioned")
+    # ------------------------------------
+
     message_consumed_by_chatty = False
 
     chatty_status = profile.get("chatty_status", settings.CHATTY_GROUP_DEFAULT)
