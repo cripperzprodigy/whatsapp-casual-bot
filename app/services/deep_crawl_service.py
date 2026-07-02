@@ -250,10 +250,21 @@ class DeepCrawlService:
                     dtd_validation=False
                 )
                 tree = dlxml.fromstring(html_content.encode('utf-8', errors='replace'), parser=parser)
-                return BeautifulSoup(tree, "lxml")
+                
+                # Ensure we got a valid Element, not a list or None
+                if hasattr(tree, 'tag'):
+                    # Convert the secure tree back to a string to safely pass to BeautifulSoup
+                    safe_html = etree.tostring(tree, encoding='unicode')
+                    return BeautifulSoup(safe_html, "lxml")
+                else:
+                    raise ValueError(f"Invalid tree type returned: {type(tree)}")
             except Exception as e:
                 logging.getLogger(__name__).warning(f"Strict parsing failed, falling back to html.parser: {e}")
-                return BeautifulSoup(html_content, "html.parser")
+                try:
+                    return BeautifulSoup(html_content, "html.parser")
+                except Exception as fallback_error:
+                    logging.getLogger(__name__).error(f"Fallback parsing also failed: {fallback_error}")
+                    return BeautifulSoup("", "html.parser")
 
         loop = asyncio.get_event_loop()
         try:
