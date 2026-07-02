@@ -103,6 +103,15 @@ The core of the Isolated Ledger pattern. Composite Primary Keys ensure data is s
 - **`MessageBuffer`**: A rolling window (default size 200, set via `MESSAGE_BUFFER_SIZE`) of the
   most recent messages per chat, utilised by the `!summary` command. Old messages are pruned with
   a `while` loop (not `if`) so burst arrivals never overflow the buffer.
+- **`SessionState`**: SQLite-backed durability store for critical per-chat runtime fields.
+  Introduced in ADR-037 to survive process restarts and detect concurrent write conflicts.
+  - `chat_id` (PK): chat JID, one row per active conversation.
+  - `current_tool` (nullable): name of the tool currently executing (if any).
+  - `typing_state` (bool): whether the bot is currently simulating typing.
+  - `tool_scratchpad` (JSON): isolated log for tool execution output — never pollutes conversation history.
+  - `session_version` (int): optimistic lock etag. Incremented on every write. A `False` return from `update_session_state_atomic()` signals a concurrent modification.
+  - `is_processing` (bool): True while a request is in flight. Reset by `recover_stale_sessions()` on startup if the session is older than the stale threshold.
+  - `last_active` / `created_at`: UTC timestamps for recovery and observability.
 
 ## Message Routing Architecture (Decision #7)
 

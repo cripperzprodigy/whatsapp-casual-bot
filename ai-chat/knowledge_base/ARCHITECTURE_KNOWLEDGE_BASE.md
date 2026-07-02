@@ -232,8 +232,20 @@ _handle_dm_message() [router_webhook.py:122]
 
 | File | Purpose |
 |------|---------|
-| `ai_memory_engine.py` | RAG memory engine (ChromaDB, sentence-transformers) |
-| `profile_service.py` | Atomic profile read/write with `filelock` |
+| `ai_memory_engine.py` | RAG memory engine (ChromaDB, sentence-transformers, TTL decay, snapshot context) |
+| `profile_service.py` | Atomic profile read/write; scoped preference API (`read_scoped_preferences`, `write_scoped_preference`, `get_effective_preference`) |
+| `tool_executor.py` | Tool execution context with isolated scratchpad — logs never reach conversation history (ADR task 5) |
+| `agentic_search_service.py` | Iterative LLM-driven search (`!s` command) |
+| `deep_crawl_service.py` | Full-page crawl and synthesis (`!sc` command) |
+| `feature_flag_service.py` | SQLite-backed feature toggle service |
+| `search_service.py` | SearXNG / DuckDuckGo search backend |
+
+### 4.4 Utilities (`app/utils/`)
+
+| File | Purpose |
+|------|---------|
+| `message_splitter.py` | Semantic chunking and sequential sending for long messages (MANDATORY for all LLM output) |
+| `file_utils.py` | `TempFileContext` async context manager — per-request isolated `/tmp/bot_{uuid}/` directories wiped unconditionally on exit; `cleanup_orphaned_temp_dirs()` for startup hygiene (ADR task 4) |
 
 ---
 
@@ -249,8 +261,7 @@ _handle_dm_message() [router_webhook.py:122]
 | `notes` | `id` | Note management |
 | `message_buffer` | `id` | Rolling window of recent messages (default 200) |
 | `global_settings` | `key` | Global config overrides |
-| `bot_admins` | `user_id` | Owner/Admin roles |
-
+| `bot_admins` | `user_id` | Owner/Admin roles || `session_state` | `chat_id` | Critical per-chat runtime state with optimistic locking (ADR-037). Stores `current_tool`, `typing_state`, `tool_scratchpad` (JSON), `session_version` (etag), `is_processing`. Survives restarts. Stale rows auto-reset on startup via `recover_stale_sessions()`. |
 ### 5.2 File-Based State
 
 | Path | Purpose |
@@ -259,6 +270,8 @@ _handle_dm_message() [router_webhook.py:122]
 | `./data/contacts/{chat_id}/chat_history.jsonl` | Append-only message log |
 | `./data/contacts/{chat_id}/vector_db/chroma.sqlite3` | ChromaDB vector store |
 | `./data/contacts/{chat_id}/media/` | Downloaded media files |
+| `./data/prefs/{user_id}/{chat_id}.json` | Scoped persona preferences for (user, chat) pair — DM tone never bleeds into groups (ADR-036) |
+| `./data/prefs/{user_id}/global.json` | User-level global preferences (e.g. language) — fallback when no scoped pref exists |
 | `./data/config.json` | Global dynamic config |
 | `.wwebjs_auth/` | WhatsApp session storage (Node.js) |
 | `.bot_ready_state` | Deployment state marker |

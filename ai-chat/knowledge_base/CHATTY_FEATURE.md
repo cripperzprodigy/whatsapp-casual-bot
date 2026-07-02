@@ -37,6 +37,7 @@ Privacy and context separation are fundamental. All user data is stringently iso
 - `DEFAULT_DM_LANGUAGE` (str): Backup resolution for DMs.
 - `ENABLE_RAG_INGESTION` (bool): Master kill-switch for ChromaDB writes and retrieval (default: `true`). When `false`, only `.jsonl` history is written — no vector embeddings.
 - `RAG_TOP_K` (int): Number of past messages retrieved from ChromaDB per query (default: `5`). Configurable without code changes.
+- `RAG_DEFAULT_TTL_DAYS` (int): Temporal decay — excludes messages older than N days from standard RAG retrieval (default: `7`). Set `0` to disable. Queries containing historical markers ("last month", "remember when", etc.) bypass this filter automatically. See RAG_MEMORY_ENGINE.md.
 
 ### Local Contact Profile (`profile.json`)
 - `chatty_status`: Overrides the `.env` default on a per-chat basis.

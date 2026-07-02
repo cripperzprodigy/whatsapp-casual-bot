@@ -1,7 +1,7 @@
 # RAG Memory Engine — Active Ingestion Pipeline
 
-> **ADR Reference:** ADR-030 (2026-07-01)  
-> **Status:** Active  
+> **ADR References:** ADR-030 (2026-07-01), ADR-035 (2026-07-02), ADR-038 (2026-07-02)
+> **Status:** Active
 > **Files:** `app/services/ai_memory_engine.py`, `app/router_webhook.py`, `app/config.py`, `scripts/backfill_rag.py`
 
 ---
@@ -37,6 +37,7 @@ Each chat gets a completely isolated directory. DM data cannot appear in a group
 |---|---|---|---|
 | `ENABLE_RAG_INGESTION` | bool | `True` | Master kill-switch. `False` suppresses all ChromaDB writes/reads. `.jsonl` writes are always preserved for session continuity. |
 | `RAG_TOP_K` | int | `5` | Number of semantically similar past messages retrieved per query (`n_results` in ChromaDB). |
+| `RAG_DEFAULT_TTL_DAYS` | int | `7` | Temporal decay TTL. Excludes messages older than N days from standard retrieval queries. Set `0` to disable. Queries containing historical keywords (e.g. "last month") bypass this filter automatically. |
 | `RAG_EMBEDDING_MODEL` | str | `all-MiniLM-L6-v2` | SentenceTransformer model. Loaded eagerly at startup to avoid blocking the event loop on first message. |
 | `DYNAMIC_SYSTEM_PROMPT` | bool | `True` | Enables the rolling JSON summary (`conversation_summary` in `profile.json`). Triggers every 5 messages. |
 
@@ -120,8 +121,10 @@ await engine.process_message(text, ..., skip_user_ingestion=True)
 │            collection.query(                        │
 │                query_embeddings=[embedding],         │
 │                n_results=min(RAG_TOP_K, count),     │
-│                where={"chat_id": self.chat_id}      │
-│                ↑ Defense-in-depth isolation filter   │
+│                where=TTL-aware clause               │
+│                ↑ (1) timestamp >= cutoff if TTL>0   │
+│                ↑ (2) chat_id filter (defense-depth) │
+│                ↑ Historical queries bypass TTL      │
 │            )                                        │
 │        )                                            │
 │     → retrieved_context = top-K documents joined   │
@@ -129,7 +132,10 @@ await engine.process_message(text, ..., skip_user_ingestion=True)
 │  5. Build system prompt with [CONTEXT MEMORY]       │
 │  6. Call LLM (ask_llm)                              │
 │  7. _append_history("assistant", ai_reply)          │
-│  8. _update_summary() every 5 messages              │
+│  8. _update_summary(snapshot_messages,              │
+│                     context_timestamp)              │
+│     ↑ Uses snapshot captured in step 3a —          │
+│       temporally aligned with RAG window            │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -198,6 +204,90 @@ All four message paths call `ingest_message()` via `asyncio.create_task()`:
 |---|---|
 | `ENABLE_RAG_INGESTION=False` | ChromaDB skipped entirely. `.jsonl` still written. `generate_delayed_reply()` unaffected. |
 | ChromaDB `collection.count() == 0` | Retrieval step is skipped. Prompt includes "No relevant past memories found." |
+| TTL filter raises error (n_results > filtered count) | Automatically retries without TTL filter. TTL errors are DEBUG-logged, not thrown. |
+| Historical query detected (e.g. "last month") | TTL filter is bypassed. Full history is searchable for that request. |
+
+---
+
+## 🕐 Snapshot Context — Temporal Alignment (ADR-038 / Task 1)
+
+**Problem:** `_update_summary()` previously re-read the history file at call time (after LLM generation), while RAG retrieval read it before the LLM call. If a new message arrived in the gap, summary and RAG operated on different message windows, causing context drift.
+
+**Fix:** At the start of every `process_message()` and `generate_delayed_reply()` call:
+
+1. `_read_recent_messages_snapshot()` is called **before** RAG retrieval, capturing `(messages, snapshot_timestamp)`.
+2. The same snapshot is passed to `_update_summary(snapshot_messages, context_timestamp)`.
+3. Both operations now use the exact same temporal slice of history for that request.
+
+A `[CONTEXT DRIFT]` warning is logged when `snapshot_timestamp` and `context_timestamp` diverge by more than 30 seconds (indicating concurrent message arrival during processing).
+
+```
+Request start
+    │
+    ├─► _read_recent_messages_snapshot()   ← snapshot taken ONCE
+    │         │                                (includes new user msg)
+    │         ▼
+    ├─► _retrieve_rag_context()            ← uses ChromaDB (vector search)
+    │
+    ├─► LLM call
+    │
+    └─► _update_summary(snapshot=snapshot) ← reuses same snapshot
+                                             (no file re-read, no drift)
+```
+
+---
+
+## ⏰ Temporal Decay (TTL) — ADR-038
+
+**Purpose:** Prevent stale information (e.g. old lunch plans, outdated preferences) from being retrieved as if current, reducing AI hallucinations.
+
+### How it works
+
+`_is_historical_query(text)` checks for temporal keywords:
+
+```python
+_HISTORICAL_QUERY_KEYWORDS = {
+    "last month", "last year", "last week", "last time",
+    "remember when", "a while ago", "previously", "before", "earlier",
+    "yesterday", "do you remember", "we talked about", "you mentioned",
+    "you said", "i told you", "we discussed",
+}
+```
+
+**Standard query** (no historical keywords):
+```python
+where_clause = {
+    "$and": [
+        {"chat_id": {"$eq": self.chat_id}},
+        {"timestamp": {"$gte": int(time.time()) - (RAG_DEFAULT_TTL_DAYS * 86400)}},
+    ]
+}
+```
+
+**Historical query** (contains temporal keywords):
+```python
+where_clause = {"chat_id": self.chat_id}  # TTL bypassed
+```
+
+### ChromaDB document metadata (per ingested message)
+
+```python
+meta = {
+    "role": "user" | "assistant",
+    "timestamp": <unix epoch int>,
+    "chat_id": "<chat_jid>",
+    "expires_at": timestamp + (RAG_DEFAULT_TTL_DAYS * 86400),  # for future purge
+    "weight": 1.0,   # reserved for future re-ranking
+}
+```
+
+### Configuration
+
+| Variable | Default | Effect |
+|---|---|---|
+| `RAG_DEFAULT_TTL_DAYS=7` | 7 days | Exclude messages > 7 days old from standard queries |
+| `RAG_DEFAULT_TTL_DAYS=0` | disabled | Retrieve all history (original behaviour) |
+| `RAG_DEFAULT_TTL_DAYS=30` | 30 days | Wider window for slower-moving conversations |
 | `_rag_ingest_async()` exception | Error logged, ingestion silently drops. No user-visible impact. |
 | `asyncio.create_task()` called with no running loop | `RuntimeError` caught silently in `_append_history()`. Occurs only in sync test contexts. |
 | Embedding model fails to load | Falls back to `all-MiniLM-L3-v2`. Logged as warning. |
