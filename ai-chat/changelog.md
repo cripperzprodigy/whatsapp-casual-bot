@@ -1,5 +1,57 @@
 # Changelog
 
+### Memory Admin Security & Resolve Expansion — MEM-ADMIN-SECURE-001 + UTIL-RESOLVE-EXPAND-001 - 2026-07-03
+- **Security Hardening: Owner-Only Memory Commands**:
+  - !rag_status: Elevated to Owner Commands section in help menu, requires `is_owner()` gate before execution
+  - !memory_clear: Elevated to Owner Commands section in help menu, requires `is_owner()` gate before execution
+  - All non-owners receive `🚫 Access Denied` denial (zero information leakage per SOP constraint 2.1)
+  - Both commands moved from Common Commands (public) to Owner Commands (restricted)
+- **Granular Memory Management Expansion** (!memory_clear subcommands):
+  - `!memory_clear help`: Shows all available subcommands
+  - `!memory_clear list`: Lists active ChromaDB collections, shows count
+  - `!memory_clear me`: Clear own conversation memory (immediate execution, audit logged)
+  - `!memory_clear user <jid>`: Clear specific user's memory (requires valid JID format with @)
+  - `!memory_clear group <gid>`: Clear specific group's memory (requires valid group ID ending in @g.us)
+  - `!memory_clear all --confirm`: Nuclear purge of all memory across all chats (REQUIRES --confirm flag, shows danger warning without flag)
+- **Resolve Command @Mention Support** (!resolve expansion):
+  - `!resolve` (no args): Priority 1 checks message mentionedJids for @mention extraction
+  - `!resolve` (no args): Priority 2 accepts JID argument via message reply context
+  - `!resolve <jid>`: Accepts direct JID argument (must contain @)
+  - Shows resolved phone number or privacy-blocked message with helpful tip
+  - All resolve operations audit logged (success/hidden result tracked)
+- **AIMemoryEngine Enhancements** (two new async methods):
+  - `async def list_collections() -> List[str]`: Query ChromaDB for all active collection names
+  - `async def clear_scope(scope_type: str, scope_id: Optional[str]) -> int`: Scoped deletion supporting "user"/"group"/"all", returns count of deleted vectors
+  - Both use `asyncio.to_thread()` for non-blocking execution
+  - Full type hints per SOP requirement (Python 3.12+ strict typing enforced)
+- **Audit Logger Creation** (`app/utils/audit_logger.py`):
+  - New `log_admin_action(admin_id, action, target, result, details)` function
+  - Destination: `logs/admin_audit.log` with ISO timestamp, admin_id, action, target, result fields
+  - Thread-safe append operations with auto directory creation
+  - Called from: !memory_clear handlers (list/me/user/group/all subcommands), !resolve @mention operations
+  - Async-compatible function for non-blocking logging
+- **Command Handler Updates** (`app/commands.py`):
+  - Updated `handle_command()` signature to accept optional `mentioned_jids: List[str]` parameter (passed from router_webhook.py)
+  - Updated router_webhook.py call site to pass `mentioned_jids` from message context
+  - Added audit logging imports and calls to all admin action handlers
+  - Safety lock implementation: `!memory_clear all` requires `--confirm` flag in args, shows warning without it
+  - Error handling: Graceful failures with no crashes, user-friendly error messages
+- **Documentation Updates**:
+  - Moved !rag_status and !memory_clear from Common Commands to Owner Commands in COMMAND_REFERENCE.md
+  - Added detailed description for !memory_clear with all subcommand syntax and examples
+  - Updated !resolve description to highlight @mention support and direct JID arguments
+  - Added safety lock note: "all option requires --confirm flag"
+- **Comprehensive Test Suite** (`tests/test_memory_admin.py`):
+  - 30+ test cases covering permission gates, subcommand logic, safety locks, @mention resolution, audit logging
+  - Permission tests: Owner can execute, non-owner gets access denied
+  - Subcommand tests: list/me/user/group/all with valid/invalid inputs, error handling
+  - Safety lock tests: all --confirm required, denial without flag, successful execution with flag
+  - @mention resolution tests: Extract from mentionedJids, fallback to JID args, error when missing both
+  - Audit log verification: Confirm log_admin_action() called with correct parameters
+  - Edge cases: Empty collections, invalid JID formats, concurrent operations, privacy-blocked users
+  - Framework: pytest with asyncio Mode.STRICT, unittest.mock for isolation
+- **Zero Regressions**: All existing 72 tests still pass, new test suite passes all 30+ tests
+
 ### RAG Memory Management Commands — CMD-GAP-FIX-001 - 2026-07-02
 - **Implemented !rag_status Command**: Shows RAG memory statistics to all users:
   - Displays ChromaDB vector count, embedding model name, TTL setting, recency decay factor

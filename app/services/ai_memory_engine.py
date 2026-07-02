@@ -903,3 +903,71 @@ Reply ONLY in {lang}. Be natural, human-like, and concise."""
         except Exception as e:
             logger.error(f"Error clearing memory for {self.chat_id}: {e}")
             return False
+
+    async def list_collections(self) -> list[str]:
+        """List all active ChromaDB collection names/IDs.
+        
+        Returns:
+            List of collection identifiers currently stored in ChromaDB
+        """
+        try:
+            # Get all collections from ChromaDB
+            all_collections = await asyncio.to_thread(
+                lambda: self.chroma_client.list_collections()
+            )
+            return [c.name for c in all_collections]
+        except Exception as e:
+            logger.error(f"Error listing collections: {e}")
+            return []
+
+    async def clear_scope(
+        self, scope_type: str, scope_id: str | None = None
+    ) -> int:
+        """Clear memory for a specific scope (user, group, or all).
+        
+        Args:
+            scope_type: Type of scope - "user", "group", or "all"
+            scope_id: Optional identifier for the scope (JID for user/group)
+        
+        Returns:
+            Number of vectors deleted
+        """
+        try:
+            deleted_count = 0
+            
+            if scope_type == "user" and scope_id:
+                # Delete vectors for specific user
+                await asyncio.to_thread(
+                    lambda: self.collection.delete(where={"chat_id": scope_id})
+                )
+                deleted_count = 1
+                logger.info(f"Cleared memory for user {scope_id}")
+                
+            elif scope_type == "group" and scope_id:
+                # Delete vectors for specific group
+                await asyncio.to_thread(
+                    lambda: self.collection.delete(where={"chat_id": scope_id})
+                )
+                deleted_count = 1
+                logger.info(f"Cleared memory for group {scope_id}")
+                
+            elif scope_type == "all":
+                # Get all collections and delete them all
+                all_collections = await self.list_collections()
+                for cname in all_collections:
+                    try:
+                        coll = await asyncio.to_thread(
+                            lambda: self.chroma_client.get_collection(name=cname)
+                        )
+                        await asyncio.to_thread(
+                            lambda: coll.delete(where={})
+                        )
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.error(f"Error deleting collection {cname}: {e}")
+                logger.info(f"Cleared all {deleted_count} memory collections")
+                
+            return deleted_count
+        except Exception as e:
+            logger.error(f"Error clearing scope {scope_type}:{scope_id}: {e}")
+            return 0

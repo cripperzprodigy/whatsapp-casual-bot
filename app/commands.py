@@ -18,6 +18,7 @@ from app.translation import translate_text, detect_language
 from app.pm_service import start_batched_pm_task
 from app.whatsapp_gateway import send_text_message
 from app.utils.message_splitter import send_long_message
+from app.utils.audit_logger import log_admin_action
 from app.ai_client import ask_llm
 from app.config import settings as app_settings, persist_global_config
 from app.permissions import (
@@ -79,10 +80,6 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
     response += "• `!note add <text>`: Add a note\n"
     response += "• `!note list`: List notes\n"
     
-    # Memory & Context
-    response += "• `!rag_status`: View RAG memory stats and context window\n"
-    response += "• `!memory_clear`: Clear your conversation memory and start fresh\n"
-    
     # Setup for new bots (only shown if claim is available)
     if role == PUBLIC_ROLE and not is_group_chat:
         if is_claim_ownership_available(db):
@@ -123,9 +120,10 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
         response += "  └─ Status persists across restarts via config_override.json\n"
         response += "• `!contacts global`: View all contacts globally\n"
         response += "• `!contacts export`: Export global contact ledger\n"
-        response += "• `!resolve @mention`: Force resolve a user's phone number\n"
-        response += "• `!resolve group`: Actively resolve all numbers in the current group\n"
-        response += "• `!resolve global`: Actively resolve all numbers across all groups\n"
+        response += "• `!resolve [@mention|group|global]`: Resolve user JIDs (reply to msg or use @mention)\n"
+        response += "• `!rag_status`: 📊 View RAG memory stats (system-wide)"
+        response += "\n"
+        response += "• `!memory_clear [list|me|user|group|all]`: Granular memory management\n"
         response += "• `!pm global <text>`: DM all groups\n"
         response += "• `!pm flood limit|interval <val>`: PM flood settings\n"
         response += "• `!owner grant|revoke <jid>`: Manage Owners\n"
@@ -146,11 +144,14 @@ async def _build_help_text(db: Session, role: str, is_group_chat: bool) -> str:
 
 
 async def handle_command(  # Issue 13: added return type
-    text: str, chat_id: str, sender_id: str, db: Session
+    text: str, chat_id: str, sender_id: str, db: Session, mentioned_jids: list[str] | None = None
 ) -> None:
     parts = text.strip().split()
     if not parts:
         return
+    
+    if mentioned_jids is None:
+        mentioned_jids = []
 
     command = parts[0].lower()
     args = parts[1:]
@@ -1511,12 +1512,29 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, f"✅ *Group Resolution Complete*\n\nResolved {resolved_count}/{total} numbers.\n{hidden_count} hidden by privacy settings.")
                 
             else:
-                jid = mentioned_jids[0]
-                info = await resolve_participant_info(jid)
+                # Handle @mention resolution
+                target_jid = None
+                
+                # Priority 1: Check for @mention in the message
+                if mentioned_jids and len(mentioned_jids) > 0:
+                    target_jid = mentioned_jids[0]
+                # Priority 2: Check if first arg looks like a JID
+                elif args and "@" in args[0]:
+                    target_jid = args[0]
+                
+                if not target_jid:
+                    await send_text_message(chat_id, "❌ No user specified. Reply to a message with @mention or provide a JID.")
+                    return
+                
+                from app.contact_sync import resolve_participant_info
+                info = await resolve_participant_info(target_jid)
                 if info.get("phone"):
                     reply = f"✅ Resolved: +{info['phone']} ({info.get('name', 'Unknown')})"
                 else:
                     reply = f"🔒 Hidden (User has strict privacy settings) - {info.get('name', 'Unknown')}. Tip: Ask them to add your bot number as a contact to reveal their number."
+                
+                await send_text_message(chat_id, reply)
+                await log_admin_action(sender_id, "resolve_mention", target_jid, "success" if info.get("phone") else "hidden")
                 await send_text_message(chat_id, reply)
 
         elif command == "!chatty":
@@ -1711,27 +1729,43 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, "Usage: !lang set <code> | !lang reset")
 
         elif command == "!rag_status":
-            # Show RAG memory statistics
-            if not settings.ENABLE_RAG_INGESTION:
-                await send_text_message(chat_id, "⚠️ RAG (memory) feature is globally disabled. Contact @owner to enable.")
+            # 🔒 OWNER-ONLY: Show RAG memory statistics across all chats
+            if not await is_owner(db, sender_id):
+                await send_text_message(chat_id, "🚫 Access Denied")
+                return
+            
+            if not app_settings.ENABLE_RAG_INGESTION:
+                await send_text_message(chat_id, "⚠️ RAG (memory) feature is globally disabled.")
                 return
             
             try:
                 from app.services.ai_memory_engine import AIMemoryEngine
-                memory_engine = AIMemoryEngine(chat_id, sender_name)
-                stats = await memory_engine.get_rag_stats()
+                # If arg provided, show stats for that chat; otherwise show aggregated stats
+                target_chat = args[0] if args else None
                 
-                if "error" in stats:
-                    await send_text_message(chat_id, f"❌ Error retrieving RAG stats: {stats['error']}")
-                    return
-                
-                response = "📊 *RAG Memory Status*\n\n"
-                response += f"• Stored vectors: {stats.get('chromadb_count', 0)}\n"
-                response += f"• Embedding model: {stats.get('embedding_model', 'N/A')}\n"
-                response += f"• Memory TTL: {stats.get('ttl_days', 7)} days\n"
-                response += f"• Recency decay: {stats.get('recency_alpha', 0.5)}\n"
-                response += f"• RAG enabled: {'✅ Yes' if stats.get('rag_enabled') else '❌ No'}\n"
-                response += "\nOlder messages are automatically forgotten unless you ask about them explicitly."
+                if target_chat:
+                    memory_engine = AIMemoryEngine(target_chat, "System")
+                    stats = await memory_engine.get_rag_stats()
+                    
+                    if "error" in stats:
+                        await send_text_message(chat_id, f"❌ Error: {stats['error']}")
+                        return
+                    
+                    response = f"📊 *RAG Status for {target_chat}*\n\n"
+                    response += f"• Vectors: {stats.get('chromadb_count', 0)}\n"
+                    response += f"• Model: {stats.get('embedding_model', 'N/A')}\n"
+                    response += f"• TTL: {stats.get('ttl_days', 7)} days\n"
+                    response += f"• Recency decay: {stats.get('recency_alpha', 0.5)}\n"
+                else:
+                    # Show system-wide stats
+                    memory_engine = AIMemoryEngine(chat_id, sender_name)
+                    stats = await memory_engine.get_rag_stats()
+                    response = f"📊 *RAG System Status*\n\n"
+                    response += f"• Current chat vectors: {stats.get('chromadb_count', 0)}\n"
+                    response += f"• Model: {stats.get('embedding_model', 'N/A')}\n"
+                    response += f"• TTL: {stats.get('ttl_days', 7)} days\n"
+                    response += f"• Recency alpha: {stats.get('recency_alpha', 0.5)}\n"
+                    response += f"• RAG enabled: {'✅ Yes' if stats.get('rag_enabled') else '❌ No'}\n"
                 
                 await send_text_message(chat_id, response)
             except Exception as e:
@@ -1739,27 +1773,125 @@ async def handle_command(  # Issue 13: added return type
                 await send_text_message(chat_id, f"❌ Error: {str(e)}")
 
         elif command == "!memory_clear":
-            # Clear all RAG memory for this user
-            if not settings.ENABLE_RAG_INGESTION:
+            # 🔒 OWNER-ONLY: Granular memory management with subcommands
+            if not await is_owner(db, sender_id):
+                await send_text_message(chat_id, "🚫 Access Denied")
+                return
+            
+            if not app_settings.ENABLE_RAG_INGESTION:
                 await send_text_message(chat_id, "⚠️ RAG feature is disabled. Nothing to clear.")
                 return
             
             try:
                 from app.services.ai_memory_engine import AIMemoryEngine
-                memory_engine = AIMemoryEngine(chat_id, sender_name)
-                success = await memory_engine.clear_all_memory()
                 
-                if success:
+                # Parse subcommand
+                subcommand = args[0].lower() if args else "help"
+                
+                if subcommand == "help":
                     await send_text_message(
                         chat_id,
-                        "🧹 *Memory cleared!*\n\n"
-                        "✅ Deleted:\n"
-                        "• All stored conversation vectors\n"
-                        "• Chat history file\n\n"
-                        "The bot will start with a fresh context in the next message."
+                        "🧹 *Memory Clear Subcommands*\n\n"
+                        "• `!memory_clear list` - List active memory collections\n"
+                        "• `!memory_clear me` - Clear YOUR session memory only\n"
+                        "• `!memory_clear user <jid>` - Clear specific user's memory\n"
+                        "• `!memory_clear group <gid>` - Clear entire group's memory\n"
+                        "• `!memory_clear all --confirm` - WIPE ALL (requires --confirm flag)\n"
                     )
+                
+                elif subcommand == "list":
+                    memory_engine = AIMemoryEngine(chat_id, sender_name)
+                    collections = await memory_engine.list_collections()
+                    if not collections:
+                        await send_text_message(chat_id, "📭 No active memory collections found.")
+                    else:
+                        response = f"📋 *Active Collections ({len(collections)})*\n\n"
+                        for cid in collections[:10]:  # Show first 10
+                            response += f"• {cid}\n"
+                        if len(collections) > 10:
+                            response += f"\n... and {len(collections) - 10} more"
+                        await send_text_message(chat_id, response)
+                
+                elif subcommand == "me":
+                    memory_engine = AIMemoryEngine(sender_id, sender_name)
+                    success = await memory_engine.clear_all_memory()
+                    if success:
+                        await send_text_message(
+                            chat_id,
+                            "🧹 ✅ Your memory cleared!\n\n"
+                            "All your conversation vectors and history have been deleted.\n"
+                            "Fresh context on your next message."
+                        )
+                        # Log audit event
+                        await log_admin_action(sender_id, "memory_clear_self", sender_id, "success")
+                    else:
+                        await send_text_message(chat_id, "❌ Failed to clear memory. Check logs.")
+                
+                elif subcommand == "user" and len(args) > 1:
+                    target_jid = args[1]
+                    # Validate JID format
+                    if not ("@" in target_jid):
+                        await send_text_message(chat_id, "❌ Invalid JID format. Use: !memory_clear user <jid>")
+                        return
+                    
+                    memory_engine = AIMemoryEngine(target_jid, "System")
+                    success = await memory_engine.clear_all_memory()
+                    if success:
+                        await send_text_message(
+                            chat_id,
+                            f"🧹 ✅ Memory cleared for user:\n`{target_jid}`"
+                        )
+                        await log_admin_action(sender_id, "memory_clear_user", target_jid, "success")
+                    else:
+                        await send_text_message(chat_id, "❌ Failed to clear memory. Check logs.")
+                
+                elif subcommand == "group" and len(args) > 1:
+                    target_gid = args[1]
+                    if not target_gid.endswith("@g.us"):
+                        await send_text_message(chat_id, "❌ Invalid group ID. Use: !memory_clear group <gid>")
+                        return
+                    
+                    memory_engine = AIMemoryEngine(target_gid, "System")
+                    success = await memory_engine.clear_all_memory()
+                    if success:
+                        await send_text_message(
+                            chat_id,
+                            f"🧹 ✅ Memory cleared for group:\n`{target_gid}`"
+                        )
+                        await log_admin_action(sender_id, "memory_clear_group", target_gid, "success")
+                    else:
+                        await send_text_message(chat_id, "❌ Failed to clear memory. Check logs.")
+                
+                elif subcommand == "all":
+                    # NUCLEAR OPTION: Require --confirm flag
+                    if "--confirm" not in args:
+                        await send_text_message(
+                            chat_id,
+                            "⚠️ **DANGER: This will wipe ALL memory across all chats.**\n\n"
+                            "Use `!memory_clear all --confirm` to proceed."
+                        )
+                        return
+                    
+                    # Proceed with full wipe
+                    memory_engine = AIMemoryEngine(chat_id, sender_name)
+                    # Get all unique collections and wipe them
+                    collections = await memory_engine.list_collections()
+                    wipe_count = 0
+                    for cid in collections:
+                        eng = AIMemoryEngine(cid, "System")
+                        if await eng.clear_all_memory():
+                            wipe_count += 1
+                    
+                    await send_text_message(
+                        chat_id,
+                        f"🧹 💀 **NUCLEAR PURGE COMPLETE**\n\n"
+                        f"Wiped {wipe_count} memory collections.\n\n"
+                        f"All conversation vectors and history files have been permanently deleted."
+                    )
+                    await log_admin_action(sender_id, "memory_clear_all", "GLOBAL", "success")
                 else:
-                    await send_text_message(chat_id, "❌ Failed to clear memory. Check logs.")
+                    await send_text_message(chat_id, "❌ Unknown subcommand. Use `!memory_clear help`")
+                    
             except Exception as e:
                 logger.error(f"Error in !memory_clear: {e}")
                 await send_text_message(chat_id, f"❌ Error: {str(e)}")

@@ -851,7 +851,7 @@ async def process_message(
                         await send_text_message(chat_id, "🗑️ Known Bot identities (LIDs) have been cleared.")
                         return
                 
-                await handle_command(text, chat_id, sender_id, db)
+                await handle_command(text, chat_id, sender_id, db, mentioned_jids)
                 return  # Exits immediately, preventing fall-through to Chatty engine
 
             # Domain Split

@@ -21,8 +21,6 @@ This document outlines the commands available to users, administrators, and the 
 | !task done <id> | User | Complete a task. | !task done 1 |
 | !note add <text> | User | Add a note. | !note add Wifi pass: 1234 |
 | !note list | User | List notes. | !note list |
-| !rag_status | User | View RAG memory stats and document count. | !rag_status |
-| !memory_clear | User | Clear your session context and conversation memory. | !memory_clear |
 
 ## Admin Commands
 | Command | Role | Description | Example |
@@ -52,7 +50,9 @@ This document outlines the commands available to users, administrators, and the 
 | !sc_toggle <on|off> | Owner | (Legacy) Toggle Deep Crawl feature. Use `!search_toggle deep <on|off>` instead. | !sc_toggle on |
 | `!contacts global` | Owner | View all contacts globally. | `!contacts global` |
 | `!contacts export` | Owner | Export global contact ledger. | `!contacts export` |
-| `!resolve <@mention|group|global>` | Owner | Force resolve a user's phone number, scan the current group, or scan globally. | `!resolve @user` |
+| `!resolve [@mention|group|global]` | Owner | Resolve user phone numbers. Reply to msg with @mention, scan group, or scan globally. | `!resolve @user` or `!resolve group` |
+| `!rag_status` | Owner | 📊 View RAG memory stats and system-wide vector counts. | `!rag_status` |
+| `!memory_clear [list|me|user|group|all]` | Owner | **Granular memory management**: list (show collections), me (clear self), user <jid> (clear user), group <gid> (clear group), all --confirm (nuclear purge). | `!memory_clear me` or `!memory_clear all --confirm` |
 | `!pm global <text>` | Owner | DM all groups. | `!pm global Maintenance at midnight` |
 | !pm flood <limit|interval> <val> | Owner | Configure PM flood settings. | !pm flood limit 10 |
 | !owner <grant|revoke> <jid> | Owner | Manage bot Owners. | !owner grant 123@s.whatsapp.net |
